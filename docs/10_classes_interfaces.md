@@ -2451,8 +2451,8 @@ config := class<concrete>:
 DefaultConfig := config{}
 ```
 
-Concrete classes can be constructed with `C{}`. Subclasses need not be
-concrete.
+A concrete class C can be constructed with C{}. A concrete class may have
+subclasses that are not concrete.
 
 ### Unique
 
@@ -3474,8 +3474,9 @@ healable := interface:
 ```
 
 Interfaces can be purely abstract, partially concrete, or fully
-implemented. Classes must implement abstract methods but inherit
-concrete implementations.
+implemented. A class implementing an interface must provide implementations
+for its abstract methods; it inherits concrete implementations and default
+field values.
 
 ### Implementing Interfaces
 
@@ -3506,6 +3507,10 @@ A class can implement multiple interfaces, achieving multiple
 inheritance of contracts.
 
 ### Interface Fields
+
+Interfaces can declare data members that implementing classes must provide
+or inherit. These fields can be either immutable or mutable, and may include
+default values:
 
 <!--versetest-->
 <!-- 130-->
