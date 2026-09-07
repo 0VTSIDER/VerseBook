@@ -1526,18 +1526,17 @@ assert:
     else:
         CoroUtils.GetEventLogString() = "3"
 
-# TODO(SOL-9046): BPVM fails to detect this runtime error
-verse_vm_only{
 TestRollbackNativeDefer(Task:task(void))<suspends>:int=
     # Register an open native defer, which runs and then clears itself on resume.
     Task.Await()
     # Roll back the resume, then run the defer again for task termination.
     Err()
 
+# Expects no particular diagnostic: with AutoRTFM active, the resume carrying Err() is rolled back, so it never
+# commits. With AutoRTFM disabled, there is no rollback and it raises ErrorRequested.
 assert_runtime_error:
     Task := spawn{NextTick()}
     spawn{TestRollbackNativeDefer(Task)}
-} #verse_vm_only
 
 <# Test case for multiple NativeDefers being present the same time
 - Create a task from native and store the FVerseTask
@@ -1559,3 +1558,23 @@ assert:
     Obj := test_native_defers_impl{}
     Obj.SpawnTask()
     CoroUtils.Tick(1)
+
+RetryForIteration(Event:event())<suspends>:void =
+    A := for (I := 1..2):
+        Event.Await()
+        I
+    A = array{1, 2} or Err()
+
+assert:
+    Event := event(){}
+    Task := spawn{RetryForIteration(Event)}
+
+    # Resume the for loop body, let it add an array element, then abort the transaction.
+    if:
+        CoroUtils.SignalTransacts(Event, ())
+        false?
+
+    # Resume the for loop body again from the same place and let it finish.
+    Event.Signal()
+    Event.Signal()
+    Task.Completed[]

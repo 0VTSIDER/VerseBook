@@ -1,0 +1,18 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Bytecode shape of function calls.
+# See Bytecode.versetest for an explanation of `assert_bytecode` and the `# CHECK:` directive syntax.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+Add2(X:int, Y:int):int = X + Y
+
+# A direct call lowers to a `Call` whose callee is the resolved function constant; its result register is
+# moved into R, which is then the left operand of the comparison.
+assert_bytecode:
+    # CHECK: [[CALL:r[0-9]+]] = Call(Callee: {{.*}}Add2{{.*}}, Arguments: (c{{[0-9]+}}=3, c{{[0-9]+}}=4){{.*}})
+    # CHECK: [[R:r[0-9]+]] = Move(Source: [[CALL]])
+    R := Add2(3, 4)
+    
+    # CHECK: [[CMP:r[0-9]+]] = Gt(LeftSource: [[R]], RightSource: c{{[0-9]+}}=0)
+    R > 0

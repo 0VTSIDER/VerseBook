@@ -1,0 +1,12 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+b := class:
+    Init()<suspends>:void = {}
+
+c := class(b):
+    Init<override>()<suspends>:void =
+        # The body of this spawn is a closure, which must capture super.
+        spawn{(super:)Init()}
+
+assert:
+    spawn{c{}.Init()}

@@ -1,0 +1,54 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+#
+# Companion to FORT-1088027-UseOfNullInitializedDynamicallyTypedValue.versetest
+# (see that file for the root-cause analysis). This variant interleaves the two
+# reentrancy shapes in one spawn pass: arm 2 first signals a same-generation
+# sibling (arm 1), resolving the race re-entrantly while its arms are still
+# spawning, and then signals a child born in an OLDER Update invocation (the
+# `branch` arm), whose completion also re-enters the still-mid-spawn coroutine
+# (harmlessly - the branch continuation just suspends).
+#
+# Before the fix, arm 3 then spawned into the already-resolved race and its
+# typed awaiter was stranded; the later E3.Signal popped the stranded awaiter
+# first and resumed a dead continuation (the FORT-1126351 null-typed convert
+# crash). Now the race's spawn pass detects the mid-spawn resolution when it
+# finishes and cancels the leftover arms (see `FCodeGenerator::EmitRace`), so
+# arm 3 is deregistered like the other losers and the second race iteration's
+# awaiter receives the payload.
+
+player := class:
+	var Score:int = 0
+	Do():void=
+		set Score += 1
+
+c1 := class:
+	EB : event() = event(){}
+	E0 : event() = event(){}
+	E1 : event() = event(){}
+	E2 : event() = event(){}
+	E3 : event(player) = event(player){}
+	var FirstIter : logic = true
+
+	Listener()<suspends>:void =
+		branch:
+			EB.Await()
+		loop:
+			E0.Await()
+			race:
+				E1.Await()
+				block:
+					if (FirstIter?):
+						set FirstIter = false
+						E1.Signal()
+						EB.Signal()
+					E2.Await()
+				E3.Await().Do()
+
+assert:
+	C := c1{}
+	P := player{}
+	spawn { C.Listener() }
+	C.E0.Signal()
+	C.E0.Signal()
+	C.E3.Signal(P)
+	P.Score = 1

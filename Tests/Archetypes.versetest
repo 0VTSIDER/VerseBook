@@ -165,6 +165,14 @@ assert_semantic_error(3577,3560){c:=class{X:int=0}; F():void=c{X:float}}
 assert_semantic_error(3577,3506){c:=class{X:int=0}; F():void=c{Y:float}}
 assert_semantic_error(3577,3560){c:=class{X:string="WOW"}; F():void=c{X:"WEE"}}
 
+assert_semantic_error(3552):
+    c := class:
+    d := class:
+        var X:int
+        MakeC():void =
+            c:
+                set X += 3
+
 test_basic_archetype_instantiation := module:
     c1<public> := class:
         var A1<public>:int
@@ -209,4 +217,4 @@ assert:
 assert:
     O := class_a_interface_a{}
     O.GetInt(true) = -1
-    O.GetInt(false) = 1
+    O.GetInt(false) = 1

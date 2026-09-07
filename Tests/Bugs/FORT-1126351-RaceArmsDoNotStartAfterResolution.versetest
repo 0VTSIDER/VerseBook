@@ -1,0 +1,37 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+#
+# Tests for FORT-1126351: arms of a `race` must not start once the race has
+# resolved. When an arm synchronously completes another arm during the race's
+# spawn pass (the E1.Signal below), the race resolves re-entrantly while later
+# arms have not yet started. The BPVM used to start them anyway - running their
+# side effects up to their first suspension point before cancelling them - while
+# the VerseVM never starts them. Both VMs must agree:
+#
+#  - The signaling arm is already executing when the race resolves, so it
+#    continues to its next suspension point (Arm2Continued = 1) and is then
+#    cancelled with the other leftover arms.
+#  - Arms after it never start (Arm3Started = 0).
+
+c1 := class:
+    E1 : event() = event(){}
+    E2 : event() = event(){}
+    E3 : event() = event(){}
+    var Arm2Continued : int = 0
+    var Arm3Started : int = 0
+
+    Listener()<suspends>:void =
+        race:
+            E1.Await()
+            block:
+                E1.Signal()             # resolves the race mid-spawn (arm 1 wins)
+                set Arm2Continued += 1  # the signaling arm continues to its next await
+                E2.Await()
+            block:
+                set Arm3Started += 1    # must never run - the race is already won
+                E3.Await()
+
+assert:
+    C := c1{}
+    spawn { C.Listener() }
+    C.Arm2Continued = 1
+    C.Arm3Started = 0

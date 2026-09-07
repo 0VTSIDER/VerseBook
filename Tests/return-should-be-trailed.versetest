@@ -1,0 +1,27 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+verse_vm_only
+{
+
+box := class:
+    var X:int = 0
+
+Bar(Box:box)<transacts>:int = Box.X
+
+Foo(Box:box)<suspends>:int =
+    await{Box.X}
+    var X:int = 1234
+    if (Bar(Box); 1=1) { set X = 0 }
+    X = 0 or Err()
+    Box.X
+
+assert:
+    var Box:box = box{}
+    spawn:
+        Foo(Box)
+    if (set Box.X = 1; 0=1){}
+    set Box.X = 42
+
+}

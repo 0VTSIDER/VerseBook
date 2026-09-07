@@ -3,6 +3,78 @@ using { /Verse.org/Diagnostics }
 using { /Verse.org/Native }
 using { /Verse.org/Tests/VerseTestScriptCmd }
 
+toggle_compile_features( Enabled := ("ExportMetadata", "TestIncremental")) {
+# Tests that the `@export_metadata` attribute is working and that the data exported is captured by the compiler injection.
+assert_exported_metadata
+{
+    vpackage(P0, /Verse.org/VerseTest, ?Scope := PublicAPI):
+        snippet(?Name := "SnippetP0"):
+            Module<public> := module:
+                using {/Verse.org/Diagnostics}
+
+                @export_metadata{Category := "ClassCategory", Key := "ClassKey", Value := "ClassValue"}
+                Class<public> := class:
+                    @export_metadata{Category := "FooCategory", Key := "FooKey", Value := "FooValue"}
+                    Foo<public>:int = 42
+
+                    @export_metadata{Category := "BarCategory", Key := "BarKey", Value := "BarValue"}
+                    Bar<public>():void = {}
+
+                @export_metadata{Category := "InterfaceCategory", Key := "InterfaceKey", Value := "InterfaceValue"}
+                Interface<public> := interface {}
+
+    vpackage(P1, /Verse.org/VerseTest, ?Scope := PublicAPI):
+        snippet(?Name := "SnippetP1"):
+            Module2<public> := module:
+                using {/Verse.org/Diagnostics}
+
+                @export_metadata{Category := "ClassCategory2", Key := "ClassKey2", Value := "ClassValue2"}
+                Class<public> := class:
+                    @export_metadata{Category := "FooCategory2", Key := "FooKey2", Value := "FooValue2"}
+                    Foo<public>:int = 42
+
+                    @export_metadata{Category := "BarCategory2", Key := "BarKey2", Value := "BarValue2"}
+                    Bar<public>():void = {}
+
+                @export_metadata{Category := "InterfaceCategory2", Key := "InterfaceKey2", Value := "InterfaceValue2"}
+                Interface := interface {}
+
+                SubInterface<public> := class(Interface) {}
+
+    vpackage(U0, /A, ?Scope := PublicUser, ?Dependencies := (P0, P1)):
+        snippet(?Name := "SnippetU0"):
+            using {/Verse.org/VerseTest}
+
+            UserFoo():void =
+                C := Module.Class{ Foo:= 24 }
+                C.Bar()
+                I := Module2.SubInterface{}
+                C2 := Module2.Class{ Foo:= 24 }
+    
+    vpackage(U1, /B, ?Scope := PublicUser, ?Dependencies := (P0, P1)):
+        snippet(?Name := "SnippetU1"):
+            using {/Verse.org/VerseTest}
+
+            UserBar():void =
+                C := Module.Class{ Foo:= 24 }
+
+    # The API packages should not have any usage recorded for them, only user packages.
+    exported_metadata_for_package(P0) {}
+    exported_metadata_for_package(P1) {}
+    exported_metadata_for_package(U0):
+        "ClassCategory|ClassKey|ClassValue|/generated_in_memory/SnippetU0"
+        "FooCategory|FooKey|FooValue|"
+        "BarCategory|BarKey|BarValue|/generated_in_memory/SnippetU0"
+        "ClassCategory2|ClassKey2|ClassValue2|/generated_in_memory/SnippetU0"
+        "FooCategory2|FooKey2|FooValue2|"
+
+    exported_metadata_for_package(U1):
+        "ClassCategory|ClassKey|ClassValue|/generated_in_memory/SnippetU1"
+        "FooCategory|FooKey|FooValue|"
+}
+} # toggle_compile_features
+
+toggle_compile_features( Enabled := ("ExportMetadata")) {
 # Use sites use ":?Foo = false" -- ":Foo = Foo{}" trips V3512 (transacts at
 # module scope) and fires Identifier_Class twice.
 
@@ -133,3 +205,4 @@ assert_valid:
         snippet:
             using { /Verse.org/Decl }
             UseFoo<public>:?Foo = false
+} # toggle_compile_features

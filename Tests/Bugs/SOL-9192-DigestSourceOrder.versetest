@@ -1,0 +1,28 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Regression for SOL-9192: the digest generator must emit definitions in source order so the digest
+# recompiles. `ball_component` is defined in a top-level snippet and consumed by a struct in a
+# sibling directory submodule. The directory submodule is created during the file-module pre-pass
+# but must still be emitted after the alias it depends on.
+assert_digest_generated
+{
+    vpackage(P0, /A, ?Scope := InternalUser):
+        snippet:
+            ball_component<public> := int
+        vmodule(Sub):
+            snippet:
+                DespawnData<public> := struct:
+                    Ball:ball_component
+                    Delay:float
+
+    expected_digest(Package := P0, ?Variant := PublicAndEpicInternal):
+        # Verse path: /A
+        ball_component<public> := int
+
+        # Module import path: /A/Sub
+        Sub<public> := module:
+            DespawnData<public> := struct:
+                Ball:ball_component
+
+                Delay:float
+}

@@ -1,0 +1,45 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 05 - shared dependency public interface change.
+#
+# Same 3 package shape as fixture 04, but phase 2 changes Shared's API
+# (adds a new public method). Unlike fixture 04, an API change will result
+# in recompiling dependents.
+#
+# Phases:
+#   1. cold build of all 3 - every package Compiled
+#   2. C gets a new public method: all 3 rebuild
+#   3. settled, all 3 SkippedExternal
+
+incremental_compilation
+{
+    # Phase 1: cold build of Shared + 2 dependents
+    vpackage(Shared, /Shared, ?Scope:=InternalUser):
+        snippet:
+            Lib<public> := module:
+                Greet<public>():void = {}
+
+    vpackage(A1, /A1, ?Dependencies:=("Shared"), ?Scope:=InternalUser):
+        snippet:
+            using { /Shared }
+            F1<public>():void = Lib.Greet()
+    vpackage(A2, /A2, ?Dependencies:=("Shared"), ?Scope:=InternalUser):
+        snippet:
+            using { /Shared }
+            F2<public>():void = Lib.Greet()
+    build_packages{}
+    expected_rebuild_set := array{ "Shared", "A1", "A2" }
+
+    # Phase 2: Shared adds a new public method (interface changed).
+    vpackage(Shared, /Shared, ?Scope:=InternalUser):
+        snippet:
+            Lib<public> := module:
+                Greet<public>():void = {}
+                NewMethod<public>():void = {}
+    build_packages{}
+    expected_rebuild_set := array{ "Shared", "A1", "A2" }
+
+    # Phase 3: settled
+    build_packages{}
+    expected_rebuild_set := array{ }
+}

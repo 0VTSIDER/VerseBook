@@ -9,7 +9,7 @@ c_int := class(i(int)) {}
 
 assert:
     C := c{}
-    C.Method(void)
+    C.Method(false)
     # C.Value = false      # Unknown member `Value` in `c`.
     CInt := c_int{}
     CInt.Method(10) = 10

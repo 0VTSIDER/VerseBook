@@ -19,6 +19,9 @@ CascadingAbortInNestedTransaction()<transacts><decides>:void=
 CascadingAbortInNestedTransactionViaNativeCallback()<transacts><decides>:void=
     TestUtils.InvokeTransacts[CascadingAbortInNestedTransaction]
 
+# No assert below names a particular diagnostic. With AutoRTFM on, a cascading abort unwinds the transaction
+# without raising one; with AutoRTFM off, the guard above raises ErrorRequested instead.
+
 # Test that triggering an AbortedByCascadingAbort AutoRTFM error outside of a 
 # transaction is treated as a runtime error.
 assert_runtime_error:

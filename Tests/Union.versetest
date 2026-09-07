@@ -14,8 +14,8 @@ assert_semantic_error(3506){U := union{}}
 
 verse_vm_only
 {
-# Macro 'union' is epic_internal — gate at SemanticAnalyzer.cpp:13376 rejects non-Epic packages
-assert_semantic_error(3506) { vpackage(P,/NotVerse.org,?Scope:=PublicUser) { snippet { U := union{N:int} } } }
+# Macro "union" does not require EpicInternal user scope
+assert_valid { vpackage(P,/NotVerse.org,?Scope:=PublicUser) { snippet { U := union{N:int} } } }
 
 assert_semantic_error(3619) { u:=union{}}
 assert_valid { u:=union{U:u}}
@@ -24,11 +24,13 @@ assert_semantic_error(3547) { e:=enum{A}; E:=e.A} # Enums also can't implicitly 
 assert_valid { U:=union{V : void}}
 assert_valid { U:=union{T : tuple(int, int)}}
 assert_valid { U:=union{N0 : int, N1 : int}}
-assert_semantic_error(3596) { U:=union<open>{N0 : int, N1 : string, V : void}}
-assert_semantic_error(3596) { U:=union<closed>{N : int, S : string, V : void}}
+assert_valid { U:=union<open>{N0 : int, N1 : string, V : void}}
+assert_valid { U:=union<closed>{N : int, S : string, V : void}}
+assert_semantic_error(3604) { U:=union<open><closed>{N : int, S : string, V : void}}
 assert_valid { U:=union{N:int}; UM: [U]int = map{}}
 assert_semantic_error(3628, 3628) {u:=union{ A : void, A : int, A : string}}
 assert_semantic_error(3628, 3628) {u:=union{ V : void, V : void, V : void}}
+assert_semantic_error(3502) {union1 := union{ N:int = 0} } # Union variants can't have default values
 
 assert_valid{u := union{V:void}; MyArray:[]u = array{}}
 assert_valid{u := union{V:void}; MyArray:[]u = array{u.V()}}
@@ -136,7 +138,7 @@ assert_valid:
     ru := union{ U : ru, V : void}
     U : ru = ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.V()))))))))))))))))))))))))
 
-assert_semantic_error(3502):
+assert_semantic_error(3509):
     ru := union{ U : ru, V : void}
     U : ru = ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.U(ru.V))))))))))))))))))))))))
 
@@ -242,13 +244,54 @@ assert:
     SomeUnionMap[0] = u1.N(6)
     SomeUnionMap[0] <> u1.N(7)
 
-assert_semantic_error(3547, 3502):
+assert_valid:
     u1 := union:
         N:int
         S : string
         V : void
+    Foo():void=
+        SomeUnion := u1.S
+
+assert_valid:
+    u1 := union:
+        N:int
+        S : string
+        V : void
+    Foo():void=
+        SomeUnion := u1.S
+
+# First class variants can't be defined in module scope regardless of a type being specified
+assert_semantic_error(3547):
+    u1 := union:
+        N:int
+        S : string
+        V : void
+
     SomeUnion := u1.S
-    
+    Foo():void=
+        SomeUnion("Hello")
+
+# First class variants CAN be defined in module scope if a type is specified
+assert_valid:
+    u1 := union:
+        N:int
+        S : string
+        V : void
+
+    SomeUnion : type{_(:string)<closed>:u1} = u1.S
+
+# First class functions also can't be defined in module/global scope
+assert_valid:
+    Foo():int=
+        0
+    Main():void=
+        MyF := Foo
+
+assert_semantic_error(3547):
+    Foo():int=
+        0
+    MyF := Foo
+
 assert:
     logic{U1Map[u1.S("Buzz")]} = false
 
@@ -314,8 +357,8 @@ assert_semantic_error(3509):
     U2 : u2 = u2.N(1)
     UA : []u1 = array{U1, U2}
 
-# Unified variant payloads in case not yet supported
-assert_semantic_error(3620, 3620, 3616):
+# Bound variant payloads in case block
+assert_valid:
     u := union{N:int, V:void, C:void}
     U : u = u.N(5)
     Foo():void=
@@ -324,8 +367,8 @@ assert_semantic_error(3620, 3620, 3616):
             u.N(2) => 1
             _=> 3
 
-# Cannot mix unified payloads with definition payloads 
-assert_semantic_error(3620):
+# Mixing bound payloads with unbound payloads 
+assert_valid:
     u := union{ N : int, V : void, S : string }
 
     Fun(U:u):void=
@@ -333,7 +376,33 @@ assert_semantic_error(3620):
             u.N(2)=>
             u.S(String : string)=>
             _=>
-assert_semantic_error(3620):
+
+assert_valid:
+    u := union{ N : int, V : void, S : string }
+
+    Fun(U:u):void=
+        case(U):
+            u.N(2)=>
+            u.N(Number:int)=>
+            _=>
+
+assert_semantic_error(3512):
+    u := union{ N : int, V : void, S : string }
+
+    Fun(U:u):void=
+        case(U):
+            u.N(2)=>
+            u.N(Number:int)=>
+
+assert_valid:
+    u := union{ N : int, V : void, S : string }
+
+    Fun(U:u)<decides>:void=
+        case(U):
+            u.N(2)=>
+            u.N(Number:int)=>
+
+assert_valid:
     u := union{ N : int, V : void, S : string }
 
     Fun(U:u):void=
@@ -341,7 +410,8 @@ assert_semantic_error(3620):
             u.S(String : string)=>
             u.N(2)=>
             _=>
-assert_semantic_error(3620):
+
+assert_valid:
     u := union{ N : int, V : void, S : string }
     Num : int = 4
     Fun(U:u):void=
@@ -356,14 +426,6 @@ assert_semantic_error(3509):
     c0 := class:
         var M0:u0=u0 # invalid
 
-assert_semantic_error(3509):
-    u0:=union{V : void}
-    c0 := class:
-        var M0:u0=u0.V() # valid 
-    f0():void=
-        C0:= c0{}
-        set C0.M0=u0 # invalid
-
 # Non-invocation variant in case is not supported
 assert_semantic_error(3620):
     u := union{ P : void }
@@ -373,8 +435,19 @@ assert_semantic_error(3620):
         case(U):
             u.P => # Invalid, expected P()
 
-# Wildcard must be at the end (also covers no duplicate wildcard)
+# Duplicate wildcards in non-exhaustive case
 assert_semantic_error(3616):
+    u := union{ P : void, Number : int }
+    U : u = u.P()
+
+    Fun():void=
+        case(U):
+            u.P() =>
+            _=>
+            _=> # Double wildcard
+
+# Unnecessary wildcard in exhaustive case
+assert_semantic_error(2302):
     u := union{ P : void }
     U : u = u.P()
 
@@ -382,7 +455,6 @@ assert_semantic_error(3616):
         case(U):
             u.P() =>
             _=>
-            _=> 
 
 # Missing arm
 assert_semantic_error(3620):
@@ -408,10 +480,30 @@ assert_semantic_error(3620):
 # We don't support parametric unions yet
 assert_semantic_error(3502){node(t:type) := class{}; PU(t: type) := union{ P : node(t) }}
 
-assert_semantic_error(3662, 3596, 3596):
+# Persistable unions
+assert_valid:
     u:=union<persistable><final>{V:void}
     persist_class := class<persistable><final>:
-        InvalidUnion : u = u.V()
+        ValidUnion : u = u.V()
+
+# Can't have non-persistable members in a union
+assert_semantic_error(3662):
+    non_persistable_class := class:
+        Number : int = 4
+
+    u:=union<persistable><final>{V:void, C : non_persistable_class}
+    persist_class := class<persistable><final>:
+        ValidUnion : u = u.V()
+
+# Can't have non-persistable members in a nested union
+assert_semantic_error(3662):
+    non_persistable_class := class:
+        Number : int = 4
+
+    nu:=union<persistable><final>{C : non_persistable_class}
+    u:=union<persistable><final>{V:void, NestedUnion : nu}
+    persist_class := class<persistable><final>:
+        ValidUnion : u = u.V()
 
 # You can't use an enum in a union case
 assert_semantic_error(3620, 3618):
@@ -534,7 +626,15 @@ assert:
 assert:
     MU := u1.N(1)
     logic{Equal[MU, 1]} = false
-   
+
+assert:
+    MU := u1.N(1)
+    var Success : logic = false
+    case(MU):
+        u1.N(1) => set Success = true
+        _=> set Success = false
+    Success = true
+
 s := struct<computes>{ N : int }
 assert:
     MU := u1.N(1)
@@ -582,8 +682,8 @@ assert_valid:
             u.V() =>
         }
 
-# Fully exhausted variant case is not decides, since case guarantees each variant 
-assert_semantic_error(3620, 3513):
+# Fully exhausted variant case is decides, since case guarantees each variant
+assert_valid:
     u := union{V : void, S : string}
     Foo(U:u):void=
         logic{
@@ -591,6 +691,398 @@ assert_semantic_error(3620, 3513):
             u.V() =>
             u.S("String") =>    
         }
+
+# Bound variant payloads are supported
+assert_valid:
+    u := union{V : void, S : string}
+    Foo(U:u):void=
+        case(U):
+            u.V()                =>
+            u.S("String")        =>
+            u.S(String : string) =>
+
+# Bound payloads should not be able to exist after its pertaining type binding variant
+assert_valid:
+    u := union{V : void, S : string}
+    Foo(U:u):void=
+        case(U):
+            u.V()                =>
+            u.S(String : string) => # Type binding variant
+            u.S("String")        => # Unreachable bound payload
+
+assert_valid:
+    u := union{V : void, S : string}
+    Foo(U:u):void=
+        logic{
+        case(U):
+            u.S("Hello") =>
+            u.S(S : string) =>
+        }
+
+assert_valid:
+    u := union{V : void, S : string}
+    Foo(U:u):void=
+        case(U):
+            u.S("Hello") =>
+            u.S(S : string) =>
+            u.V() =>
+
+assert_valid:
+    u := union{V : void, S : string}
+    Foo(U:u)<decides>:void=
+        case(U):
+            u.S("Hello") =>
+            u.V() =>
+
+assert_valid:
+    u := union{V : void, SN : tuple(string, int)}
+    Foo(U:u):void=
+        case(U):
+            u.SN("Hello", 6) =>
+            u.SN("Hello", Number : int) =>
+            u.SN(StringNumber : tuple(string, int)) =>
+            u.V() =>
+
+# Payload type validation
+assert_semantic_error(3509):
+    u := union{N : int}
+    U : u = u.N("string")
+
+assert_semantic_error(3509):
+    u := union{N : int}
+    U : u = u.N(String : string)
+
+assert_semantic_error(3509):
+    u := union{N : int}
+    U : u = u.N(Number : int)
+
+# Mismatch of payload is not allowed
+assert_semantic_error(3509):
+    u := union{V : void}
+    Foo(U:u):void=
+        case(U):
+            u.V(Logic : logic) =>
+
+# The pattern's payload type must be a subtype of the variant's payload type
+# expected int, got tuple(int, int)
+assert_semantic_error(3509):
+    u := union{N : int, V : void}
+    Foo(U:u):void=
+        case(U):
+            u.N(A : int, B : int) =>
+            _=>
+
+# Mixed value + binding with the wrong shape is the same error
+assert_semantic_error(3509):
+    u := union{N : int, V : void}
+    Foo(U:u):void=
+        case(U):
+            u.N(1, B : int) =>
+            _=>
+
+# expected tuple(string, int), got tuple(string, int, logic)
+assert_semantic_error(3509):
+    u := union{SN : tuple(string, int), V : void}
+    Foo(U:u):void=
+        case(U):
+            u.SN(A : string, B : int, C : logic) =>
+            _=>
+
+# Right arity, wrong element type - diagnostic points at the element
+assert_semantic_error(3509):
+    u := union{SN : tuple(string, int), V : void}
+    Foo(U:u):void=
+        case(U):
+            u.SN(S : string, L : logic) =>
+            _=>
+
+# A binding that shadows an existing definition is an error; known siblings are still checked
+assert_semantic_error(3532, 3509):
+    u := union{SN : tuple(string, int), V : void}
+    X : string = "collide"
+    Foo(U:u):void=
+        case(U):
+            u.SN(X : string, L : logic) =>
+            _=>
+
+tu := union{SN : tuple(string, int), N : int}
+
+assert:
+    var Passed : logic = false
+    case(tu.N(7)):
+        tu.N(6) => 
+        tu.N(Numb : int) => set Passed = true
+    Passed = true
+
+# Runtime pattern matching tuple as separate parameters
+assert:
+    var Passed : logic = false
+    case(tu.SN("string", 7)):
+        tu.SN("Hello", 6) =>
+        tu.SN(String : string, Number : int) => set Passed = true # Should match here
+        tu.N(Numb : int) => 
+    Passed = true
+
+# Runtime pattern matching tuple as tuple
+assert:
+    var Passed : logic = false
+    case(tu.SN("string", 7)):
+        tu.N(Numb : int) =>
+        tu.SN("Hello", 6) =>
+        tu.SN("Hello", Number : int) =>
+        tu.SN(Tup : tuple(string, int)) => set Passed = true # Should match here
+    Passed = true
+
+# Runtime pattern matching fully bound tuple
+assert:
+    var Passed : logic = false
+    case(tu.SN("Hello", 6)):
+        tu.N(Numb : int) =>
+        tu.SN("Hello", 6) =>  set Passed = true
+        tu.SN("Hello", Number : int) =>
+        tu.SN(String : string, Number : int) =>
+    Passed = true
+
+# Runtime pattern matching partially bound tuple
+assert:
+    var Passed : logic = false
+    case(tu.SN("Hello", 7)):
+        tu.N(Numb : int) =>
+        tu.SN("Hello", 6) =>
+        tu.SN("Hello", Number : int) => set Passed = true
+        tu.SN(String : string, Number : int) =>
+    Passed = true
+
+# A mixed arm in last position still discriminates on its value elements
+assert:
+    logic{
+        case(tu.SN("Bye", 6)):
+            tu.SN("Hello", Number : int) => 0
+    } = false
+
+assert:
+    logic{
+        case(tu.SN("Hello", 6)):
+            tu.SN("Hello", Number : int) => 0
+    } = true
+
+# A mixed last arm never exhausts, so a non-decides case still needs a wildcard
+assert_semantic_error(3512):
+    u := union{SN : tuple(string, int), N : int}
+    Foo(U:u):void=
+        case(U):
+            u.N(Numb : int) =>
+            u.SN("Hello", Number : int) =>
+
+# Destructured bindings receive their tuple element, not the whole payload
+assert:
+    var Res : int = 0
+    case(tu.SN("Hello", 7)):
+        tu.N(Numb : int) => set Res = Numb
+        tu.SN(S : string, Number : int) => set Res = Number
+    Res = 7
+
+assert:
+    var Res : string = ""
+    case(tu.SN("Hello", 7)):
+        tu.N(Numb : int) =>
+        tu.SN(S : string, Number : int) => set Res = S
+    Res = "Hello"
+
+# Mixed-arm bindings also read their element
+assert:
+    var Res : int = 0
+    case(tu.SN("Hello", 7)):
+        tu.SN("Hello", Number : int) => set Res = Number
+        _ => set Res = 1
+    Res = 7
+
+# Whole-tuple bindings still receive the whole payload
+assert:
+    var Res : int = 0
+    case(tu.SN("Hello", 7)):
+        tu.SN(Tup : tuple(string, int)) => set Res = Tup(1)
+        _ =>
+    Res = 7
+
+# A non-matching destructured arm must not disturb other arms (element reads stay guarded)
+assert:
+    var Res : int = 0
+    case(tu.N(7)):
+        tu.SN(S : string, Number : int) => set Res = Number
+        tu.N(Numb : int) => set Res = Numb
+    Res = 7
+
+# A pattern binding that shadows an existing definition is an error, consistent with parameter shadowing
+assert_semantic_error(3532):
+    u := union{SN : tuple(string, int), N : int}
+    X : string = "outer"
+    Foo(U:u):void=
+        case(U):
+            u.SN(X : string, Number : int) =>
+            _ =>
+
+# Each arm binds its own name: the idiomatic same-name-per-arm pattern works on every path
+assert:
+    F(U:tu):tu=
+        case(U):
+            tu.N(X : int) => tu.N(X + 1)
+            tu.SN(S : string, X : int) => tu.SN(S, X + 2)
+    F(tu.N(5)) = tu.N(6)
+
+assert:
+    F(U:tu):tu=
+        case(U):
+            tu.N(X : int) => tu.N(X + 1)
+            tu.SN(S : string, X : int) => tu.SN(S, X + 2)
+    F(tu.SN("Hello", 5)) = tu.SN("Hello", 7)
+
+# Cross-arm same name with different payload types
+assert:
+    F(U:u1):string=
+        case(U):
+            u1.N(X : int) => "int"
+            u1.S(X : string) => X
+            _ => "other"
+    F(u1.S("hi")) = "hi"
+
+# Duplicate binding name within one arm is an error
+assert_semantic_error(3532):
+    u := union{SN : tuple(string, int), N : int}
+    Foo(U:u):void=
+        case(U):
+            u.SN(X : string, X : int) =>
+            _ =>
+
+# Bind-and-match: X := 9 binds the payload and constrains it to 9
+assert:
+    var Res : int = 0
+    case(tu.N(9)):
+        tu.N(X := 9) => set Res = X
+        _ => set Res = 1
+    Res = 9
+
+# A non-matching value falls through to the next arm
+assert:
+    var Res : int = 0
+    case(tu.N(5)):
+        tu.N(X := 9) => set Res = X
+        tu.N(Numb : int) => set Res = Numb + 10
+    Res = 15
+
+# Bind-and-match does not exhaust its variant, so the later arms are reachable
+assert_valid:
+    u := union{N : int, V : void}
+    Foo(U:u):void=
+        case(U):
+            u.N(X := 9) =>
+            u.N(Numb : int) =>
+            _ =>
+
+# Typed bind-and-match destructure: the value constrains, the sibling still binds
+assert:
+    var Res : string = ""
+    case(tu.SN("Hello", 7)):
+        tu.SN(S : string = "Bye", Number : int) => set Res = "wrong"
+        tu.SN(S : string = "Hello", Number : int) => set Res = S
+        _ =>
+    Res = "Hello"
+
+# Bind-and-match in last position under a failure context uses the noteq guard
+assert:
+    logic{
+        case(tu.N(5)):
+            tu.N(X := 9) => 0
+    } = false
+
+# A mixed arm only covers payloads matching its value elements, so a later
+# value arm of the same variant with different elements is still reachable
+assert:
+    var Passed : logic = false
+    case(tu.SN("Bye", 6)):
+        tu.SN("Hello", Number : int) =>
+        tu.SN("Bye", 6) => set Passed = true
+        tu.N(Numb : int) =>
+        tu.SN(Rest : tuple(string, int)) =>
+    Passed = true
+
+# A value arm after a full-binding arm of the same variant is unreachable
+assert_semantic_error(3616):
+    u := union{V : void, S : string, N : int}
+    Foo(U:u):void=
+        case(U):
+            u.S(String : string) =>
+            u.S("Hello") =>
+            _=>
+
+# Can't have a case variant that defines as tuple and without both parameters
+assert_semantic_error(3616):
+    tu := union{N : int, SN : tuple(string, int)}
+
+    Foo():void=
+        case(tu.SN("Hello", 6)):
+            tu.N(Numb : int) =>
+            tu.SN("Hello", 6) => 
+            tu.SN("Hello", Number : int) =>
+            tu.SN(Tup : tuple(string, int)) =>
+            tu.SN(String : string, Number : int) =>
+
+# tuple's are treated as 2 parameters
+assert_valid:
+    u := union{V : void, SN : tuple(string, int)}
+    Foo(U:u):void=
+        case(U):
+            u.SN("Hello", 6) =>
+            u.SN("Hello", Number : int) =>
+            u.SN(String : string, Number : int) =>
+            u.V() =>
+
+# Payload in case domain must match variants defined payload
+assert_semantic_error(3509, 3616):
+    u := union{V : void, SN : tuple(string, int)}
+    Foo(U:u):void=
+        case(U):
+            u.SN(Logic : logic) =>
+            u.SN("Hello", Number : int) =>
+            u.SN(String : string, Number : int) =>
+            u.V() =>
+
+assert_semantic_error(3616):
+    u := union{V : void, S : string}
+    Foo(U:u)<decides>:void=
+        case(U):
+            u.S("Hello") =>
+            u.S("Hello") =>
+            u.V() =>
+
+assert_semantic_error(3616):
+    u := union{V : void, S : string}
+    u1 := union{V : void, U : u}
+    Foo(U:u1)<decides>:void=
+        case(U):
+            
+            u1.V() =>
+            u1.U(u.S("Hello")) =>
+            u1.U(u.S("Hello")) =>
+            u1.U(SomeUnion : u) =>
+
+# Case must exhaust via type bindings of payload for nested union variants
+assert_semantic_error(3512):
+    u := union{V : void, S : string}
+    u1 := union{V : void, U : u}
+    Foo(U:u1):void=
+        case(U):
+            u1.V() =>
+            u1.U(u.S("Hello")) =>
+
+assert_valid:
+    u := union{V : void, S : string}
+    u1 := union{V : void, U : u}
+    Foo(U:u1)<decides>:void=
+        case(U):
+            u1.V() =>
+            u1.U(u.S("Hello")) =>
+            u1.U(SomeUnion : u) =>
 
 # Not fully exhausted case is decides
 assert_valid:
@@ -615,7 +1107,7 @@ enum1 := enum:
     N
 
 # Enums should not be comparable to variants
-assert_semantic_error(3502):
+assert_semantic_error(3509):
     union1 := union:
         N:int
     enum1 := enum:
@@ -623,8 +1115,8 @@ assert_semantic_error(3502):
     Main()<decides>:void=
         enum1.N = union1.N
 
-#  First class variants are not yet supported
-assert_semantic_error(3509, 3502):
+#  First class variants are supported
+assert_valid:
     union1 := union:
         N:int
     Main():void =
@@ -632,7 +1124,7 @@ assert_semantic_error(3509, 3502):
         F(1)
 
 # Can't case over a first class variant that doesn't have a payload
-assert_semantic_error(3502):
+assert_semantic_error(3506, 3509, 3617, 3618, 3512):
     union1 := union:
         N:int
 
@@ -641,15 +1133,13 @@ assert_semantic_error(3502):
         case(F):
             union1.N(N : int) => N
    
-# Can't compare a variant to a function
-assert_semantic_error(3502, 3502):
-    Equal(X:t, Y:comparable where t:subtype(comparable))<computes><decides>:t =
-        X = Y
+# Can't compare a variant to a variant constructor
+assert_semantic_error(3509):
     union1 := union:
         N:int
     Main()<decides>:void=
         F := union1.N
-        Equal[union1.N, union1.N(5)]
+        F = union1.N(5)
 
 # Nested case with union variants
 assert_valid:
@@ -681,18 +1171,69 @@ assert:
 
     F(nu0.NU(nu1.NU(nu0.V()))) = 42
 
-# Future nesting support which doesn't require nesting case statements
-assert_semantic_error(3620, 3620, 3616):
+assert:
+    F(NU:nu0):int=
+        case(NU):
+            nu0.NU(NU1 : nu1)=>
+                case(NU1):
+                    nu1.NU(NU0 : nu0)=>
+                        case(NU0):
+                            nu0.V()=> 42
+                            _=> 0
+                    nu1.N(5) =>
+                        5
+                    nu1.N(N : int)=> N
+                    _=> 0
+            _=> 0
+
+    F(nu0.NU(nu1.N(67))) = 67
+
+# Nested case statements also don't accept bound payloads after their respective type bindings
+assert_semantic_error(3616):
+    nu0 := union{ NU : nu1, S : string, V : void}
+    nu1 := union{ NU : nu0, N : int, F : float}
+
+    F(NU:nu0):int=
+        case(NU):
+            nu0.NU(NU1 : nu1)=>
+                case(NU1):
+                    nu1.NU(NU0 : nu0)=>
+                        case(NU0):
+                            nu0.V()=> 42
+                            _=> 0
+                    nu1.N(N : int) => N
+                    nu1.N(5)       => 5
+                    _=> 0
+            _=> 0
+
+assert_semantic_error(3509, 3509):
     u := union{ N : int, S : string}
     u1 := union{ U : u, V : void}
 
     SomeUnion1 : u1 = u1.U(u.N(6))
     F():void=
         case(SomeUnion1):
-            u1.U(u.N(Number : int))    => # 3620
-            u1.U(u.S(String : string)) => # 3620 & 3616
+            u1.U(u.N(1))               =>
+            u1.U(u.N(Number : int))    => # error 3509 until nested variant support
+            u1.U(u.S(String : string)) =>
+            u1.U(_Union : u)           => 
             u1.V() =>
-    
+
+# Future nesting support doesn't require nesting case statements
+# This is legal in nested case statements (see the above test)
+assert_semantic_error(3509, 3509):
+    u := union{ N : int, S : string}
+    u1 := union{ U : u, V : void}
+
+    SomeUnion1 : u1 = u1.U(u.N(6))
+    F():void=
+        case(SomeUnion1):
+            u1.U(u.N(Number : int))    =>
+            u1.U(u.N(1))               =>
+            u1.U(u.S(String : string)) =>
+            u1.U(_Union : u)           => 
+            u1.V() =>
+
 # Can't use union variant variables for RHS of case
 assert_semantic_error(3506, 3617):
     u := union{ U : u, S : string, V : void}
@@ -755,9 +1296,6 @@ assert_semantic_error(3596):
     u := union<decides>{N : int}
     
 assert_semantic_error(3604):
-    u := union{N<public> : int}
-    
-assert_semantic_error(3604):
     u := union{N : int<decides>}
 
     U : u = u.N(6)
@@ -769,8 +1307,550 @@ assert_semantic_error(3604):
 # Reserved keywords
 assert_semantic_error(3514):
     Self := union{N : int}
-    
+
 assert_semantic_error(3514):
     u := union{union : int}
 
+# Access specifiers
+assert_valid:
+    a := module:
+        u<public> := union{N:int}
+
+    b := module:
+        Main():void=
+            U : a.u = a.u.N(1)
+
+assert_semantic_error(3594):
+    a := module:
+        u<private> := union{N:int}
+
+    b := module:
+        Main():void=
+            U : a.u = a.u.N(1)
+
+assert_semantic_error(3593,3593,3593):
+    a := module:
+        u<internal> := union{N:int}
+
+    b := module:
+        Main():void=
+            U : a.u = a.u.N(1)
+
+assert_semantic_error(3594):
+    a := module:
+        u<private> := union{N:int}
+
+    b := module:
+        u := union{U : a.u}
+
+assert_valid:
+    a := module:
+        u<public> := union{N:int}
+
+    b := module:
+        u := union{U : a.u}
+
+assert_semantic_error(3593):
+    a := module:
+        u := union{N:int}
+
+    b := module:
+        u := union{U : a.u}
+
+# protected is only allowed on class constructors and inside classes/interfaces — not on union names
+assert_semantic_error(3594) { u<protected> := union{N:int}}
+
+# Access specifier in the macro-effect position (mirrors interface / class behaviour)
+assert_valid                { u := union<public>{N:int}}
+assert_valid                { u := union<internal>{N:int}}
+assert_semantic_error(3594) { u<public> := union<protected>{N:int}}
+assert_semantic_error(3594) { u<public> := union<private>{N:int}}
+
+# Conflicting access specifiers in the macro-effect position
+assert_semantic_error(3543) { u := union<public><internal>{N:int}}
+
+# Effect attribute and access specifier combine cleanly
+assert_valid                { u<public> := union<computes>{N:int}}
+assert_valid                { u<public> := union<converges>{N:int}}
+
+# Variants cannot carry their own access specifier - visibility is inherited from the union
+assert_semantic_error(3604) { u := union{N<public>:int}}
+assert_semantic_error(3604) { u := union{N<private>:int}}
+assert_semantic_error(3604) { u := union{N<internal>:int}}
+
+# epic_internal union name is consistent with the macro being epic_internal
+assert_valid:
+    a := module:
+        u<epic_internal> := union{N:int}
+        F():void=
+            U : u = u.N(1)
+
+# Digest generation
+assert_digest_generated
+{
+    vpackage(P0, /Verse.org/Test, ?Scope := InternalUser):
+        snippet:
+            Module<public> := module:
+                u<public> := union{N : int, V : void}
+
+    expected_digest(Package := P0, ?Variant := PublicOnly):
+        # Verse path: /Verse.org/Test
+        # Module import path: /Verse.org/Test/Module
+        Module<public> := module:
+            u<public> := union:
+                N : int
+                V : void
 }
+
+# Digest generation - omit internal unions from digest
+assert_digest_generated:
+    vpackage(P0, /Verse.org/Test, ?Scope := InternalUser):
+        snippet:
+            Module<public> := module:
+                shape<internal> := union{Square : int, Circle : float, Name : string, Empty : void}
+                tree<public> := union{Leaf : int, Node : tree}
+
+    expected_digest(Package := P0, ?Variant := PublicOnly):
+        # Verse path: /Verse.org/Test
+        # Module import path: /Verse.org/Test/Module
+        Module<public> := module:
+            tree<public> := union:
+                Leaf : int
+                Node : tree
+
+# Digest generation - omit epic_internal unions from public digest
+assert_digest_generated:
+    vpackage(P0, /Verse.org/Test, ?Scope := InternalUser):
+        snippet:
+            Module<public> := module:
+                shape<epic_internal> := union{Square : int, Circle : float, Name : string, Empty : void}
+                tree<public> := union{Leaf : int, Node : tree}
+
+    expected_digest(Package := P0, ?Variant := PublicOnly):
+        # Verse path: /Verse.org/Test
+        # Module import path: /Verse.org/Test/Module
+        Module<public> := module:
+            tree<public> := union:
+                Leaf : int
+                Node : tree
+
+# Digest generation - include epic_internal unions in public and epic internal digest
+assert_digest_generated:
+    vpackage(P0, /Verse.org/Test, ?Scope := InternalUser):
+        snippet:
+            Module<public> := module:
+                shape<epic_internal> := union{Square : int, Circle : float, Name : string, Empty : void}
+                tree<public> := union{Leaf : int, Node : tree}
+
+    expected_digest(Package := P0, ?Variant := PublicAndEpicInternal):
+        # Verse path: /Verse.org/Test
+        # Module import path: /Verse.org/Test/Module
+        Module<public> := module:
+            shape<epic_internal> := union:
+                Square : int
+                Circle : float
+                Name : string
+                Empty : void
+            tree<public> := union:
+                Leaf : int
+                Node : tree
+
+# Digest generation - mixed payload types and recursive variant
+assert_digest_generated:
+    vpackage(P0, /Verse.org/Test, ?Scope := InternalUser):
+        snippet:
+            Module<public> := module:
+                shape<public> := union{Square : int, Circle : float, Name : string, Empty : void}
+                tree<public> := union{Leaf : int, Node : tree}
+
+    expected_digest(Package := P0, ?Variant := PublicOnly):
+        # Verse path: /Verse.org/Test
+        # Module import path: /Verse.org/Test/Module
+        Module<public> := module:
+            shape<public> := union:
+                Square : int
+                Circle : float
+                Name : string
+                Empty : void
+
+            tree<public> := union:
+                Leaf : int
+                Node : tree
+
+
+# Digest generation - effect attribute on the union
+assert_digest_generated:
+    vpackage(P0, /Verse.org/Test, ?Scope := InternalUser):
+        snippet:
+            Module<public> := module:
+                u<public> := union<computes>{N : int}
+
+    expected_digest(Package := P0, ?Variant := PublicOnly):
+        # Verse path: /Verse.org/Test
+        # Module import path: /Verse.org/Test/Module
+        Module<public> := module:
+            u<public> := union<computes>:
+                N : int
+
+
+assert_semantic_error(3509):
+    u := union{A : int}
+    Foo():void=
+        case(u.A(69)):
+            u.A(Number1 : int, Number2 : int) =>
+
+assert_semantic_error(3585):
+    u := union{Number : int}
+    u.Number(N : int)
+
+assert_semantic_error(3585):
+    u := union{Number : int}
+    u.Number(N := 5)
+
+a_union := union{Number : int}
+
+assert:
+    var Passed : logic = false
+    Foo():void=
+        case(a_union.Number(3)):
+            a_union.Number(X := 5) => 
+            a_union.Number(Num : int) => set Passed = true
+    Foo()
+    Passed = true
+
+assert:
+    var ResultInt : int = 0
+    Foo():void=
+        case(a_union.Number(5)):
+            a_union.Number(X := 5) => set ResultInt = X 
+            a_union.Number(Num : int) =>
+    Foo()
+    ResultInt = 5
+
+assert_valid:
+    u := union{ SN : tuple(string, int), N : int }
+    U : u = u.SN("Hi", 6)
+    Foo()<decides>:void=
+        case(U):
+            u.SN("Hello", NUmber : int) =>
+
+# Comparing structs in pattern matching (including nested structs)
+cst := struct<computes>:
+    Number : int
+    String : string
+    Logic : logic
+
+st := struct<computes>:
+    Number : int
+    String : string
+    Logic : logic
+    CompStruct : cst
+
+stu := union:
+    OuterStruct : st
+    InnerStruct : cst
+
+assert:
+    InnerStruct : cst = cst{Number := 6, String := "Fizz", Logic := false}
+    OuterStruct : st = st{Number := 7, String := "Buzz", Logic := false, CompStruct := InnerStruct}
+    StructUnion : stu = stu.OuterStruct(OuterStruct)
+    Foo():logic=
+        case(StructUnion):
+            stu.InnerStruct(Inner : cst) =>
+            stu.OuterStruct(st{Number := 7, String := "Buzz", Logic := false, CompStruct := InnerStruct}) => return true
+            stu.OuterStruct(Outer : st) =>
+        return false
+    Foo() = true
+
+assert:
+    InnerStruct : cst = cst{Number := 6, String := "Fizz", Logic := false}
+    OuterStruct : st = st{Number := 7, String := "Buzz", Logic := false, CompStruct := InnerStruct}
+    StructUnion : stu = stu.OuterStruct(OuterStruct)
+    Foo():logic=
+        case(StructUnion):
+            stu.InnerStruct(Inner : cst) =>
+            stu.OuterStruct(st{Number := 7, String := "Buzz", Logic := true, CompStruct := InnerStruct}) =>
+            stu.OuterStruct(Outer : st) => return true
+        return false
+    Foo() = true
+
+# Void payload does not expect a binding, even if the binding is type tuple()
+assert_semantic_error(3509):
+    union1 := union:
+        X:void
+    Main(Y:union1):void =
+        case (Y):
+            union1.X(Void : tuple()) =>
+
+assert_semantic_error(3509):
+    union1 := union:
+        X:tuple()
+    Main(Y:union1):void =
+        case (Y):
+            union1.X( V : tuple() ) =>
+
+
+# Void payload does not expect a binding, even if the binding is type tuple()
+assert_semantic_error(3509):
+    union1 := union:
+        X : void
+    Main(Y:union1):void =
+        case (Y):
+            union1.X(Void : tuple()) =>
+
+# Void rejects any type binding / value payload in pattern matching
+assert_semantic_error(3509):
+    union1 := union:
+        X : void
+    Main(Y:union1):void =
+        case (Y):
+            union1.X(1) =>
+
+assert_semantic_error(3509):
+    union1 := union:
+        X : tuple()
+    Main(Y:union1):void =
+        case (Y):
+            union1.X( V : tuple() ) =>
+
+# tuple() as a payload type
+assert_semantic_error(3616):
+    union1 := union:
+        X : tuple()
+    Main(Y:union1):void =
+        case (Y):
+            union1.X() =>
+            union1.X( V : tuple() ) => # Unreachable
+
+vu := union{ V : void}
+
+assert:
+    Foo():logic=
+        case(vu.V()):
+            vu.V() => return true
+    Foo() = true
+
+tvu := union{ X : tuple()}
+
+assert:
+    Main():logic =
+        case (tvu.X()):
+            tvu.X() => return true
+    Main() = true
+
+assert:
+    Main():logic=
+        case (tvu.X(())):
+            tvu.X() => return true
+    Main() = true
+
+# A case over an <open> union without a default clause might fail (open unions can grow).
+assert_semantic_error(3512):
+    u := union<open>{ A : int, B : int }
+    Foo(U : u):void=
+        case(U):
+            u.A(X : int) =>
+            u.B(X : int) =>
+
+# A case over an <open> union with a default clause is ok.
+assert_valid:
+    u := union<open>{ A : int, B : int }
+    Foo(U : u):void=
+        case(U):
+            u.A(X : int) =>
+            u.B(X : int) =>
+            _ =>
+
+# A case over a <closed> (default) union covering all variants is exhaustive.
+assert_valid:
+    u := union{ A : int, B : int }
+    Foo(U : u):void=
+        case(U):
+            u.A(X : int) =>
+            u.B(X : int) =>
+
+# A case over an <open> union in a <decides> context is ok without a default (the case may fail).
+assert_valid:
+    u := union<open>{ A : int, B : int }
+    Foo(U : u)<decides>:void=
+        case(U):
+            u.A(X : int) =>
+            u.B(X : int) =>
+
+fcu := union{Number : int}
+
+assert:
+    Expected : fcu = fcu.Number(6)
+    Main(FCU: fcu):logic=
+        Actual := fcu.Number
+        case(Actual(6)):
+            fcu.Number(6) => return true
+            fcu.Number( Number : int) => return false
+
+    Main(Expected) = true
+
+assert:
+    Expected : fcu = fcu.Number(7)
+    Main(FCU: fcu):logic=
+        Actual := fcu.Number
+        case(Actual(7)):
+            fcu.Number(5) => return false
+            fcu.Number(6) => return false
+            fcu.Number( Number : int) => return true
+
+    Main(Expected) = true
+
+assert:
+    Main():logic=
+        FCU1 := fcu.Number
+        FCU2 := fcu.Number
+        return logic{FCU1(1) = FCU2(2)}
+    Main() = false
+
+# Can pattern match against first class variants when payload is not a type binding
+assert_valid:
+    fcu := union{Number : int}
+
+    Main(FCU: fcu):logic=
+        Actual := fcu.Number
+        case(Actual(6)):
+            fcu.Number(5) => return false
+            fcu.Number(6) => return true
+            fcu.Number( Number : int) => return false
+
+# Variant constructors are not supported in pattern matching (expects 'int->fcu', gets 'fcu')
+assert_semantic_error(3618):
+    fcu := union{Number : int}
+
+    Main(FCU: fcu):logic=
+        Actual := fcu.Number
+        case(Actual):
+            fcu.Number(5) => return false
+            fcu.Number(6) => return true
+            fcu.Number( Number : int) => return false
+
+# Duplicate payload if a first class variant and regular variant have same payload
+assert_semantic_error(3616):
+    fcu := union{Number : int}
+
+    Main(FCU: fcu):logic=
+        Actual := fcu.Number
+        case(Actual(6)):
+            fcu.Number(6) => return false
+            fcu.Number(6) => return true
+            fcu.Number(Number : int) => return false
+
+# First class union variant constructor must take in a bound value payload
+assert_semantic_error(3509):
+    fcu := union{Number : int}
+    Foo():void=
+        FCU := fcu.Number(Num : int)
+        Result:comparable = FCU(5)
+
+assert_semantic_error(3509):
+    fcu := union{Number : int}
+    Foo():void=
+        FCU := fcu.Number(Num : int)
+        case(FCU):
+            _=>
+
+# Join supported for first class variants of the same unions
+assert_valid:
+    fcu0 := union{Number : int}
+    Foo():void=
+        F0 := fcu0.Number
+        F1 := fcu0.Number
+        FCU := if(false?). F0 else. F1
+
+        case(FCU(5)):
+            fcu0.Number(Num : int) =>
+
+# Join supported for first class variants from different unions in case blocks
+assert_valid:
+    fcu0 := union{Number : int}
+    fcu1 := union{Number : int}
+    Foo():void=
+        F := fcu0.Number
+        G := fcu1.Number
+        FCU := if(false?). fcu0.Number else. fcu1.Number
+        FCU(5)
+
+# Join supported for first class variants of the same unions
+assert_valid:
+    fcu0 := union{Number : int}
+    Func(Number : int):void=
+        0
+
+    Foo():void=
+        F := fcu0.Number
+        FCU := if(false?). Func else. F 
+
+        FCU(5) 
+
+assert_valid:
+    fcu0 := union{Number : int}
+    
+    Foo(NumVariant : type{_(:int):fcu0}):void=
+        F := fcu0.Number
+        FCU := if(false?). NumVariant else. F
+
+        FCU(5)
+
+fcu0 := union{Number : int}
+fcu1 := union{Number : int}
+
+assert:
+    Expected : fcu1 = fcu1.Number(5)
+    Foo():logic=
+        F := fcu0.Number
+        G := fcu1.Number
+        FCU := if(false?). F else. G
+        return logic{FCU(5) = Expected}
+        
+    Foo() = true
+
+assert_valid:
+    fcu0 := union{Number : int}
+
+    Foo(NumVariant : type{_(:int)<converges>:fcu0}):logic=
+        Expected : fcu0 = fcu0.Number(5)
+        F := fcu0.Number
+        FCU := if(false?). NumVariant else. F
+
+        return logic{FCU(5) = Expected}
+
+assert:
+    Expected : fcu0 = fcu0.Number(5)
+    
+    F := fcu0.Number
+    G := fcu0.Number
+    FCU := if(false?). G else. F
+
+    var Result : logic = false
+    case(FCU(5)):
+        fcu0.Number(4) =>
+        fcu0.Number(Num : int) => set Result = true
+
+    Result = true
+
+# Attempting to use a union variant constructor to implicitly construct a new union variant variable is not yet supported
+assert_semantic_error(3547):
+    union1 := union:
+        X:int
+    F:type{_(:int)<converges><closed>:union1} = union1.X
+    Y := F(1) 
+
+assert_semantic_error(3509):
+    union1 := union:
+        X:int
+    Y: union1 = 1
+
+# Attempting to set a union variant equal to its payload type value is not supported
+assert_semantic_error(3512):
+    union1 := union:
+        X:int
+    F:type{_(:int)<closed><computes>:union1} = union1.X
+    Y:F = 1
+
+
+} # Verse VM Only

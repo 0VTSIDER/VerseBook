@@ -420,7 +420,6 @@ assert_digest_generated
 }
 
 # Variance and subclasses
-<# Disabled pending fix for FORT-1017607
 assert_digest_generated
 {
     vpackage(P0, /A):
@@ -435,10 +434,9 @@ assert_digest_generated
         class1<public>(t:type) := class:
             (/A/class1:)class1_Variance<private>():tuple(t) = external{}
         class2<public>(t:type) := class(class1(t)):
-            @available{MinUploadedAtFNVersion:=4000}
+            @available{MinUploadedAtFNVersion:=4210}
             (/A/class2:)class2_Variance_Inherited<private>():tuple(t) = external{}
 }
-#>
 
 assert_valid:
     class1<public>(t:type) := class:
@@ -755,7 +753,6 @@ assert_digest_generated
 }
 
 # Variance newlines
-<# Disabled pending fix for FORT-1017607
 assert_digest_generated
 {
     vpackage(P0, /A):
@@ -773,12 +770,11 @@ assert_digest_generated
             Data<public>:?t = external {}
 
         class2<public>(t:type) := class(class1(t)):
-            @available {MinUploadedAtFNVersion := 4000}
+            @available {MinUploadedAtFNVersion := 4210}
             (/A/class2:)class2_Variance_Inherited<private>():tuple(t) = external {}
             (/A/class2:)class2_Variance<private>():tuple(t) = external {}
             Data2<public>:?t = external {}    
 }
-#>
 
 # "Variance" name taken
 assert_digest_generated
@@ -855,7 +851,6 @@ assert_digest_generated
 }
 
 # Inheriting variance constraints from a non-public interface.
-<# Disabled pending fix for FORT-1017607
 assert_digest_generated
 {
     vpackage(P0, /A):
@@ -868,10 +863,9 @@ assert_digest_generated
         # Verse path: /A
         using {/Verse.org/Native}
         public_interface<public>(t:type) := interface:
-            @available {MinUploadedAtFNVersion := 4000}
+            @available {MinUploadedAtFNVersion := 4210}
             (/A/public_interface:)public_interface_Variance_Inherited<private>():tuple(t) = external {}
 }
-#>
 
 assert_digest_generated
 {

@@ -139,6 +139,90 @@ assert_valid:
     vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { c<public> := enum<open> {   } } }
     vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { c<public> := enum<open> { A } } }
 
+# Discriminated Unions
+
+verse_vm_only
+{
+
+# Identical unions are ok.
+assert_valid:
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union { A:int } } }
+
+# Adding a union variant is not ok (can break exhaustive case expressions).
+assert_semantic_error(3645):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union { A:int, B:int } } }
+
+# Removing a union variant is not ok (caught by the generic removed-definition check via LinkScopeCompatConstraints).
+assert_semantic_error(3643):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union { A:int, B:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union { A:int } } }
+
+# Renaming a union variant is never allowed (removal of the old name plus addition of the new).
+assert_semantic_error(3643, 3645):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union { A:int, B:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union { A:int, C:int } } }
+
+# Reordering a <closed> (default) union's variants is not ok (the ordered definition is part of the published contract, like closed enums).
+assert_semantic_error(3648):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union { A:int, B:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union { B:int, A:int } } }
+
+# Changing a variant's payload type is not ok (payload types are invariant).
+assert_semantic_error(3645):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union { A:string } } }
+
+# Republishing a <closed> (default) union as <open> is not backward compatible.
+assert_semantic_error(3645):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union       { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int } } }
+
+assert_semantic_error(3645):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<closed> { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open>   { A:int } } }
+
+# Moving to <closed>, or staying at the same openness, is allowed.
+assert_valid:
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union         { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<closed> { A:int } } }
+
+assert_valid:
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int } } }
+
+assert_valid:
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<open>   { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<closed> { A:int } } }
+
+# Adding a variant to an <open> union is ok (open unions may grow).
+assert_valid:
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int, B:int } } }
+
+# Reordering an <open> union's variants is ok (only <closed> unions enforce ordering, like open enums).
+assert_valid:
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int, B:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open> { B:int, A:int } } }
+
+# Changing a variant's payload type on an <open> union is ok.
+assert_valid:
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:string } } }
+
+# Removing a variant is never ok, even for an <open> union (caught by the generic removed-definition check).
+assert_semantic_error(3643):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int, B:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int } } }
+
+# Renaming a variant on an <open> union removes the old (error) but adding the new is allowed, so only removal errors.
+assert_semantic_error(3643):
+    vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int, B:int } } }
+    vpackage(P1,/Verse.org/VerseTests/Module,?Role:=Source                 ,?Scope:=InternalUser) { snippet { u<public> := union<open> { A:int, C:int } } }
+
+}
+
 # Changing the kind of a definition is not ok.
 assert_semantic_error(3645):
     vpackage(P0,/Verse.org/VerseTests/Module,?Role:=GeneralCompatConstraint,?Scope:=InternalUser) { snippet { A<public> := class{} } }

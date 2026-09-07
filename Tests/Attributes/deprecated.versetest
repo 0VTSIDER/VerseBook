@@ -105,8 +105,7 @@ assert_semantic_error(3509):
     @deprecated{Message := 0}
     X:int = 1
 
-# Wrong field type (logic instead of string)
-assert_semantic_error(3509):
+assert_valid:
     @deprecated{Message := false}
     X:int = 1
 
@@ -568,6 +567,15 @@ assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDe
 # Below the cutoff the same definition is just deprecated
 assert_valid(?ExpectUseOfDeprecatedDefinition:=true, ?ExpectUseOfDiscontinuedDefinition:=false):
     vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
+        snippet:
+            @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
+            c := class<computes>{}
+            @deprecated{Message := "Use NewX instead.", DiscontinuedAtFNVersion := 2000}
+            X:?c=false
+
+# Exactly at the cutoff already counts as discontinued (the comparison is >=)
+assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2000):
         snippet:
             @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
             c := class<computes>{}

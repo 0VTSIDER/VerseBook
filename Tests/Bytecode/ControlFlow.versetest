@@ -1,0 +1,61 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Bytecode shape of control flow: `if` and `for`.
+# See Bytecode.versetest for an explanation of `assert_bytecode` and the `# CHECK:` directive syntax.
+#
+# These tests cover every emitted instruction in order *except* the `ResetNonTrailed()` register-lifetime
+# housekeeping ops, which are deliberately not checked. Registers and jump labels are tied together with
+# pattern variables so the failure-context / loop control flow is verified end to end.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# An `if` whose condition is a comparison lowers to a *FastFail variant of the comparison that opens a fast
+# failure context (here capturing the leniency register and the on-failure label), followed by the matching
+# EndFastFailureContext and the failure label itself.
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    # CHECK: r{{[0-9]+}} = [[LEN:r[0-9]+]] = GtFastFail(Lhs: [[X]], Rhs: c{{[0-9]+}}=0, OnFailure: [[LEND:L[0-9]+]])
+    # CHECK: EndFastFailureContext(LeniencyIndicator: [[LEN]], OnDone: [[LEND]])
+    # CHECK: [[LEND]]:
+    X := 5
+    if (X > 0):
+        true
+
+# A `for` collecting into an array:
+#   * allocates the result (NewMutableArray) and opens the loop-exit failure context,
+#   * initialises the iterator and loops at LTOP: test the range bound (Lte yielding the current I),
+#   * advances the iterator (Add) and jumps back to LTOP,
+#   * evaluates the body (Mul, for I*I) and appends it (ArrayAdd),
+#   * on exit (LEXIT:) freezes the result (InPlaceMakeImmutable) and trails it out (MoveTrailed),
+#   * then `Squares.Length > 0` reads the length and compares it.
+assert_bytecode:
+    # CHECK: [[RESULT:r[0-9]+]] = NewMutableArray(Values: ())
+    # CHECK: BeginFailureContext(OnFailure: [[LEXIT:L[0-9]+]])
+    # CHECK: [[ITER:r[0-9]+]] = Move(Source: c{{[0-9]+}}=0)
+    # CHECK: [[LTOP:L[0-9]+]]:
+    # CHECK: [[I:r[0-9]+]] = Lte(LeftSource: [[ITER]], RightSource: c{{[0-9]+}}=2)
+    # CHECK: BeginFailureContext(OnFailure: [[LADV:L[0-9]+]])
+    # CHECK: EndFailureContext(Done: [[LBODY:L[0-9]+]])
+    # CHECK: Jump(JumpOffset: [[LBODY]])
+    # CHECK: [[LADV]]:
+    # CHECK: BeginFailureContext(OnFailure: [[LBODY]])
+    # CHECK: [[ITER]] = Add(LeftSource: [[I]], RightSource: c{{[0-9]+}}=1)
+    # CHECK: EndFailureContext(Done: [[LBODY]])
+    # CHECK: Jump(JumpOffset: [[LTOP]])
+    # CHECK: [[LBODY]]:
+    # CHECK: EndFailureContext(Done: [[LDONE:L[0-9]+]])
+    # CHECK: [[BODY:r[0-9]+]] = Mul(LeftSource: [[I]], RightSource: [[I]])
+    # CHECK: r{{[0-9]+}} = Move(Source: [[RESULT]])
+    # CHECK: [[RESULT]] = ArrayAdd(Container: r{{[0-9]+}}, ValueToAdd: [[BODY]])
+    # CHECK: BeginFailureContext(OnFailure: [[LEXIT]])
+    # CHECK: Jump(JumpOffset: [[LADV]])
+    # CHECK: [[LEXIT]]:
+    # CHECK: [[FROZEN:r[0-9]+]] = InPlaceMakeImmutable(Container: [[RESULT]])
+    # CHECK: r{{[0-9]+}} = MoveTrailed(Source: [[FROZEN]])
+    # CHECK: [[LDONE]]:
+    # CHECK: [[SQUARES:r[0-9]+]] = Move(Source: r{{[0-9]+}})
+    # CHECK: [[LENGTH:r[0-9]+]] = Length(Container: [[SQUARES]])
+    # CHECK: Gt(LeftSource: [[LENGTH]], RightSource: c{{[0-9]+}}=0)
+    # CHECK: Return(Value: {{.*}})
+    Squares := for (I := 0..2) { I * I }
+    Squares.Length > 0

@@ -1,0 +1,100 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 10 - build statistics survive an incremental skip (SOL-9926).
+#
+# A build that compiles nothing runs no semantic analysis, so a skipped package's counts can only come
+# from its cache. PublicUser is required - the statistics count only user-authored public code, so
+# InternalUser packages would report zero and the fixture would pass without testing anything.
+
+incremental_compilation
+{
+    # Phase 1: cold build - P0 compiles and reports its counts
+    vpackage(P0, /A, ?Scope:=PublicUser):
+        snippet:
+            Widget<public> := class:
+                Value<public>:int = 1
+                Read<public>()<transacts>:int = Value
+            Make<public>()<transacts>:Widget = Widget{}
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+    expected_statistics := array{ "classes=1", "functions=2", "top_level_definitions=2" }
+
+    # Phase 2: no source change - P0 is skipped and its counts come from the cache. The regression: these were zero.
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_statistics := array{ "classes=1", "functions=2", "top_level_definitions=2" }
+
+    # Phase 3: a function is removed - the recompile replaces the cached counts rather than adding to them
+    vpackage(P0, /A, ?Scope:=PublicUser):
+        snippet:
+            Widget<public> := class:
+                Value<public>:int = 1
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+    expected_statistics := array{ "classes=1", "functions=0", "top_level_definitions=1" }
+
+    # Phase 4: skipping the edited package replays the new counts, not the old ones
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_statistics := array{ "classes=1", "functions=0", "top_level_definitions=1" }
+}
+
+# Two packages, so a skipped package's slice is attributed to it alone and the phase reports the sum.
+incremental_compilation
+{
+    vpackage(P0, /A, ?Scope:=PublicUser):
+        snippet:
+            Api<public> := module:
+                Alpha<public> := class:
+                    Get<public>()<transacts>:int = 1
+    vpackage(P1, /B, ?Dependencies:=("P0"), ?Scope:=PublicUser):
+        snippet:
+            using { /A }
+            Beta<public> := class:
+                Use<public>()<transacts>:int = Api.Alpha{}.Get()
+    build_packages{}
+    expected_rebuild_set := array{ "P0", "P1" }
+    expected_statistics := array{ "classes=2", "functions=2" }
+
+    # Neither package changed, so both are skipped and both slices are replayed
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_statistics := array{ "classes=2", "functions=2" }
+
+    # A cold process boot drops the registry, so everything compiles and counts afresh
+    build_packages{simulate_process_restart}
+    expected_rebuild_set := array{ "P0", "P1" }
+    expected_statistics := array{ "classes=2", "functions=2" }
+
+    # Only P1 changes, so P1 compiles and P0 is skipped. A build that compiles something analyses skipped
+    # packages from their digests, so replaying their cached slices on top would count them twice.
+    vpackage(P1, /B, ?Dependencies:=("P0"), ?Scope:=PublicUser):
+        snippet:
+            using { /A }
+            Beta<public> := class:
+                Use<public>()<transacts>:int = Api.Alpha{}.Get()
+                Twice<public>()<transacts>:int = Use() + Use()
+    build_packages{}
+    expected_rebuild_set := array{ "P1" }
+    expected_statistics := array{ "classes=2", "functions=3" }
+
+    # And the no-op build after it replays both slices, still totalling once
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_statistics := array{ "classes=2", "functions=3" }
+}
+
+# A project with nothing to count must not gain counts from being skipped.
+incremental_compilation
+{
+    vpackage(P0, /A, ?Scope:=PublicUser):
+        snippet:
+            Value<public>:int = 1
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+    expected_statistics := array{ "classes=0", "functions=0", "top_level_definitions=1" }
+
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_statistics := array{ "classes=0", "functions=0", "top_level_definitions=1" }
+}

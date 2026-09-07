@@ -1,0 +1,86 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 09 - diagnostics survive an incremental skip (SOL-9518).
+#
+# Warnings are produced by semantic analysis, which an incremental build skips for unchanged
+# packages. Each phase asserts the warnings a user would see, not just what was rebuilt - a package
+# reports the same diagnostics whether the phase recompiled it or served them from cache.
+
+# A package whose warning must be reported on every build, not only the one that compiled it.
+incremental_compilation
+{
+    # Phase 1: cold build - P0 compiles and warns about its use of a deprecated definition
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            @deprecated{Message := "Use NewX instead."}
+            X:int = 1
+            F():int = X
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+    expected_diagnostics := array{ "2009" }
+
+    # Phase 2: no source change - P0 is skipped, and its warning comes from the cache
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_diagnostics := array{ "2009" }
+
+    # Phase 3: the deprecated use is gone - the recompile replaces the cached warning with nothing
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            @deprecated{Message := "Use NewX instead."}
+            X:int = 1
+            F():int = 1
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+    expected_diagnostics := array{ }
+
+    # Phase 4: skipping the fixed package must not resurrect the warning
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_diagnostics := array{ }
+}
+
+# A warning raised in one package by a deprecation in another is cached against the package that
+# uses it, so it survives that package being skipped.
+incremental_compilation
+{
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Api<public> := module:
+                @deprecated{Message := "Use NewF instead."}
+                F<public>():int = 1
+    vpackage(P1, /B, ?Dependencies:=("P0"), ?Scope:=InternalUser):
+        snippet:
+            using { /A }
+            G<public>():int = Api.F()
+    build_packages{}
+    expected_rebuild_set := array{ "P0", "P1" }
+    expected_diagnostics := array{ "2009" }
+
+    # Neither package changed, so both are skipped and P1's warning comes from the cache
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_diagnostics := array{ "2009" }
+
+    # A cold process boot drops the registry, so everything compiles and warns afresh
+    build_packages{simulate_process_restart}
+    expected_rebuild_set := array{ "P0", "P1" }
+    expected_diagnostics := array{ "2009" }
+}
+
+# A project without diagnostics must not gain any from being skipped.
+incremental_compilation
+{
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Class<public> := class:
+                    FieldA<public>():void = {}
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+    expected_diagnostics := array{ }
+
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_diagnostics := array{ }
+}

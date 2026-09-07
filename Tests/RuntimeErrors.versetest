@@ -34,7 +34,7 @@ CauseRuntimeErrorAsync()<suspends> : int =
     R
 
 # verify that a runtime error in a function unwinds the execution stack
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     CoroUtils.ResetThenLogEvent("A")
     CoroUtils.SuppressNextReset()
     NestedCauseErr()
@@ -54,7 +54,7 @@ assert:
     # could have happened above.
 
 # verify that a runtime error propagates out of an async task
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     CoroUtils.ResetThenLogEvent("A")
     CoroUtils.SuppressNextReset()
     spawn { CauseRuntimeErrorAsync() }
@@ -81,22 +81,20 @@ assert:
 # Test an infinite loop called from a nested EnterVM's (and a VerseVM originating runtime error)
 NoopSuspend()<suspends>:void={}
 CausesInfiniteLoop()<suspends>:void={loop{NoopSuspend()}}
-ErrorFromVerseVM()<suspends>:int =
-    CoroUtils.WaitTicks(1)
-    CausesInfiniteLoop()
-    return 1
 Foo()<suspends>:void={CausesInfiniteLoop()}
 Bar()<suspends>:void={Foo()}
 
-assert_runtime_error("LoopIterationLimit", "HangTimeLimit"):
+# On BPVM, this infinite loop allocates a task per allocation, and exhausts our pool of UObjects.
+# VVM does not allocate a UObject per iteration, and only stops when the watchdog decides it has timed out.
+assert_runtime_error(bp_vm_only{"MemoryLimitExceeded", "UObjectLimit"}; verse_vm_only{"ComputationLimitExceeded", "LoopIterationLimit", "HangTimeLimit"}):
     spawn{Bar()}
     CoroUtils.Tick(1)
 
 CausesRuntimeError():void={Err()}
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     CausesRuntimeError()
 
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     if:
         Err("Testing rollback within a failure context for SOL-7560")
         true = true
@@ -109,7 +107,7 @@ d := class:
     block:
         set Y = c{ X := option{CauseErr()} }
 
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     CoroUtils.ResetThenLogEvent("A")
     CoroUtils.SuppressNextReset()
     D:d = d{}

@@ -50,12 +50,12 @@ assert { BitNot(BitOr(15, 9)) = BitAnd(BitNot(15), BitNot(9)) }
 
 # Out of range
 bp_vm_only{
-assert_runtime_error{BitAnd(9223372036854775807 + 1, 1)}
-assert_runtime_error{BitAnd(1, 9223372036854775807 + 1)}
-assert_runtime_error{BitOr(9223372036854775807 + 1, 0)}
-assert_runtime_error{BitXor(9223372036854775807 + 1, 0)}
-assert_runtime_error{BitNot(9223372036854775807 + 1)}
-assert_runtime_error{BitNot(-9223372036854775808 - 1)}
+assert_runtime_error("MathIntrinsicCallFailure"){BitAnd(9223372036854775807 + 1, 1)}
+assert_runtime_error("MathIntrinsicCallFailure"){BitAnd(1, 9223372036854775807 + 1)}
+assert_runtime_error("MathIntrinsicCallFailure"){BitOr(9223372036854775807 + 1, 0)}
+assert_runtime_error("MathIntrinsicCallFailure"){BitXor(9223372036854775807 + 1, 0)}
+assert_runtime_error("MathIntrinsicCallFailure"){BitNot(9223372036854775807 + 1)}
+assert_runtime_error("MathIntrinsicCallFailure"){BitNot(-9223372036854775808 - 1)}
 }
 
 verse_vm_only{

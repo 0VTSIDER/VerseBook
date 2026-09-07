@@ -1,0 +1,112 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Defer timing for leftover race arms (FORT-1126351).
+#
+# An arm that is already running when its `race` resolves (a "leftover" arm)
+# keeps running to its next suspension point, where the BPVM cancels it (see
+# `FCodeGenerator::EmitRace`). Cancellation runs the arm's `defer` blocks -
+# but only if the enclosing coroutine is still alive:
+#
+#  - Test 1 (live frame): the listener loops, so it is still alive when the
+#    leftover arm suspends. Its `defer` runs at cancellation on both VMs; the
+#    VMs differ only in the known race-completion ordering (BPVM runs the code
+#    after the `race` re-entrantly, before the leftover arm's cooperative
+#    code - see RaceCompletionTiming.versetest).
+#
+#  - Test 2 (dead frame): the listener's body ends right after the `race`, so
+#    the coroutine has completed by the time the leftover arm suspends. The
+#    BPVM's cancellation cannot run defer code on a completed frame
+#    (task::Update's liveness guard), so the `defer` is silently dropped.
+#    VVM cancels the arm before the coroutine completes and runs its `defer`.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+using { /Verse.org/Concurrency }
+
+Log(Msg:string): void              = CoroUtils.LogEvent(Msg)
+GetLogStr()<transacts>: string     = return CoroUtils.GetEventLogString()
+
+# Assert helper that prints actual vs expected on failure
+AssertLogStr(TestName:string, Expected:string, ?BPVMExpected:string = Expected)<transacts><decides>: void =
+    Actual := GetLogStr()
+    verse_vm_only:
+        if (Actual <> Expected):
+            DebugPrint("{TestName} FAIL (VVM): Expected '{Expected}' but got '{Actual}'")
+            false?
+    bp_vm_only:
+        if (Actual <> BPVMExpected):
+            DebugPrint("{TestName} FAIL (BPVM): Expected '{BPVMExpected}' but got '{Actual}'")
+            false?
+
+
+############################################
+# Test 1: Leftover arm's defer with the coroutine still alive
+#
+# Arm 2 is resumed by ER, resolves the race (arm 1 wins), runs its cooperative
+# code (e), then suspends and is cancelled - its defer (d) must run.
+#
+c1 := class:
+    E0 : event() = event(){}
+    EW : event() = event(){}
+    ER : event() = event(){}
+    var FirstIter : logic = true
+
+    Listener()<suspends>:void =
+        loop:
+            E0.Await()
+            Log("R")
+            race:
+                block:
+                    EW.Await()
+                    Log("W")
+                block:
+                    defer:
+                        Log("d")
+                    if (FirstIter?):
+                        set FirstIter = false
+                        ER.Await()
+                        Log("s")
+                        EW.Signal()
+                        Log("e")
+                    ER.Await()
+            Log("Z")
+
+assert:
+    C := c1{}
+    spawn { C.Listener() }
+    C.E0.Signal()
+    C.ER.Signal()
+    AssertLogStr["DeferInLiveFrame", "RsWedZ", ?BPVMExpected:="RsWZed"]
+
+
+############################################
+# Test 2: Leftover arm's defer after the coroutine completed
+#
+# Same shape, but the listener's body ends after the race. On BPVM the
+# leftover arm suspends after the coroutine has completed, so its defer (d)
+# is dropped by the liveness guard.
+#
+c2 := class:
+    EW : event() = event(){}
+    ER : event() = event(){}
+
+    Listener()<suspends>:void =
+        Log("R")
+        race:
+            block:
+                EW.Await()
+                Log("W")
+            block:
+                defer:
+                    Log("d")
+                ER.Await()
+                Log("s")
+                EW.Signal()
+                Log("e")
+                ER.Await()
+        Log("Z")
+
+assert:
+    C := c2{}
+    spawn { C.Listener() }
+    C.ER.Signal()
+    AssertLogStr["DeferInDeadFrame", "RsWedZ", ?BPVMExpected:="RsWZe"]

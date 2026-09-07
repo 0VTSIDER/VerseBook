@@ -3,4 +3,4 @@
 F(Array : []t, Index : int where t : type):t =
     Array[Index] or Err()
 
-assert_runtime_error{F(array{}, 0)}
+assert_runtime_error("ErrorRequested"){F(array{}, 0)}

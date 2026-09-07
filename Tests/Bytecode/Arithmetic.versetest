@@ -1,0 +1,127 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Bytecode shape of arithmetic, comparison and logic operators - one operator per assert_bytecode block.
+# See Bytecode.versetest for an explanation of `assert_bytecode` and the `# CHECK:` directive syntax.
+# Throughout, the result register written on the LHS of each instruction is captured and matched against
+# the operand register that consumes it, so the dataflow is verified rather than just the opcodes.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# X + Y -> Add
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[Y:r[0-9]+]] = Move(Source: c{{[0-9]+}}=3)
+    Y := 3
+    # CHECK: [[R:r[0-9]+]] = Add(LeftSource: [[X]], RightSource: [[Y]])
+    X + Y
+
+# X - Y -> Sub
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[Y:r[0-9]+]] = Move(Source: c{{[0-9]+}}=3)
+    Y := 3
+    # CHECK: [[R:r[0-9]+]] = Sub(LeftSource: [[X]], RightSource: [[Y]])
+    X - Y
+
+# X * Y -> Mul
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[Y:r[0-9]+]] = Move(Source: c{{[0-9]+}}=3)
+    Y := 3
+    # CHECK: [[R:r[0-9]+]] = Mul(LeftSource: [[X]], RightSource: [[Y]])
+    X * Y
+
+# X / Y -> Div
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[Y:r[0-9]+]] = Move(Source: c{{[0-9]+}}=3)
+    Y := 3
+    # CHECK: [[R:r[0-9]+]] = Div(LeftSource: [[X]], RightSource: [[Y]])
+    X / Y
+
+# -X -> Neg
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[R:r[0-9]+]] = Neg(Source: [[X]])
+    -X
+
+# Float + uses the same Add opcode, just with float constants.
+assert_bytecode:
+    # CHECK: [[ADD:r[0-9]+]] = Add(LeftSource: c{{[0-9]+}}=1.5, RightSource: c{{[0-9]+}}=2.5)
+    # CHECK: [[F:r[0-9]+]] = Move(Source: [[ADD]])
+    F := 1.5 + 2.5
+    # CHECK: [[CMP:r[0-9]+]] = Gt(LeftSource: [[F]], RightSource: c{{[0-9]+}}=0.0)
+    F > 0.0
+
+# X > 3 -> Gt
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[R:r[0-9]+]] = Gt(LeftSource: [[X]], RightSource: c{{[0-9]+}}=3)
+    X > 3
+
+# X < 10 -> Lt  (chosen true so the block also passes when executed)
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[R:r[0-9]+]] = Lt(LeftSource: [[X]], RightSource: c{{[0-9]+}}=10)
+    X < 10
+
+# X >= 3 -> Gte
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[R:r[0-9]+]] = Gte(LeftSource: [[X]], RightSource: c{{[0-9]+}}=3)
+    X >= 3
+
+# X <= 10 -> Lte  (chosen true so the block also passes when executed)
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[R:r[0-9]+]] = Lte(LeftSource: [[X]], RightSource: c{{[0-9]+}}=10)
+    X <= 10
+
+# X = 5 -> equality is unification: the comparison register takes X, then the literal (chosen equal to X
+# so the block also passes when executed).
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    # CHECK: [[EQ:r[0-9]+]] = Move(Source: [[X]])
+    X := 5
+    # CHECK: [[EQ]] = Move(Source: c{{[0-9]+}}=5)
+    X = 5
+
+# X <> 3 -> Neq
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[R:r[0-9]+]] = Neq(LeftSource: [[X]], RightSource: c{{[0-9]+}}=3)
+    X <> 3
+
+# `and`
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+    # CHECK: [[L:r[0-9]+]] = Gt(LeftSource: [[X]], RightSource: c{{[0-9]+}}=0)
+    # CHECK: [[R:r[0-9]+]] = Lt(LeftSource: [[X]], RightSource: c{{[0-9]+}}=10)
+    (X > 0) and (X < 10)
+
+# `or`
+assert_bytecode:
+    # CHECK: [[X:r[0-9]+]] = Move(Source: c{{[0-9]+}}=5)
+    X := 5
+
+    # CHECK: [[FF:r[0-9]+]] = [[LEN:r[0-9]+]] = GtFastFail(Lhs: [[X]], Rhs: c{{[0-9]+}}=100, OnFailure: [[LALT:L[0-9]+]])
+    # CHECK: EndFastFailureContext(LeniencyIndicator: [[LEN]], OnDone: [[LEND:L[0-9]+]])
+    # CHECK: [[RES:r[0-9]+]] = Move(Source: [[FF]])
+    # CHECK: Jump(JumpOffset: [[LEND]])
+    # CHECK: [[LALT]]:
+    # CHECK: [[ALT:r[0-9]+]] = Lt(LeftSource: [[X]], RightSource: c{{[0-9]+}}=10)
+    # CHECK: [[RES]] = MoveTrailed(Source: [[ALT]])
+    (X > 100) or (X < 10)
+
+    # CHECK: [[LEND]]:

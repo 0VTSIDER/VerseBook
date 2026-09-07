@@ -372,11 +372,11 @@ assert:
 #>
 
 #definition site is scoped to the reference site  
-assert_valid:
+assert_semantic_error(3593):
     defsite<scoped{refsite}> := module:
         value:int := 42
     refsite := module:
-        value:int := defsite.value
+        value:int := defsite.value  # 3593 - value is internal to defsite; scoped grant doesn't widen it
 
 assert_valid:
     defsite<public> := module:
@@ -425,14 +425,14 @@ assert_valid:
         BC := class:
             BF():int = { a := A.AC{}; a.ACV}  # VALID - public all the way to AC which is scoped to here
             
-assert_valid:
+assert_semantic_error(3593, 3593):
     A<scoped{B}> := module:
         AC := class:
             ACV:int := 42
 
     B := module:
         BC := class:
-            BF():int = { a := A.AC{}; a.ACV}  # VALID - A is scoped to here
+            BF():int = { a := A.AC{}; a.ACV}  # 3593, 3593 - AC and ACV are internal to A; A being scoped to B doesn't grant them
 
 assert_semantic_error(3593,3593,3593,3593):
     AA := module:                   # public
@@ -454,31 +454,31 @@ assert_semantic_error(3593,3593):
         BC := class:
             BF():int = { a := A.AC{}; a.ACV}  # 3593 - ACV is scoped to B, but we can't see through AC to get there
 
-assert_semantic_error(3593):
+assert_semantic_error(3593, 3593, 3593, 3593, 3593, 3593, 3593):
     A<scoped{B}> := module:
         AC := class:
             ACV:int := 42
 
     B<scoped{C}> := module:
         BC := class:
-            BCV:A.AC = A.AC{}
-            BF():A.AC = { BCV }  # VALID - A is scoped to here
- 
+            BCV:A.AC = A.AC{}    # 3593, 3593 - AC is internal to A (A scoped to B is not enough)
+            BF():A.AC = { BCV }  # 3593 - AC is internal to A
+
     C := module:
         CC := class:
-            CCV:B.BC = B.BC{}
-            CF():int = { CCV.BCV.ACV } # 3593 - B is scoped to here, so BCV is available, but C isn't allowed to look into A.AC to get ACV
+            CCV:B.BC = B.BC{}    # 3593, 3593 - BC is internal to B (B scoped to C is not enough)
+            CF():int = { CCV.BCV.ACV } # 3593, 3593 - BCV and ACV are internal
 
-assert_semantic_error(3593, 3593, 3593):
+assert_semantic_error(3593, 3593, 3593, 3593, 3593, 3593):
     A<scoped{B}> := module:
         AC := class:
             ACV:int := 42
 
     B<scoped{C}> := module:
         BC := class:
-            BCV:A.AC = A.AC{}
-            BF():A.AC = { BCV }  # VALID - A is scoped to here
- 
+            BCV:A.AC = A.AC{}    # 3593, 3593 - AC is internal to A (A scoped to B is not enough)
+            BF():A.AC = { BCV }  # 3593 - AC is internal to A
+
     C := module:
         CC := class:
             CCV:A.AC = A.AC{}       # 3593, 3593 C cannot see A.AC through B even though it's scoped to B

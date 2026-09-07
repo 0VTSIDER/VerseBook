@@ -169,7 +169,23 @@ assert_used_assets<depends_on_library>:
             using { /Verse.org/VerseTests/AssetUsage }
     expected_used_assets:= array{} # confirm that if we remove all asset usage that we don't use stale results from the compiled package registry
 
-    # Loose function are not followed deeply during asset export creation currently. Is this something we want? 
+
+    # Constructing a reflected component class from content code *uses* it, so its defined member assets
+    # are legitimately pulled into the used-asset list. This pins the used-asset list (which drives how many assets
+    # are uploaded to the content worker).
+    vpackage(UserCode, /Verse.org/VerseTests/AssetUsage, ?Scope:=InternalUser, ?Dependencies:=("UserCode/Assets", "Engine/VerseTestScriptCmd")):
+        snippet:
+            using { /Verse.org/Tests/VerseTestScriptCmd }
+            using { /Verse.org/VerseTests/AssetUsage }
+            ReferencesComponentClass := class:
+                UseComponent():void =
+                    Comp := SM_Remesh_Bunny{}
+    expected_used_assets:= array:
+        "/TestAssetPath/Mesh/SM_Remesh_Bunny",
+        "/TestAssetPath/SM_Remesh_Bunny/WorldMaterialGrid"
+
+
+    # Loose function are not followed deeply during asset export creation currently. Is this something we want?
     # vpackage(UserCode, /Verse.org/VerseTests/AssetUsage, ?Scope:=InternalUser, ?Dependencies:=("UserCode/Assets", "Engine/VerseTestScriptCmd")):
     #     snippet:
     #         using { /Verse.org/Tests/VerseTestScriptCmd }

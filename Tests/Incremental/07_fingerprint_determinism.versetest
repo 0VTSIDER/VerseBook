@@ -1,0 +1,52 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 07 - public-interface fingerprint determinism
+#
+# Compiles the same input multiple times and asserts the PublicDigest text is
+# byte-identical across runs. Fingerprints (package and digest) must be stable 
+# for incremental compilation to work.
+
+assert_fingerprint_determinism
+{
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Greet<public>():void = {}
+
+    iterations := 3
+}
+
+assert_fingerprint_determinism
+{
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Greet<public>():void = {}
+                NewMethod<public>():void = {}
+
+    iterations := 3
+}
+
+assert_fingerprint_determinism
+{
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Class<public> := class:
+                    FieldA<public>():void = {}
+                    FieldB<public>():void = {}
+                    FieldC<public>:int = 42
+
+    iterations := 3
+}
+
+assert_fingerprint_determinism
+{
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Class<public> := class:
+                    FieldA<public>():void = {}
+
+    iterations := 3
+}

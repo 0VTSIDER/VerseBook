@@ -57,3 +57,45 @@ assert_persistence_snapshot
     deserialized(UploadedAtFNVersion := 4200):
         "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"multi_snapshot_test_object\",\"x_Flag\":false,\"x_Count\":42,\"x_Label\":\"multi\"\}"
 }
+
+assert_persistence_snapshot
+{
+    vpackage(P0, /A):
+        snippet:
+            union_snapshot_choice := union<persistable>:
+                Ketchup : int
+                Toppings : void
+            union_snapshot_test_object := class<persistable><final><computes>:
+                Topping:union_snapshot_choice
+        snippet:
+            Equal(Left:union_snapshot_test_object, Right:union_snapshot_test_object)<decides>:void =
+                Left.Topping = Right.Topping
+
+    serialized:
+        expected := union_snapshot_test_object:
+            Topping := union_snapshot_choice.Ketchup(5)
+
+    deserialized(UploadedAtFNVersion := 4200):
+        "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"union_snapshot_test_object\",\"x_Topping\":\{\"Ketchup\":5\}\}"
+}
+
+assert_persistence_snapshot
+{
+    vpackage(P0, /A):
+        snippet:
+            open_union_choice := union<open><persistable>:
+                Ketchup : int
+                Toppings : void
+            open_union_test_object := class<persistable><final><computes>:
+                Topping:open_union_choice
+        snippet:
+            Equal(Left:open_union_test_object, Right:open_union_test_object)<decides>:void =
+                Left.Topping = Right.Topping
+
+    serialized:
+        expected := open_union_test_object:
+            Topping := open_union_choice.Ketchup(5)
+
+    deserialized(UploadedAtFNVersion := 4200):
+        "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"open_union_test_object\",\"x_Topping\":\{\"Ketchup\":5\}\}"
+}

@@ -1,0 +1,23 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 01 - null compile.
+#
+# Two phases over a single package with no source change
+# Phase 1 = cold build - no prior fingerprint, so P0 is Compiled.
+# Phase 2 = same source - fingerprint matches, so P0 is SkippedExternal.
+
+incremental_compilation
+{
+    # Phase 1: cold build of P0
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Class<public> := class:
+                    FieldA<public>():void = {}
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+
+    # Phase 2: no source changed; second build expected to be skipped
+    build_packages{}
+    expected_rebuild_set := array{ }
+}

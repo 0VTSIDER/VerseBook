@@ -5,5 +5,5 @@
 TestCrash():void=
     Err("This is a crash test")
 
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     TestCrash()

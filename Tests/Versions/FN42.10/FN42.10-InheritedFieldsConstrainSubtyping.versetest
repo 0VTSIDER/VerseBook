@@ -1,0 +1,251 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+using {/Verse.org/Tests/VerseTestScriptCmd}
+
+# Incorrectly treats i1 as bivariant instead of covariant pre-42.10
+assert_valid:
+    vpackage(P0, /Verse.org/Verse, ?Scope:=PublicAPI):
+        snippet:
+            covariant_interface(t:type) := interface{Field:t}
+            interface_inheriting_covariant_interface(t:type) := interface(covariant_interface(t)) {}
+    vpackage(P1, /Verse.org/Verse, ?Dependencies:=(P0), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4209):
+        snippet:
+            F(X:interface_inheriting_covariant_interface(int)) : interface_inheriting_covariant_interface(float) = X
+
+assert_semantic_error(3510):
+    vpackage(P0, /Verse.org/Verse, ?Scope:=PublicAPI):
+        snippet:
+            covariant_interface(t:type) := interface{Field:t}
+            interface_inheriting_covariant_interface(t:type) := interface(covariant_interface(t)) {}
+    vpackage(P1, /Verse.org/Verse, ?Dependencies:=(P0), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        snippet:
+            F(X:interface_inheriting_covariant_interface(int)) : interface_inheriting_covariant_interface(float) = X
+
+# Incorrectly treats c1 as bivariant instead of covariant pre-42.10
+assert_valid:
+    vpackage(P0, /Verse.org/Verse, ?Scope:=PublicAPI):
+        snippet:
+            covariant_interface(t:type) := interface{Field:t}
+            class_inheriting_covariant_interface(t:type) := class(covariant_interface(t)) {}
+    vpackage(P1, /Verse.org/Verse, ?Dependencies:=(P0), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4209):
+        snippet:
+            F(X:class_inheriting_covariant_interface(int)) : class_inheriting_covariant_interface(float) = X
+
+assert_semantic_error(3510):
+    vpackage(P0, /Verse.org/Verse, ?Scope:=PublicAPI):
+        snippet:
+            covariant_interface(t:type) := interface{Field:t}
+            class_inheriting_covariant_interface(t:type) := class(covariant_interface(t)) {}
+    vpackage(P1, /Verse.org/Verse, ?Dependencies:=(P0), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        snippet:
+            F(X:class_inheriting_covariant_interface(int)) : class_inheriting_covariant_interface(float) = X
+            
+# Incorrectly treats c1 as bivariant instead of covariant pre-42.10
+assert_valid:
+    vpackage(P0, /Verse.org/Verse, ?Scope:=PublicAPI):
+        snippet:
+            covariant_class(t:type) := class{Field:t}
+            class_inheriting_covariant_class(t:type) := class(covariant_class(t)) {}
+    vpackage(P1, /Verse.org/Verse, ?Dependencies:=(P0), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4209):
+        snippet:
+            F(X:class_inheriting_covariant_class(int)) : class_inheriting_covariant_class(float) = X
+
+assert_semantic_error(3510):
+    vpackage(P0, /Verse.org/Verse, ?Scope:=PublicAPI):
+        snippet:
+            covariant_class(t:type) := class{Field:t}
+            class_inheriting_covariant_class(t:type) := class(covariant_class(t)) {}
+    vpackage(P1, /Verse.org/Verse, ?Dependencies:=(P0), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        snippet:
+            F(X:class_inheriting_covariant_class(int)) : class_inheriting_covariant_class(float) = X
+
+# Check that backwards compatibility subtyping constraints that span the UploadedAtFNVersion threshold
+# use the "new" definition's UploadedAtFNVersion to check the subtyping.
+
+<# Temporarily disabled: compat constraint types that mention parametric class instantiations doesn't work for unrelated reasons.
+
+# Compatible because new Data is a subtype of old Data.
+assert_valid:
+    vpackage(P0, /Common):
+        snippet:
+            super_class<public> := class{}
+            sub_class<public> := class(super_class){}
+            covariant_class<public>(t:type) := class{X<public>:t}
+            class_inheriting_covariant_class<public>(t:type) := class(covariant_class(t)) {}
+    vpackage(P0, /A, ?Dependencies:=(P0), ?Scope:=PublicUser, ?Role:=GeneralCompatConstraint, ?UploadedAtFNVersion:=4209):
+        snippet:
+            using{/Common}
+            Data<public>:?class_inheriting_covariant_class(super_class) = false
+    vpackage(P1, /A, ?Dependencies:=(P0), ?Scope:=PublicUser, ?Role:=Source, ?UploadedAtFNVersion:=4210):
+        snippet:
+            using{/Common}
+            Data<public>:?class_inheriting_covariant_class(sub_class) = false
+
+# Not compatible because new Data is not a subtype of old Data.
+assert_semantic_error(3645):
+    vpackage(P0, /Common):
+        snippet:
+            super_class<public> := class{}
+            sub_class<public> := class(super_class){}
+            covariant_class<public>(t:type) := class{X<public>:t}
+            class_inheriting_covariant_class<public>(t:type) := class(covariant_class(t)) {}
+    vpackage(P0, /A, ?Dependencies:=(P0), ?Scope:=PublicUser, ?Role:=GeneralCompatConstraint, ?UploadedAtFNVersion:=4209):
+        snippet:
+            using{/Common}
+            Data<public>:?class_inheriting_covariant_class(sub_class) = false
+    vpackage(P1, /A, ?Dependencies:=(P0), ?Scope:=PublicUser, ?Role:=Source, ?UploadedAtFNVersion:=4210):
+        snippet:
+            using{/Common}
+            Data<public>:?class_inheriting_covariant_class(super_class) = false
+#>
+
+# Compatible because new Data is a subtype of old Data according to new Data's old UploadedAtFNVersion.
+assert_valid:
+    vpackage(P0, /Common):
+        snippet:
+            super_class<public> := class{}
+            sub_class<public> := class(super_class){}
+            covariant_class<public>(t:type) := class{X<public>:t}
+            class_inheriting_covariant_class<public>(t:type) := class(covariant_class(t)) {}
+    vpackage(P0, /A, ?Dependencies:=(P0), ?Scope:=PublicUser, ?Role:=GeneralCompatConstraint, ?UploadedAtFNVersion:=4209):
+        snippet:
+            using{/Common}
+            Data<public>:?class_inheriting_covariant_class(sub_class) = false
+    vpackage(P1, /A, ?Dependencies:=(P0), ?Scope:=PublicUser, ?Role:=Source, ?UploadedAtFNVersion:=4209):
+        snippet:
+            using{/Common}
+            Data<public>:?class_inheriting_covariant_class(super_class) = false
+
+# The variance constraints created by the digest generator for inherited definitions should include
+# an @available constraint to ensure they doesn't constrain pre-42.10 uploads that use the digest.
+assert_digest_generated
+{
+    vpackage(P0, /A):
+        snippet:
+            internal_interface(t:type) := interface:
+                Data<private>:?t = false
+            public_interface<public>(t:type) := interface(internal_interface(t)):
+                Data2<private>:?(t->void)=false
+
+    expected_digest(Package := P0, ?Variant := PublicOnly):
+        # Verse path: /A
+        using {/Verse.org/Native}
+        public_interface<public>(t:type) := interface:
+            @available {MinUploadedAtFNVersion := 4210}
+            (/A/public_interface:)public_interface_Variance_Inherited<private>():tuple(t) = external {}
+
+            (/A/public_interface:)public_interface_Variance<private>(:t):tuple() = external {}
+}
+
+# Test that @available fields only constrain variance for subtyping checks from packages that meet the @available criteria.
+assert_valid:
+    vpackage(P0, /Verse.org/Verse, ?Scope:=InternalAPI):
+        snippet:
+            using{/Verse.org/Native}
+            covariant_class<public>(t:type) := class:
+                @available{MinUploadedAtFNVersion:=4210}
+                Variance<public>:?t = false
+
+    vpackage(P1, /B, ?Dependencies:=(P0), ?UploadedAtFNVersion:=4209):
+        snippet:
+            F(X:covariant_class(int)):covariant_class(float)=X
+
+assert_semantic_error(3510):
+    vpackage(P0, /Verse.org/Verse, ?Scope:=InternalAPI):
+        snippet:
+            using{/Verse.org/Native}
+            covariant_class<public>(t:type) := class:
+                @available{MinUploadedAtFNVersion:=4210}
+                Variance<public>:?t = false
+
+    vpackage(P1, /B, ?Dependencies:=(P0), ?UploadedAtFNVersion:=4210):
+        snippet:
+            F(X:covariant_class(int)):covariant_class(float)=X
+
+# Some shipped first-party Fortnite device event fields rely on subtyping ignoring inherited
+# fields, and the compiler exempts them from the fix: their initializers are checked as if their
+# package was uploaded just before the fix. The valid case uses representative exempt fields at
+# their real paths, in the form the editor's incremental compiles see them: the interfaces come
+# from a digest written by a fix-active compiler, so they carry the inherited-fields variance
+# proxies gated @available at the fix version. The exemption must ignore both the source-form
+# inherited members and their digest-form proxies. The control cases prove the exemption is
+# limited to exactly the exempt paths and names.
+assert_valid:
+    vpackage(Fortnite, /Fortnite.com, ?Role:=External, ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        vmodule(Devices):
+            snippet:
+                using {/Verse.org/Native}
+                inherited_member_interface<public>(t:type) := interface:
+                    Member<public>():t = external {}
+                no_member_interface<public>(t:type) := interface(inherited_member_interface(t)):
+                    @available {MinUploadedAtFNVersion := 4210}
+                    no_member_interface_Variance_Inherited<private>():tuple(t) = external {}
+                int_event<public> := class(no_member_interface(int)):
+                    Member<override>():int = external {}
+                    int_event_Variance<private>():tuple() = external {}
+                    @available {MinUploadedAtFNVersion := 4210}
+                    int_event_Variance_Inherited<private>():tuple(int) = external {}
+    vpackage(CRD_PhoneBooth, /Fortnite.com/Devices, ?Dependencies:=(Fortnite), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        snippet:
+            changing_booth_device := class:
+                PlayerEnterEvent:no_member_interface(float) = int_event{}
+                PlayerExitEvent:no_member_interface(float) = int_event{}
+    vpackage(CRD_FabricNoteTrigger, /Fortnite.com/Devices/Patchwork, ?Dependencies:=(Fortnite), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        snippet:
+            note_trigger_device := class:
+                NoteOnReceivedEvent:no_member_interface(float) = int_event{}
+                NoteOffReceivedEvent:no_member_interface(float) = int_event{}
+
+# Control: a non-exempt member name in an exempt class still fails.
+assert_semantic_error(3509):
+    vpackage(P0, /Fortnite.com/Devices, ?Scope:=PublicAPI):
+        snippet:
+            inherited_member_interface(t:type) := interface:
+                Member():t
+            no_member_interface(t:type) := interface(inherited_member_interface(t)) {}
+            int_event := class(no_member_interface(int)):
+                Member<override>():int = 0
+            disguise_device := class:
+                ApplyDisguiseEventControl:no_member_interface(float) = int_event{}
+
+# Control: an exempt member name in a non-exempt class still fails.
+assert_semantic_error(3509):
+    vpackage(P0, /Fortnite.com/Devices, ?Scope:=PublicAPI):
+        snippet:
+            inherited_member_interface(t:type) := interface:
+                Member():t
+            no_member_interface(t:type) := interface(inherited_member_interface(t)) {}
+            int_event := class(no_member_interface(int)):
+                Member<override>():int = 0
+            disguise_device_control := class:
+                ApplyDisguiseEvent:no_member_interface(float) = int_event{}
+
+# Control: an exempt member and class name in a non-exempt module path still fails.
+assert_semantic_error(3509):
+    vpackage(P0, /Fortnite.com/DevicesControl, ?Scope:=PublicAPI):
+        snippet:
+            inherited_member_interface(t:type) := interface:
+                Member():t
+            no_member_interface(t:type) := interface(inherited_member_interface(t)) {}
+            int_event := class(no_member_interface(int)):
+                Member<override>():int = 0
+            disguise_device := class:
+                ApplyDisguiseEvent:no_member_interface(float) = int_event{}
+
+# Control: the same digest-gated variance proxies still constrain non-exempt member initializers.
+assert_semantic_error(3509):
+    vpackage(Fortnite, /Fortnite.com, ?Role:=External, ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        vmodule(Devices):
+            snippet:
+                using {/Verse.org/Native}
+                inherited_member_interface<public>(t:type) := interface:
+                    Member<public>():t = external {}
+                no_member_interface<public>(t:type) := interface(inherited_member_interface(t)):
+                    @available {MinUploadedAtFNVersion := 4210}
+                    no_member_interface_Variance_Inherited<private>():tuple(t) = external {}
+                int_event<public> := class(no_member_interface(int)):
+                    Member<override>():int = external {}
+    vpackage(CRD_PhoneBooth, /Fortnite.com/Devices, ?Dependencies:=(Fortnite), ?Scope:=PublicAPI, ?UploadedAtFNVersion:=4210):
+        snippet:
+            changing_booth_device := class:
+                PlayerEnterEventControl:no_member_interface(float) = int_event{}

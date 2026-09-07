@@ -64,7 +64,7 @@ assert:
     X.Contents = Y.Contents
 
 # Ensure new VM errors if BigInts are serialized
-assert_runtime_error:
+assert_runtime_error(bp_vm_only{"MathIntrinsicCallFailure"}; verse_vm_only{"IntegerBoundsExceeded"}):
     var X:int = 1
     for (I := 1..63):
         set X *= 2
@@ -667,3 +667,77 @@ MyFn():int=
 assert:
     X := class9{ Func:= MyFn }
     not Persistence.ToJson[X]
+
+# Union
+verse_vm_only {
+union1 := union<persistable>:
+    Number : int
+    Nothing : void
+    Text : string
+    Pair : tuple(int, float)
+    Inner : A.struct1
+
+union_ref := class<persistable><final>:
+    Contents:union1
+
+assert:
+    X := union_ref{Contents := union1.Number(7)}
+    Y := Persistence.FromJson[Persistence.ToJson[X], union_ref]
+    Y.Contents = X.Contents
+
+assert:
+    X := union_ref{Contents := union1.Nothing()}
+    Y := Persistence.FromJson[Persistence.ToJson[X], union_ref]
+    Y.Contents = X.Contents
+
+assert:
+    X := union_ref{Contents := union1.Text("hello")}
+    Y := Persistence.FromJson[Persistence.ToJson[X], union_ref]
+    Y.Contents = X.Contents
+
+assert:
+    X := union_ref{Contents := union1.Pair((3, 4.5))}
+    Y := Persistence.FromJson[Persistence.ToJson[X], union_ref]
+    Y.Contents = X.Contents
+
+assert:
+    X := union_ref{Contents := union1.Inner(A.struct1{Data1 := 8})}
+    Y := Persistence.FromJson[Persistence.ToJson[X], union_ref]
+    Y.Contents = X.Contents
+
+# A union inside a container round-trips through the same path.
+union_array_ref := class<persistable><final>:
+    Contents:[]union1
+
+assert:
+    X := union_array_ref{Contents := array{union1.Number(1), union1.Nothing(), union1.Number(2)}}
+    Y := Persistence.FromJson[Persistence.ToJson[X], union_array_ref]
+    Y.Contents = X.Contents
+
+# The wire format: the tag qualified by its union, and the payload as its own declared type.
+assert:
+    Expected := "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"union_ref\",\"x_Contents\":\{\"tag\":\"union1::Number\",\"payload\":7\}\}"
+    X := Persistence.FromJson[Expected, union_ref]
+    Expected = Persistence.ToJson[X]
+
+assert:
+    Expected := "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"union_ref\",\"x_Contents\":\{\"tag\":\"union1::Nothing\",\"payload\":[]\}\}"
+    X := Persistence.FromJson[Expected, union_ref]
+    Expected = Persistence.ToJson[X]
+
+# An unknown variant does not decode.
+assert:
+    not Persistence.FromJson["\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"union_ref\",\"x_Contents\":\{\"tag\":\"union1::Missing\",\"payload\":7\}\}", union_ref]
+
+# A union payload that is itself a union decodes against the inner union's own variant table.
+union2 := union<persistable>:
+    Wrapped : union1
+
+union_nested_ref := class<persistable><final>:
+    Contents:union2
+
+assert:
+    X := union_nested_ref{Contents := union2.Wrapped(union1.Number(9))}
+    Y := Persistence.FromJson[Persistence.ToJson[X], union_nested_ref]
+    Y.Contents = X.Contents
+}

@@ -82,7 +82,6 @@ assert_semantic_error(3509){super_class:=class{}; sub_class:=class(super_class){
 assert_semantic_error(3509){super_class:=class{}; sub_class:=class(super_class){}; invariant_class    (t:type):=class<abstract>{Field:t->t   }; F(C:invariant_class    (super_class)):void={}; G(C:invariant_class    (sub_class  )):void=F(C)}
 
 # Test the implicit variance of parametric classes that inherit function fields.
-<# Disabled pending fix for FORT-1017607
 assert_valid               {super_class:=class{}; sub_class:=class(super_class){}; bivariant_class    (t:type):=class<abstract>{Method(   ):void}; bivariant_sub_class(t:type)     := class<abstract>(bivariant_class(t)){};     F(C:bivariant_sub_class    (super_class)):void={}; G(C:bivariant_sub_class    (sub_class  )):void=F(C)}
 assert_valid               {super_class:=class{}; sub_class:=class(super_class){}; bivariant_class    (t:type):=class<abstract>{Method(   ):void}; bivariant_sub_class(t:type)     := class<abstract>(bivariant_class(t)){};     F(C:bivariant_sub_class    (sub_class  )):void={}; G(C:bivariant_sub_class    (super_class)):void=F(C)}
 
@@ -107,7 +106,6 @@ assert_semantic_error(3509){super_class:=class{}; sub_class:=class(super_class){
 
 assert_semantic_error(3509){super_class:=class{}; sub_class:=class(super_class){}; invariant_class    (t:type):=class<abstract>{Field:t->t   }; invariant_sub_class(t:type)     := class<abstract>(invariant_class(t)){};     F(C:invariant_sub_class    (sub_class  )):void={}; G(C:invariant_sub_class    (super_class)):void=F(C)}
 assert_semantic_error(3509){super_class:=class{}; sub_class:=class(super_class){}; invariant_class    (t:type):=class<abstract>{Field:t->t   }; invariant_sub_class(t:type)     := class<abstract>(invariant_class(t)){};     F(C:invariant_sub_class    (super_class)):void={}; G(C:invariant_sub_class    (sub_class  )):void=F(C)}
-#>
 
 # Test the implicit variance of parametric interfaces with function fields.
 assert_valid               {super_interface:=interface{}; sub_interface:=interface(super_interface){}; bivariant_interface    (t:type):=interface{Method(   ):void}; F(C:bivariant_interface    (super_interface)):void={}; G(C:bivariant_interface    (sub_interface  )):void=F(C)}
@@ -136,7 +134,6 @@ assert_semantic_error(3509){super_interface:=interface{}; sub_interface:=interfa
 assert_semantic_error(3509){super_interface:=interface{}; sub_interface:=interface(super_interface){}; invariant_interface    (t:type):=interface{Field:t->t   }; F(C:invariant_interface    (super_interface)):void={}; G(C:invariant_interface    (sub_interface  )):void=F(C)}
 
 # Test the implicit variance of parametric interfaces that inherit function fields.
-<# Disabled pending fix for FORT-1017607
 assert_valid               {super_interface:=interface{}; sub_interface:=interface(super_interface){}; bivariant_interface    (t:type):=interface{Method(   ):void}; bivariant_sub_interface(t:type)     := interface(bivariant_interface(t)){};     F(C:bivariant_sub_interface    (super_interface)):void={}; G(C:bivariant_sub_interface    (sub_interface  )):void=F(C)}
 assert_valid               {super_interface:=interface{}; sub_interface:=interface(super_interface){}; bivariant_interface    (t:type):=interface{Method(   ):void}; bivariant_sub_interface(t:type)     := interface(bivariant_interface(t)){};     F(C:bivariant_sub_interface    (sub_interface  )):void={}; G(C:bivariant_sub_interface    (super_interface)):void=F(C)}
 
@@ -161,7 +158,6 @@ assert_semantic_error(3509){super_interface:=interface{}; sub_interface:=interfa
 
 assert_semantic_error(3509){super_interface:=interface{}; sub_interface:=interface(super_interface){}; invariant_interface    (t:type):=interface{Field:t->t   }; invariant_sub_interface(t:type)     := interface(invariant_interface(t)){};     F(C:invariant_sub_interface    (sub_interface  )):void={}; G(C:invariant_sub_interface    (super_interface)):void=F(C)}
 assert_semantic_error(3509){super_interface:=interface{}; sub_interface:=interface(super_interface){}; invariant_interface    (t:type):=interface{Field:t->t   }; invariant_sub_interface(t:type)     := interface(invariant_interface(t)){};     F(C:invariant_sub_interface    (super_interface)):void={}; G(C:invariant_sub_interface    (sub_interface  )):void=F(C)}
-#>
 
 
 # TODO: classes containing pointer members aren't allowed.
@@ -868,7 +864,7 @@ overloaded_class_and_interface := module:
 
 assert:
     X:overloaded_class_and_interface.interface1() = overloaded_class_and_interface.class1(){}
-    X.Method(1)
+    X.Method(false)
 
 first_class := module:
     class1<public>(t:type) := class:

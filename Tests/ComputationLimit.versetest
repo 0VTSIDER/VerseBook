@@ -2,13 +2,28 @@
 
 using { /Verse.org/Tests/VerseTestScriptCmd }
 
-assert_runtime_error("LoopIterationLimit", "HangTimeLimit"):
+# Both limiters stay enabled because each VM only has one of them: the loop iteration counter is BPVM's,
+# and the hang timer is what the VVM computation watchdog polls. The limiters are repeated per VM because
+# an option clause cannot mix `bp_vm_only`/`verse_vm_only` with bare strings.
+# Nested and named so that the captured callstack has more than one user frame to assert on.
+SpinForCallstackTest()<computes>:void =
     MyCounter:int = 0
     loop:
         if(MyCounter = 100):
             break
 
-# TODO: 
+HangForCallstackTest()<computes>:void =
+    SpinForCallstackTest()
+
+# Step 1: run until a computation limit fires and capture its callstack.
+assert_runtime_error(bp_vm_only{"InfiniteLoop", "LoopIterationLimit", "HangTimeLimit"}; verse_vm_only{"ComputationLimitExceeded", "LoopIterationLimit", "HangTimeLimit"}):
+    HangForCallstackTest()
+
+# Step 2: verify that the timeout's callstack is correct.
+assert:
+    TestComputationLimitHasValidCallstack[]
+
+# TODO:
 # Add runtime errors to VerseVM, then consolidate and add more tests for:
 #  Computation Time Outs
 #  Max instructions reached

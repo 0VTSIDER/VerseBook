@@ -587,7 +587,7 @@ assert:
     set CurrentTask.Task = option{Task}
     Tick(3)
     verse_vm_only{ GetLogStr() = ",abciegk,," }
-    bp_vm_only{ GetLogStr() = ",abegde,," }
+    bp_vm_only{ GetLogStr() = ",abegdec,," }
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

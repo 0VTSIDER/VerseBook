@@ -22,17 +22,17 @@ assert{var x:int = -2; set x -= +1; x = -3}
 bp_vm_only
 {
 # integer subtract overflow
-assert_runtime_error{+9223372036854775807 - -1}
-assert_runtime_error{0 - -9223372036854775808}
-assert_runtime_error{-9223372036854775808 - +1}
-assert_runtime_error{-2 - +9223372036854775807}
+assert_runtime_error("MathIntrinsicCallFailure"){+9223372036854775807 - -1}
+assert_runtime_error("MathIntrinsicCallFailure"){0 - -9223372036854775808}
+assert_runtime_error("MathIntrinsicCallFailure"){-9223372036854775808 - +1}
+assert_runtime_error("MathIntrinsicCallFailure"){-2 - +9223372036854775807}
 
 # integer subtract overflow
-assert_runtime_error{var x:int = +9223372036854775807; set x -= -1}
-assert_runtime_error{var x:int = -2         ; set x -= +9223372036854775807}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = +9223372036854775807; set x -= -1}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = -2         ; set x -= +9223372036854775807}
 
-assert_runtime_error{var x:int = -9223372036854775808; set x -= +1}
-assert_runtime_error{var x:int = +0         ; set x -= -9223372036854775808}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = -9223372036854775808; set x -= +1}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = +0         ; set x -= -9223372036854775808}
 }
 verse_vm_only
 {

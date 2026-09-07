@@ -35,7 +35,7 @@ assert:
 assert_semantic_error(3512, 2017){X:void=map{0=>"0"}[0.0]}
 assert_semantic_error(3512, 2017){X:void=map{0.0=>"0"}[0]}
 assert_semantic_error(3512, 2017){X:void=map{false=>"false"}[0]}
-assert_semantic_error(3512, 2017){X:void=map{"false"=>false}[false]}
+assert_semantic_error(3512){X:void=map{"false"=>false}[false]}
 assert_semantic_error(3512):
     super_class := class<unique><computes><allocates>{}
     sub_class := class<computes><allocates>(super_class){}

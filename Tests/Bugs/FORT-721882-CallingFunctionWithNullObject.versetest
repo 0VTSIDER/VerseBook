@@ -11,6 +11,6 @@ test_object := class:
 
 NullTestObject:test_object=MakeNull(test_object)
 
-assert_runtime_error{NullTestObject.test_func()}
+assert_runtime_error("Internal"){NullTestObject.test_func()}
 
 }

@@ -1,0 +1,72 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 08 - used-asset stability across an incremental recompile.
+
+# Builds a content package that references one asset, asserts its used-asset
+# set, then issues a second incremental build with no source change and asserts
+# the used-asset set is identical. On the second build P0 is SkippedExternal
+# (not recompiled), so this guards against incremental compilation dropping or
+# staling the used-asset calculation.
+incremental_compilation
+{
+    vpackage(AssetsPkg, /AssetsPkg, ?PackageType:=Assets, ?Scope:=InternalUser, ?Dependencies:=("Engine/VerseTestScriptCmd")):
+        snippet:
+            using { /Verse.org/Native }
+            using { /Verse.org/Tests/VerseTestScriptCmd }
+            Asset_asset<epic_internal>:asset = MakeAsset((/Verse.org/Tests/VerseTestScriptCmd:)asset, "/TestAssetPath/Asset")
+
+    vpackage(P0, /P0, ?Scope:=InternalUser, ?Dependencies:=("AssetsPkg/Assets", "Engine/VerseTestScriptCmd")):
+        snippet:
+            using { /Verse.org/Tests/VerseTestScriptCmd }
+            using { /AssetsPkg }
+            SomeClass := class:
+                MemberVar:asset = Asset_asset
+    build_packages{}
+    expected_rebuild_set := array{ "AssetsPkg/Assets", "P0" }
+    expected_used_assets(array{"P0"}) { array{ "/TestAssetPath/Asset" } }
+
+    # Second incremental build, no source change: P0 is SkippedExternal, but its
+    # used-asset set must be unchanged.
+    build_packages{}
+    expected_rebuild_set := array{ }
+    expected_used_assets(array{"P0"}) { array{ "/TestAssetPath/Asset" } }
+}
+
+# Regression test for case where AssetA was used in a user non-asset package function and a separate user package transitively depended on the asset.
+# The bug was that the first compile would let us see AssetA was used, but upon recompile, we would lose the reference which is incorrect. 
+incremental_compilation
+{
+    vpackage(P0, /P0, ?Scope:=InternalUser, ?Dependencies:=("Engine/VerseTestScriptCmd")):
+        snippet:
+            using { /Verse.org/Native }
+            using { /Verse.org/Tests/VerseTestScriptCmd }
+            P0Func<public>():void=
+                SomeAsset := MakeAsset((/Verse.org/Tests/VerseTestScriptCmd:)asset, "/AssetA")
+
+    vpackage(P1, /P1, ?Scope:=InternalUser, ?Dependencies:=("P0", "Engine/VerseTestScriptCmd")):
+        snippet:
+            using { /Verse.org/Tests/VerseTestScriptCmd }
+            using { /P0 }
+            P1Func<public>():void=
+                P0Func()
+
+    build_packages{}
+    expected_rebuild_set := array{ "P0", "P1" }
+    expected_used_assets(array{"P0"}) { array{ "/AssetA" } }
+    expected_used_assets(array{"P1"}) { array{ "/AssetA" } }
+
+    # Make a change to P1 which is using P0 which holds the asset reference that won't be rebuilt.
+    # We should still be able to see that P1 is using AssetA via P0 in this case.
+    vpackage(P1, /P1, ?Scope:=InternalUser, ?Dependencies:=("P0", "Engine/VerseTestScriptCmd")):
+        snippet:
+            using { /Verse.org/Tests/VerseTestScriptCmd }
+            using { /P0 }
+            P1Func<public>():void=
+                P0Func()
+                P0Func()
+
+    build_packages{}
+    expected_rebuild_set := array{ "P1" }
+    expected_used_assets(array{"P0"}) { array{ "/AssetA" } }
+    expected_used_assets(array{"P1"}) { array{ "/AssetA" } }
+}

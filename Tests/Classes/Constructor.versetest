@@ -146,6 +146,15 @@ assert_semantic_error(3627):
     Main():void =
         X := MakeClass1<constructor>()
 
+assert_semantic_error(3627):
+	class1 := class:
+		Property:int
+	MakeClass1():class1 = class1:
+		Property := 1
+	Main():void =
+		X := class1:
+			MakeClass1<constructor>()
+
 assert_semantic_error(3572):
     class1 := class {}
     MakeClass1<constructor>() := 1

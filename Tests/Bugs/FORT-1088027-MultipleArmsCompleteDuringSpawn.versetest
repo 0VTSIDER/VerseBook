@@ -1,0 +1,42 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+#
+# Companion to FORT-1088027-UseOfNullInitializedDynamicallyTypedValue.versetest
+# (see that file for the root-cause analysis). This variant attempts to make
+# TWO arms of the same `race` complete synchronously during its spawn pass:
+# arm 2 signals the event arm 1 awaits, and arm 4 would signal the event arm 3
+# awaits.
+#
+# This pins the first-completer-wins outcome, on which both VMs agree. Arm 1's
+# re-entrant completion runs its increment, resolves the race, and completes
+# the coroutine. Arms 3 and 4 never start - once a `race` has resolved, no
+# further arms may begin (see the `RaceUnresolved` checks in
+# `FCodeGenerator::EmitRace` and
+# FORT-1126351-RaceArmsDoNotStartAfterResolution.versetest) - so arm 3's
+# increment never runs.
+
+c1 := class:
+	E4 : event() = event(){}
+	E6 : event() = event(){}
+	EA : event() = event(){}
+	EB : event() = event(){}
+	var Hits : int = 0
+
+	Listener()<suspends>:void =
+		race:
+			block:
+				E4.Await()
+				set Hits += 1
+			block:
+				E4.Signal()
+				EA.Await()
+			block:
+				E6.Await()
+				set Hits += 10
+			block:
+				E6.Signal()
+				EB.Await()
+
+assert:
+	C := c1{}
+	spawn { C.Listener() }
+	C.Hits = 1

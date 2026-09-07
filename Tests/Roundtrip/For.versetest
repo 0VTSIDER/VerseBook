@@ -16,3 +16,11 @@ for(i := 1..(Snake.Positions.Length - 1)):
         break
 }
 
+
+# Braced body with newline-separated statements.
+assert_roundtrip{
+F():void = 
+    for(x:xs) {print(x)
+    print(x)
+    }
+}

@@ -25,10 +25,10 @@ assert{-1 + -2147483648}
 bp_vm_only
 {
 # 64bit integer addition can overflow
-assert_runtime_error{+9223372036854775807 + +1}
-assert_runtime_error{+1 + +9223372036854775807}
-assert_runtime_error{-9223372036854775808 + -1}
-assert_runtime_error{-1 + -9223372036854775808}
+assert_runtime_error("MathIntrinsicCallFailure"){+9223372036854775807 + +1}
+assert_runtime_error("MathIntrinsicCallFailure"){+1 + +9223372036854775807}
+assert_runtime_error("MathIntrinsicCallFailure"){-9223372036854775808 + -1}
+assert_runtime_error("MathIntrinsicCallFailure"){-1 + -9223372036854775808}
 }
 verse_vm_only
 {
@@ -54,11 +54,11 @@ assert{var x:int = -2; set x += +1; x = -1}
 
 # integer addition overflow
 bp_vm_only {
-assert_runtime_error{var x:int = +9223372036854775807; set x += +1}
-assert_runtime_error{var x:int = +1                  ; set x += +9223372036854775807}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = +9223372036854775807; set x += +1}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = +1                  ; set x += +9223372036854775807}
 
-assert_runtime_error{var x:int = -9223372036854775808; set x += -1}
-assert_runtime_error{var x:int = -1         ; set x += -9223372036854775808}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = -9223372036854775808; set x += -1}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = -1         ; set x += -9223372036854775808}
 }
 verse_vm_only
 {
@@ -69,7 +69,7 @@ assert{var x:int = -1; set x += -9223372036854775808; x=-9223372036854775808-1}
 }
 
 # Runtime errors inside an assert_runtime_error terminates execution.
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     CoroUtils.ResetThenLogEvent("A")
     CoroUtils.SuppressNextReset()
     Err("Runtime error")

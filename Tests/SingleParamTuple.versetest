@@ -37,3 +37,8 @@ IdentityEmptyTuple(X:tuple()):tuple() = X
 
 assert:
     IdentityEmptyTuple() = ()
+
+assert:
+    Event := subscribable_event_intrnl(tuple(int, int)){}
+    Event.Subscribe(NativeTwoParams)
+    Event.Signal(3, 5)

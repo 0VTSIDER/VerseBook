@@ -1,0 +1,36 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 02 - leaf body change.
+#
+# Single leaf package whose function body changes between phases. Tests that
+# a body edit forces the package to rebuild (source fingerprint differs from
+# last build's fingerprint).
+#
+# Phases:
+#   1. cold build of P0 with body V1 - P0 Compiled
+#   2. P0 redeclared with body V2 (body changed) - P0 Compiled because source differs
+#   3. same as phase 2 source, no redeclarations - P0 SkippedExternal (settled)
+
+incremental_compilation
+{
+    # Phase 1: cold build with V1
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Greet<public>():void = {}
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+
+    # Phase 2: body changed to V2
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Greet<public>():void =
+                    var X:int = 1
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+
+    # Phase 3: settled (no further changes)
+    build_packages{}
+    expected_rebuild_set := array{ }
+}

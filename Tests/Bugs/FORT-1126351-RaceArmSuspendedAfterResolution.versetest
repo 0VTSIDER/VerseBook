@@ -1,0 +1,54 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+#
+# Tests for FORT-1126351 (resume-window variant): an arm that suspends after
+# the `race` has already resolved must be cancelled, not stranded.
+#
+# Here the race resolves re-entrantly during a loser's RESUME rather than
+# during the spawn pass: arm 2 is resumed by ER, signals the winner's event,
+# then continues to a typed await. The spawn-pass leftover cleanup never runs
+# in this window, so before the fix nothing cancelled the freshly-registered
+# awaiter. The next loop iteration reused the frame local for its own E1
+# awaiter, and the later E1.Signal resumed the stranded (dead) continuation,
+# which read its payload through the reused local's unset result slot - the
+# NullType convert crash.
+#
+# The fix routes every arm re-suspension through the race's `ArmSuspended`
+# check (see `FCodeGenerator::EmitRace`): if the race has already resolved,
+# the leftover arms are cancelled - deregistering their awaiters - before
+# suspending. The later E1.Signal then only reaches the live second-iteration
+# awaiter, which receives the payload.
+
+player := class:
+    var Score:int = 0
+    Do():void=
+        set Score += 1
+
+c1 := class:
+    E0 : event() = event(){}
+    EW : event() = event(){}
+    ER : event() = event(){}
+    E1 : event(player) = event(player){}
+    var FirstIter : logic = true
+
+    Listener()<suspends>:void =
+        loop:
+            E0.Await()
+            race:
+                block:
+                    EW.Await()          # arm 1 - the winner
+                block:
+                    if (FirstIter?):
+                        set FirstIter = false
+                        ER.Await()      # suspends during spawn; resumed by the driver
+                        EW.Signal()     # mid-RESUME: resolves the race re-entrantly
+                    E1.Await().Do()     # loser continues here; must be cancelled, not stranded
+
+assert:
+    C := c1{}
+    P := player{}
+    spawn { C.Listener() }
+    C.E0.Signal()
+    C.ER.Signal()
+    C.E0.Signal()
+    C.E1.Signal(P)
+    P.Score = 1

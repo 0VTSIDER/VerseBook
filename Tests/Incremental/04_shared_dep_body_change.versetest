@@ -1,0 +1,44 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 04 - shared dependency body change (many shared dependencies case).
+#
+# Package "Shared" is depended on by 2 leaf packages A1 and A2. Phase 2
+# changes only Shared's function body (not its public signature).
+#
+# Phases:
+#   1. cold build of all 3 - every package Compiled
+#   2. Shared body changed - only Shared rebuilds
+#   3. settled, no further changes - all 3 SkippedExternal
+
+# incremental_compilation
+# {
+#     # Phase 1: cold build of Shared + 2 dependents
+#     vpackage(Shared, /Shared, ?Scope:=InternalUser):
+#         snippet:
+#             Lib<public> := module:
+#                 Greet<public>():void = {}
+#
+#     vpackage(A1, /A1, ?Dependencies:=("Shared"), ?Scope:=InternalUser):
+#         snippet:
+#             using { /Shared }
+#             F1<public>():void = Lib.Greet()
+#     vpackage(A2, /A2, ?Dependencies:=("Shared"), ?Scope:=InternalUser):
+#         snippet:
+#             using { /Shared }
+#             F2<public>():void = Lib.Greet()
+#     build_packages{}
+#     expected_rebuild_set := array{ "Shared", "A1", "A2" }
+#
+#     # Phase 2: Shared body changed (A1, A2 untouched, carry over).
+#     vpackage(Shared, /Shared, ?Scope:=InternalUser):
+#         snippet:
+#             Lib<public> := module:
+#                 Greet<public>():void =
+#                     var X:int = 1
+#     build_packages{}
+#     expected_rebuild_set := array{ "Shared" }
+#
+#     # Phase 3: settled
+#     build_packages{}
+#     expected_rebuild_set := array{ }
+# }

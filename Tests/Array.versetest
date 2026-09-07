@@ -101,8 +101,14 @@ assert_semantic_error(3509){ C:=class {f0(a0:[]C)   :void={f0([]C)      }}}
 assert_semantic_error(3510){ C:=class {f0()         :[]C ={return([]C)  }}}
 
 # Test `false` assignment, concatenation, and query throw expected errors
-assert_semantic_error(3509){ C:=class {var IntArray:[]int = false }}
-assert_semantic_error(3509){ IntArray:[]int = false + array{} }
+assert:
+    var IntArray:[]int = false
+    IntArray = false
+
+assert:
+    IntArray:[]int = false + array{}
+    IntArray = array{}
+
 assert_semantic_error(3509){ f():void= { IntArray:[]int = array{}; if(IntArray?){} }}
 
 class1 := class<unique> {}
@@ -140,3 +146,9 @@ assert:
     spawn:
         Foo(C)
 }
+
+# Test Array.Last Extensions
+assert{array{ 0, 1, 2, 3, 4, 5 }.Last[] = 5}
+assert{array{ 0, 1, 2, 3, 4, 5 }.Last[5] = 0}
+assert{not array{0}.Last[-1]}
+assert{not array{}.Last[]}

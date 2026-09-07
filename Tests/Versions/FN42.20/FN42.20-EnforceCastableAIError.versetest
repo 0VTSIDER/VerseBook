@@ -1,0 +1,32 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# The suppression is keyed on the real path of `ai_error`, so the snippets have to declare it there.
+assert_valid:
+    vpackage(P0, /UnrealEngine.com/Conversations, ?Role := Source, ?Scope := InternalAPI, ?UploadedAtFNVersion := 4220):
+        snippet:
+            ai_error<public> := class<castable>{}
+    vpackage(P1, /A, ?Dependencies := (P0), ?Role := Source, ?Scope := PublicUser, ?UploadedAtFNVersion := 4200):
+        snippet:
+            using{/UnrealEngine.com/Conversations}
+            parametric_ai_error(t:type) := class(ai_error){}
+
+# Test that the error is still enforced for new uploads.
+assert_semantic_error(3678):
+    vpackage(P0, /UnrealEngine.com/Conversations, ?Role := Source, ?Scope := InternalAPI, ?UploadedAtFNVersion := 4220):
+        snippet:
+            ai_error<public> := class<castable>{}
+    vpackage(P1, /A, ?Dependencies := (P0), ?Role := Source, ?Scope := PublicUser, ?UploadedAtFNVersion := 4220):
+        snippet:
+            using{/UnrealEngine.com/Conversations}
+            parametric_ai_error(t:type) := class(ai_error){}
+
+# Test that the suppression is scoped to `ai_error` and its subtypes, not to everything in an old upload.
+assert_semantic_error(3678):
+    vpackage(P0, /UnrealEngine.com/Conversations, ?Role := Source, ?Scope := InternalAPI, ?UploadedAtFNVersion := 4220):
+        snippet:
+            ai_error<public> := class<castable>{}
+            not_an_ai_error<public> := class<castable>{}
+    vpackage(P1, /A, ?Dependencies := (P0), ?Role := Source, ?Scope := PublicUser, ?UploadedAtFNVersion := 4200):
+        snippet:
+            using{/UnrealEngine.com/Conversations}
+            parametric_not_an_ai_error(t:type) := class(not_an_ai_error){}

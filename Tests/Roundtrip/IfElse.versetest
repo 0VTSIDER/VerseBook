@@ -71,3 +71,28 @@ else if (f[], g?, h):
 else:
     k
 }
+
+# Braced clause with newline-separated statements.
+assert_roundtrip{
+F():void = 
+    if (a < b) then {c
+    d
+    }
+}
+
+# Same, one statement
+assert_roundtrip{
+F():void = 
+    if (a < b) then {c
+    }
+}
+
+# Same, nested.
+assert_roundtrip{
+F():void = 
+    if (a < b) then {c
+    if (d < e) then {f
+    }
+    g
+    }
+}

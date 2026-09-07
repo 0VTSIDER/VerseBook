@@ -1,0 +1,15 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# Raises a Verse runtime error from a named function.
+RaiseRuntimeErrorForCallstackTest()<computes><decides>:void =
+    Err("Runtime error for callstack test")
+
+# Step 1: raise a runtime error and capture its callstack.
+assert_runtime_error("ErrorRequested"):
+    RaiseRuntimeErrorForCallstackTest[]
+
+# Step 2: verify that the runtime error's callstack is correct.
+assert:
+    TestRuntimeErrorHasValidCallstack[]

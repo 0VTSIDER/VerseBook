@@ -1,0 +1,36 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# SOL-9661: a `for` whose domain contains NO generator (only non-generator failable `:=`
+# definitions), with clauses separated by `,`, behaves like the equivalent `if (X := Y)`
+# chain: the body runs at most once. If any domain expression fails, the body does
+# not run at all.
+#
+# Clauses separated by `;` have the same semantics.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# The body runs 0-or-1 times, so the result is either empty or a single-valued array.
+SumThreeFor(Arr:[]int):[]int =
+    for (A := Arr[0], B := Arr[1], C := Arr[2]):
+        A + B + C
+
+# All domain expressions succeed: body runs exactly once.
+assert{SumThreeFor(array{10, 20, 30}) = array{60}}
+
+# First domain expression fails (Arr[0] out of bounds): body never runs.
+assert{SumThreeFor(array{}) = array{}}
+
+# Second domain expression fails (Arr[1] out of bounds).
+assert{SumThreeFor(array{5}) = array{}}
+
+# Third/last domain expression fails (Arr[2] out of bounds).
+assert{SumThreeFor(array{5, 6}) = array{}}
+
+SumThreeForSemi(Arr:[]int):[]int =
+    for (A := Arr[0]; B := Arr[1]; C := Arr[2]):
+        A + B + C
+
+assert{SumThreeForSemi(array{10, 20, 30}) = array{60}}
+assert{SumThreeForSemi(array{}) = array{}}
+assert{SumThreeForSemi(array{5}) = array{}}
+assert{SumThreeForSemi(array{5, 6}) = array{}}

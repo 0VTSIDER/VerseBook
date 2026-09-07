@@ -1,18 +1,26 @@
 # Copyright Epic Games, Inc. All Rights Reserved.
 #
-# Tests for FORT-1088027: a BPVM-only NullType convert crash at
+# Tests for FORT-1088027 (FIXED): a BPVM-only NullType convert crash at
 # `VerseRuntimeType.h:97` in `task::Update`.
 #
 # Verified root cause: a bytecode-issued Signal during `task::Update`
 # synchronously re-enters Update for the same task via
 # `event::Signal → task::Complete → ResumeAt → task::Update`. In the
-# inner Update, race-winner / sync / rush / branch cleanup misroutes
-# control flow so that a typed-event awaiter's `$AsyncTask_X` slot is
+# inner Update, race-winner / sync / rush / branch cleanup misrouted
+# control flow so that a typed-event awaiter's `$AsyncTask_X` slot was
 # replaced with a fresh task pointing at uninitialized memory while
-# the original awaiter remains stranded in `event.SuspendedAwaits`.
-# When the typed event later fires, the stale awaiter pops, the
-# listener resumes, and the cast at the await site reads the fresh
+# the original awaiter remained stranded in `event.SuspendedAwaits`.
+# When the typed event later fired, the stale awaiter popped, the
+# listener resumed, and the cast at the await site read the fresh
 # slot's uninitialized NullType `_RetVal` — convert crash.
+#
+# The BPVM fix (in the `race` codegen, `FCodeGenerator::EmitRace`): a race
+# that resolves re-entrantly while its arms are still spawning now cancels the
+# late-spawned arms once the spawn pass finishes, deregistering their event
+# awaiters. The typed event then only reaches the live awaiter and the
+# coercion succeeds on both VMs. The rush/branch and sync variants (tests 2
+# and 3) no longer crash on BPVM as of earlier reentrancy fixes; they are kept
+# as regression coverage.
 #
 # Tests in this file:
 #   1. Minimal repro (race)         — minimal race-only crash
@@ -54,15 +62,14 @@ c1 := class:
 					E3.Await()
 				E1.Await().Do()
 
-verse_vm_only:
-	assert:
-		C0 := payload{}
-		C1 := c1{}
-		spawn { C1.Listener() }
-		C1.E0.Signal()
-		C1.E0.Signal()
-		C1.E1.Signal(C0)
-		C0.Done = 1
+assert:
+	C0 := payload{}
+	C1 := c1{}
+	spawn { C1.Listener() }
+	C1.E0.Signal()
+	C1.E0.Signal()
+	C1.E1.Signal(C0)
+	C0.Done = 1
 
 
 # Test 2 — A repro using branch/rush.
@@ -82,14 +89,13 @@ c2 := class:
 			E2.Await().Do()
 		E3.Await()
 
-verse_vm_only:
-	assert:
-		C0 := payload{}
-		C2 := c2{}
-		spawn { C2.Listener() }
-		C2.E1.Signal()
-		C2.E2.Signal(C0)
-		C0.Done = 1
+assert:
+	C0 := payload{}
+	C2 := c2{}
+	spawn { C2.Listener() }
+	C2.E1.Signal()
+	C2.E2.Signal(C0)
+	C0.Done = 1
 
 
 # Test 3 — A repro using nested sync.
@@ -107,14 +113,13 @@ c3 := class:
 					E1.Signal()
 				E2.Await().Do()
 
-verse_vm_only:
-	assert:
-		C0 := payload{}
-		C3 := c3{}
-		spawn { C3.Function() }
-		C3.E0.Signal()
-		C3.E2.Signal(C0)
-		C0.Done = 1
+assert:
+	C0 := payload{}
+	C3 := c3{}
+	spawn { C3.Function() }
+	C3.E0.Signal()
+	C3.E2.Signal(C0)
+	C0.Done = 1
 
 
 # Test 4 — A repro that is close to the form of the live project where the crash was originally observed.
@@ -177,33 +182,32 @@ F2(C : c6, V_payload : payload, V_n : int)<suspends>:void =
 		C.E6.Signal(V_payload)
 		CoroUtils.WaitTicks(1)
 
-verse_vm_only:
-	assert:
-		C6 := c6{}
-		C7 := c7{ C6 := C6 }
-		spawn { C7.Run() }
+assert:
+	C6 := c6{}
+	C7 := c7{ C6 := C6 }
+	spawn { C7.Run() }
 
-		V_payload := payload{}
+	V_payload := payload{}
 
-		V_cycles := 8
-		for (V_cycle := 0..V_cycles - 1):
-			C6.E2.Signal()
-			CoroUtils.Tick(1)
-
-			if (Mod[V_cycle, 4] = 0):
-				C6.E4.Signal(option{0})
-				CoroUtils.Tick(1)
-				C6.E5.Signal()
-			else:
-				C6.E1.Signal()
-			CoroUtils.Tick(1)
-
-			spawn { F2(C6, V_payload, 3) }
-			for (V_j := 0..7):
-				CoroUtils.Tick(1)
-
-			C6.E3.Signal()
-			CoroUtils.Tick(1)
-
-		C6.E0.Signal()
+	V_cycles := 8
+	for (V_cycle := 0..V_cycles - 1):
+		C6.E2.Signal()
 		CoroUtils.Tick(1)
+
+		if (Mod[V_cycle, 4] = 0):
+			C6.E4.Signal(option{0})
+			CoroUtils.Tick(1)
+			C6.E5.Signal()
+		else:
+			C6.E1.Signal()
+		CoroUtils.Tick(1)
+
+		spawn { F2(C6, V_payload, 3) }
+		for (V_j := 0..7):
+			CoroUtils.Tick(1)
+
+		C6.E3.Signal()
+		CoroUtils.Tick(1)
+
+	C6.E0.Signal()
+	CoroUtils.Tick(1)

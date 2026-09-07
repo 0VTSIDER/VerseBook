@@ -1,0 +1,27 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Bytecode shape of array construction, indexing and length.
+# See Bytecode.versetest for an explanation of `assert_bytecode` and the `# CHECK:` directive syntax.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# An array literal lowers to NewArray; its result is moved into Arr. Indexing `Arr[1]` lowers to a `Call`
+# on Arr, whose result is moved into E, which is then compared.
+assert_bytecode:
+    # CHECK: [[NEW:r[0-9]+]] = NewArray(Values: (c{{[0-9]+}}=10, c{{[0-9]+}}=20, c{{[0-9]+}}=30))
+    # CHECK: [[ARR:r[0-9]+]] = Move(Source: [[NEW]])
+    Arr := array{10, 20, 30}
+    # CHECK: [[IDX:r[0-9]+]] = Call(Callee: [[ARR]], Arguments: (c{{[0-9]+}}=1){{.*}})
+    # CHECK: [[E:r[0-9]+]] = Move(Source: [[IDX]])
+    E := Arr[1]
+    # CHECK: [[CMP:r[0-9]+]] = Gt(LeftSource: [[E]], RightSource: c{{[0-9]+}}=0)
+    E > 0
+
+# `.Length` lowers to the Length opcode applied to the array register; its result is compared.
+assert_bytecode:
+    # CHECK: [[NEW:r[0-9]+]] = NewArray(Values: (c{{[0-9]+}}=1, c{{[0-9]+}}=2, c{{[0-9]+}}=3))
+    # CHECK: [[ARR:r[0-9]+]] = Move(Source: [[NEW]])
+    Arr := array{1, 2, 3}
+    # CHECK: [[LEN:r[0-9]+]] = Length(Container: [[ARR]])
+    # CHECK: [[CMP:r[0-9]+]] = Gt(LeftSource: [[LEN]], RightSource: c{{[0-9]+}}=0)
+    Arr.Length > 0

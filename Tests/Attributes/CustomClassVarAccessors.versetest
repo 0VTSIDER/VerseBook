@@ -723,18 +723,18 @@ runtime_error := class:
         Err("setter err")
         set XData = N
 
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     Obj:runtime_error = runtime_error{}
     Obj.X = 0
 
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     Obj:runtime_error = runtime_error{}
     set Obj.X = 10
 
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     Obj:accessors_test_runtime_error = accessors_test_runtime_error{}
     Obj.X = 0
 
-assert_runtime_error:
+assert_runtime_error("ErrorRequested"):
     Obj:accessors_test_runtime_error = accessors_test_runtime_error{}
     set Obj.X = 10

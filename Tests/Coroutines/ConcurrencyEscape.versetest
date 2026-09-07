@@ -239,7 +239,7 @@ SelfCancelSync(Arm1:arm, Arm2:arm, Arm3:arm)<suspends>:string =
 
 assert:
     spawn{Test(SelfCancelSync, 0, (arm{Delay := 0, Return := option{"X"}}, arm{Delay := 0}, arm{Delay := 0}))}
-    AssertLog("a2bzX", ?BPVM := "azX2b")
+    AssertLog("a2bzX", ?BPVM := "azX2b3c")
 verse_vm_only{ # Crashes BPVM
 assert:
     spawn{Test(SelfCancelSync, 0, (arm{Delay := 0, Return := option{"X"}}, arm{Delay := 0, Return := option{"Y"}}, arm{Delay := 0}))}

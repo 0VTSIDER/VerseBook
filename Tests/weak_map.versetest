@@ -230,29 +230,29 @@ assert:
 Mutable := module:
     var Data<public>:weak_map(persistent_key, struct1) = map{}
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key1:persistent_key := Persistence.GetOrCreateKey(1)
     Mutable.Data[Key1]
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key2:persistent_key := Persistence.GetOrCreateKey(2)
     Mutable.Data[Key2]
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key1:persistent_key := Persistence.GetOrCreateKey(1)
     set Mutable.Data[Key1].Data1 = 1
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key2:persistent_key := Persistence.GetOrCreateKey(2)
     set Mutable.Data[Key2].Data1 = 1
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key1:persistent_key := Persistence.GetOrCreateKey(1)
     set Mutable.Data[Key1] = struct1:
         Data1 := 1
         Data2 := 2
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key2:persistent_key := Persistence.GetOrCreateKey(2)
     set Mutable.Data[Key2] = struct1:
         Data1 := 1
@@ -294,29 +294,29 @@ assert:
     Key1.SetValid(false)
     Key2.SetValid(false)
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key1:persistent_key := Persistence.GetOrCreateKey(1)
     Mutable.Data[Key1]
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key2:persistent_key := Persistence.GetOrCreateKey(2)
     Mutable.Data[Key2]
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key1:persistent_key := Persistence.GetOrCreateKey(1)
     set Mutable.Data[Key1].Data1 = 1
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key2:persistent_key := Persistence.GetOrCreateKey(2)
     set Mutable.Data[Key2].Data1 = 1
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key1:persistent_key := Persistence.GetOrCreateKey(1)
     set Mutable.Data[Key1] = struct1:
         Data1 := 1
         Data2 := 2
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     Key2:persistent_key := Persistence.GetOrCreateKey(2)
     set Mutable.Data[Key2] = struct1:
         Data1 := 1
@@ -327,11 +327,11 @@ assert_runtime_error:
 var PersistentData<public>:weak_map(persistent_key, int) = map{}
 
 # Test invalid key lookup
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     PersistentData[PersistentKey3] = 1
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey4 := Persistence.GetOrCreateKey(4)
     PersistentData[PersistentKey4] = 2
 
@@ -344,7 +344,7 @@ assert:
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     PersistentData[PersistentKey3] = 1
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey4 := Persistence.GetOrCreateKey(4)
     PersistentData[PersistentKey4] = 2
 
@@ -532,7 +532,7 @@ assert:
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     Persistence.Dropped(PersistentKey3)
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     PersistentData[PersistentKey3] = 5
 
@@ -544,19 +544,19 @@ assert:
     PersistentKey4 := Persistence.GetOrCreateKey(4)
     Persistence.Dropped(PersistentKey4)
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     PersistentData[PersistentKey3] = 3
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey4 := Persistence.GetOrCreateKey(4)
     PersistentData[PersistentKey4] = 4
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     PartialRefCall.Data[PersistentKey3].Data1
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     set PartialRefCall.Data[PersistentKey3].Data1 = 3
 
@@ -569,7 +569,7 @@ assert:
     PersistentKey3 := Persistence.GetOrCreateKey(3)
     PersistentData[PersistentKey3] = 5
 
-assert_runtime_error:
+assert_runtime_error("WeakMapInvalidKey"):
     PersistentKey4 := Persistence.GetOrCreateKey(4)
     PersistentData[PersistentKey4] = 6
 
@@ -608,11 +608,11 @@ assert_valid:
         Y:int = FitsInPlayerMap[X]
 
 # Default implementation always raises a runtime error
-assert_runtime_error:
+assert_runtime_error("NativeInternal"):
     X:int = 0
     not FitsInPlayerMap[X]
 
-assert_runtime_error:
+assert_runtime_error("NativeInternal"):
     not FitsInPlayerMap[0]
 
 assert_semantic_error(3509):

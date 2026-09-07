@@ -1,0 +1,47 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# `event::Signal` is re-entrancy-safe: when resuming an awaiter re-enters Signal() on the same event,
+# every parked awaiter is still resumed.
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+Tick(Ticks:int):void = CoroUtils.Tick(Ticks)
+NumActiveCoro():int  = return CoroUtils.GetNumActiveCoroutines()
+
+BaseAwaiter(E:event(int))<suspends>:void=
+    E.Await()
+
+# On resume, AwaitE1ThenReenterE1 signals E2 (which makes AwaitE2ThenReparkE1 re-park a fresh awaiter
+# on E1), then re-signals E1 (nested) while E1's outer drain is still in flight.
+AwaitE1ThenReenterE1(E1:event(int), E2:event(int))<suspends>:void=
+    E1.Await()
+    E2.Signal(123)
+    E1.Signal(123)
+
+OuterAwaitE1(E1:event(int))<suspends>:void=
+    E1.Await()
+
+AwaitE2ThenReparkE1(E1:event(int), E2:event(int))<suspends>:void=
+    E2.Await()
+    E1.Await()
+
+# A non-re-entrant signal resumes both awaiters; none left hanging.
+assert:
+    E := event(int){}
+    spawn { BaseAwaiter(E) }
+    spawn { BaseAwaiter(E) }
+    Tick(1)
+    E.Signal(123)
+    Tick(1)
+    NumActiveCoro() = 0
+
+# A nested Signal on E1 (while its drain is in flight) still resumes every parked awaiter.
+assert:
+    E1 := event(int){}
+    E2 := event(int){}
+    spawn { AwaitE1ThenReenterE1(E1, E2) }
+    spawn { OuterAwaitE1(E1) }
+    spawn { AwaitE2ThenReparkE1(E1, E2) }
+    Tick(1)
+    E1.Signal(123)
+    Tick(2)
+    NumActiveCoro() = 0

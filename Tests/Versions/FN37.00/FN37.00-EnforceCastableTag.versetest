@@ -1,20 +1,35 @@
 # Copyright Epic Games, Inc. All Rights Reserved.
 
+# The suppression is keyed on the real path of `tag`, so the snippets have to declare it there.
 assert_valid:
     vpackage(P0, /Verse.org/Simulation, ?Role := Source, ?Scope := InternalAPI, ?UploadedAtFNVersion := 3700):
         snippet:
-            tag<public> := class<abstract><castable>{}
+            Tags<public> := module:
+                tag<public> := class<abstract><castable>{}
     vpackage(P1, /A, ?Dependencies := (P0), ?Role := Source, ?Scope := PublicUser, ?UploadedAtFNVersion := 3600):
         snippet:
-            using{/Verse.org/Simulation}
+            using{/Verse.org/Simulation/Tags}
             parametric_tag(t:type) := class(tag){}
 
 # Test that the error is still enforced for new uploads.
 assert_semantic_error(3678):
     vpackage(P0, /Verse.org/Simulation, ?Role := Source, ?Scope := InternalAPI, ?UploadedAtFNVersion := 3700):
         snippet:
-            tag<public> := class<abstract><castable>{}
+            Tags<public> := module:
+                tag<public> := class<abstract><castable>{}
     vpackage(P1, /A, ?Dependencies := (P0), ?Role := Source, ?Scope := PublicUser, ?UploadedAtFNVersion := 3700):
         snippet:
-            using{/Verse.org/Simulation}
+            using{/Verse.org/Simulation/Tags}
             parametric_tag(t:type) := class(tag){}
+
+# Test that the suppression is scoped to `tag` and its subtypes, not to everything in an old upload.
+assert_semantic_error(3678):
+    vpackage(P0, /Verse.org/Simulation, ?Role := Source, ?Scope := InternalAPI, ?UploadedAtFNVersion := 3700):
+        snippet:
+            Tags<public> := module:
+                tag<public> := class<abstract><castable>{}
+            not_a_tag<public> := class<abstract><castable>{}
+    vpackage(P1, /A, ?Dependencies := (P0), ?Role := Source, ?Scope := PublicUser, ?UploadedAtFNVersion := 3600):
+        snippet:
+            using{/Verse.org/Simulation}
+            parametric_not_a_tag(t:type) := class(not_a_tag){}

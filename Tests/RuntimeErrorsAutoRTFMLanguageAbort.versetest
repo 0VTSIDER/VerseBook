@@ -18,6 +18,9 @@ LanguageAbortInNestedTransaction()<transacts><decides>:void=
 LanguageAbortInNestedTransactionViaNativeCallback()<transacts><decides>:void=
     TestUtils.InvokeTransacts[LanguageAbortInNestedTransaction]
 
+# No assert below names a particular diagnostic: with AutoRTFM off, the guard above raises ErrorRequested
+# rather than the abort these tests are about.
+
 # Test that triggering an AbortedByLanguage AutoRTFM error outside of a 
 # transaction is treated as a runtime error.
 verse_vm_only: # BPVM does not treat a AbortedByLanguage outside of a transaction as a runtime error

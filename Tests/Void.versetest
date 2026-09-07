@@ -47,19 +47,17 @@ assert:
     X?
     Y?
 
-# This should work, but doesn't
-# assert:
-#     X:?void = false
-#     Y:?true = X
-#     not X?
-#     not Y?
+assert:
+    X:?void = false
+    Y:?true = X
+    not X?
+    not Y?
 
-# This should work, but doesn't
-# assert:
-#     X:?void = option{0}
-#     Y:?true = X
-#     X?
-#     Y?
+assert:
+    X:?void = option{0}
+    Y:?true = X
+    X?
+    Y?
 
 assert:
     X:[]int = array{1, 2, 3}
@@ -67,12 +65,11 @@ assert:
     X.Length = 3
     Y.Length = 3
 
-# This should work, but doesn't
-# assert:
-#     X:[]void = array{1, 2, 3}
-#     Y:[]true = X
-#     X.Length = 3
-#     Y.Length = 3
+assert:
+    X:[]void = array{1, 2, 3}
+    Y:[]true = X
+    X.Length = 3
+    Y.Length = 3
 
 assert:
     X:[int]int = map{0=>1, 2=>3}
@@ -80,12 +77,11 @@ assert:
     X.Length = 2
     Y.Length = 2
 
-# This should work, but doesn't
-# assert:
-#     X:[int]void = map{0=>1, 2=>3}
-#     Y:[int]true = X
-#     X.Length = 2
-#     Y.Length = 2
+assert:
+    X:[int]void = map{0=>1, 2=>3}
+    Y:[int]true = X
+    X.Length = 2
+    Y.Length = 2
 
 VoidOutput(:int):void = {}
 
@@ -158,7 +154,6 @@ assert:
     F(0)
 }
 
-
 TrueOutput(:int):true = {}
 
 TrueInput(:true):int = 42
@@ -171,22 +166,138 @@ assert:
     F := if (true?) { TrueOutput } else { VoidOutput }
     F(0) = false
 
-# This should work, but doesn't.  `false` literal is not currently of type `true`.
-# assert:
-#     F := if (false?) { TrueInput } else { VoidInput }
-#     F(false) = 19
+assert:
+    F := if (false?) { TrueInput } else { VoidInput }
+    F(false) = 19
 
-# This should work, but doesn't.  `true` is not currently a subtype of `logic`
-# assert:
-#     F:logic->int := if (false?) { TrueInput } else { VoidInput }
-#     F(false) = 19
+assert:
+    F := if (true?) { TrueInput } else { VoidInput }
+    F(false) = 42
 
-# This should work, but doesn't.  `false` literal is not currently of type `true`.
-# assert:
-#     F := if (true?) { TrueInput } else { VoidInput }
-#     F(false) = 42
+assert:
+    X:true = false
+    X = false
 
-# This should work, but doesn't.  `true` is not currently a subtype of `logic`
-# assert:
-#     F:logic->int := if (true?) { TrueInput } else { VoidInput }
-#     F(false) = 42
+assert:
+    X:tuple() = false
+    X = ()
+    X = false
+
+assert:
+    X:[]int = false
+    X.Length = 0
+    X = false
+
+assert:
+    X:tuple() = if (false?) then () else false
+    X = ()
+
+assert:
+    X:tuple() = if (false?) then false else ()
+    X = ()
+
+assert:
+    X:[]int = if (false?) then array{} else false
+    X = ()
+
+assert:
+    X:[]int = if (false?) then false else array{}
+    X = ()
+
+assert:
+    X:logic = if (false?) then false else true
+    X = true
+
+assert:
+    X:logic = if (false?) then true else false
+    X = false
+
+assert:
+    X:logic = if (false?) then () else true
+    X = true
+
+assert:
+    X:logic = if (false?) then true else ()
+    X = ()
+
+assert_semantic_error(3509):
+    Main():void =
+        X:tuple() = if (false?) then (1, 2) else false
+
+assert_valid:
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        class1(void){}.Foo(false)
+
+assert_valid:
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        class1(void){}.Foo()
+
+assert_valid:
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        X:void = 1
+        class1(void){}.Foo(X)
+
+assert_semantic_error(3509):
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        X:int = 1
+        class1(void){}.Foo(X)
+
+assert_valid:
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        X:[]true = array{false}
+        class1([]void){}.Foo(X)
+
+assert_semantic_error(3509):
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        X:[]int = array{1}
+        class1([]void){}.Foo(X)
+
+assert_valid:
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        X:?true = option{false}
+        class1(?void){}.Foo(X)
+
+assert_semantic_error(3509):
+    class1(t:type) := class:
+        Foo(:t):void = {}
+    Main():void =
+        X:?int = option{1}
+        class1([]void){}.Foo(X)
+
+assert_valid:
+    F(:logic, ?X:int = 1):void = {}
+    Main():void = F(false)
+
+assert:
+    X:void = 1
+    X = false
+    false = X
+
+assert:
+    X:void = 1
+    X = ()
+    () = X
+
+assert:
+    X:void = 1
+    X = array{}
+    array{} = X
+
+assert:
+    X:void = 1
+    X = ""
+    "" = X

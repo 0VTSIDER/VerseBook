@@ -1,0 +1,24 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# `assert_bytecode` compiles its block into a function, disassembles the resulting Verse VM bytecode, and
+# verifies it against the `# CHECK:` directives embedded in the block. The block is intentionally *not*
+# executed. (On the BPVM these asserts are skipped, since bytecode is a Verse VM concept.)
+#
+# Each `CHECK:` pattern must match, in source order, on a distinct line of the disassembly (matched as a regex
+# *search*, i.e. anywhere within the line). Patterns support:
+#   {{re}}        an inline regular expression (matched but not captured)
+#   [[NAME:re]]   match `re` and bind the matched text to the pattern variable NAME
+#   [[NAME]]      substitute a previously-bound variable (so both uses must refer to the same text)
+# Runs of literal whitespace match one-or-more whitespace characters. Variables persist across the CHECK
+# directives within a single block, which is what lets us match up registers between instructions.
+
+# Adding two integer literals and comparing the result against zero.
+assert_bytecode:
+    # CHECK: [[ADD:r[0-9]+]] = Add(LeftSource: c{{[0-9]+}}=1, RightSource: c{{[0-9]+}}=2)
+    # CHECK: [[XREG:r[0-9]+]] = Move(Source: [[ADD]])
+    X := 1 + 2
+
+    # CHECK: r{{[0-9]+}} = Gt(LeftSource: [[XREG]], RightSource: c{{[0-9]+}}=0)
+    X > 0

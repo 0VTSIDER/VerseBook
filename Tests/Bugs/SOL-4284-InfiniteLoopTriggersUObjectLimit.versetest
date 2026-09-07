@@ -13,7 +13,9 @@ InfiniteLoopWithFakeSuspend()<suspends>:void=loop{FakeSuspend()}
 a := class:
     x:int
 
-assert_runtime_error("LoopIterationLimit", "HangTimeLimit"):
+# `UObjectLimit` reduces the maximum-UObject cap, so we can reliably OOM before hitting the timeout.
+
+assert_runtime_error("MemoryLimitExceeded", "UObjectLimit"):
     spawn{InfiniteLoopWithFakeSuspend()}
 
 InfiniteLoopWithSubtasks()<suspends>:void=
@@ -22,7 +24,7 @@ InfiniteLoopWithSubtasks()<suspends>:void=
             WaitTicks(1)
             FakeSuspend()
 
-assert_runtime_error("LoopIterationLimit", "HangTimeLimit"):
+assert_runtime_error("MemoryLimitExceeded", "UObjectLimit"):
     spawn{InfiniteLoopWithSubtasks()}
 
 TestA()<transacts>:a=a{x:=200}
@@ -38,7 +40,7 @@ InfiniteLoopWithSubtasksAndClassInstantiations()<suspends>:void=
             FooTestA()
             FakeSuspend()
 
-assert_runtime_error("LoopIterationLimit", "HangTimeLimit"):
+assert_runtime_error("MemoryLimitExceeded", "UObjectLimit"):
     spawn{InfiniteLoopWithSubtasksAndClassInstantiations()}
     
 }

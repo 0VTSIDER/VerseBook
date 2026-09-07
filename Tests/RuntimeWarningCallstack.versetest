@@ -1,0 +1,10 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# Raises a Verse runtime warning from a named function, so we can verify more than just `assert0`.
+TestRuntimeWarningHasValidCallstack()<computes>:logic =
+    TestRuntimeWarningCallstack()
+
+assert:
+    TestRuntimeWarningHasValidCallstack()?

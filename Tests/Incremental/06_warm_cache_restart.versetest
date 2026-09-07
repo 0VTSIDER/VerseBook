@@ -1,0 +1,40 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 06 - warm-cache restart.
+#
+# Exercises Stage 1 + Stage 4 persistence end-to-end. Phase 1 builds a package
+# cold and persists its fingerprint + digest manifest to disk. Phase 2 uses a
+# `build_packages{restart}` barrier to simulate a fresh process: the harness
+# clears the in-memory compiled-package registry and the hydration tracking set.
+# When IncrementalizeProjectSource runs for phase 2, Stage 1 hydrates the
+# fingerprint from disk and Stage 4 hydrates the digest manifest, populating the
+# runtime digest cache from the persisted manifest.bin. The predicate then sees a
+# fingerprint match AND an available digest, so P0 is marked SkippedExternal.
+#
+# Without Stage 4, phase 2 would still rebuild because the Stage 1 safety
+# fallback (SolarisModule.cpp:~809) forces rebuild when the digest isn't
+# available cross-process. Stage 4 closes that gap by persisting the digest
+# alongside the fingerprint.
+#
+# Phases:
+#   1. cold build of P0 - P0 Compiled, fingerprint + digest manifest persisted
+#   2. build_packages{simulate_process_restart}, same source - P0 SkippedExternal via hydration
+
+# Disabled until we persist compilation state as build artifacts
+# incremental_compilation
+# {
+#     # Phase 1: cold build, persist
+#     vpackage(P0, /A, ?Scope:=InternalUser):
+#         snippet:
+#             Module<public> := module:
+#                 Class<public> := class:
+#                     FieldA<public>():void = {}
+#     build_packages{}
+#     expected_rebuild_set := array{ "P0" }
+#
+#     # Phase 2: simulated process restart, same source. Stages 1+4 hydrate
+#     # from disk, predicate sees fingerprint match with available digest,
+#     # P0 substitutes External.
+#     build_packages{simulate_process_restart}
+#     expected_rebuild_set := array{ }
+# }

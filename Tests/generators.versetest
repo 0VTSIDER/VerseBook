@@ -247,7 +247,8 @@ assert_semantic_error<depends_on_library>(3509):
         ConvertToAny(iter:any):any=iter
         f()<decides>:void =
             AnyIter:any = ConvertToAny(TestGenerators.GetAnotherFloatGenerator())
-            TestGenerators.Last(AnyIter) = 16.16  # 3509 - any -> generator(any) is invalid
+            # Disambiguate TestGenerators.Last against Array.Last
+            TestGenerators.(TestGenerators:)Last(AnyIter) = 16.16  # 3509 - any -> generator(any) is invalid
 
 assert:
     Obj:TestGenerators.TestChild = TestGenerators.Last(TestGenerators.GetTestChildGenerator())?

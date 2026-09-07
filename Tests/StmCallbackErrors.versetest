@@ -8,6 +8,6 @@ using { /Verse.org/Tests/VerseTestScriptCmd }
 # inconsistent state (which triggers an "ensure") whenever an OnCommit
 # handler signals (potentially indirectly) a Verse runtime error.
     
-assert_runtime_error:
+assert_runtime_error("Internal"):
     if (StmCallbackErrors.MakeRuntimeErrorOnCommit(); 1 = 1):
 }

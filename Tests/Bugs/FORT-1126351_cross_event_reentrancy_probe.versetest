@@ -1,0 +1,54 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Cross-event re-entrancy: an event handler signals another event whose awaiter loops back and re-signals
+# the first while its drain is still in flight. Every parked awaiter is still resumed.
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+Tick(Ticks:int):void = CoroUtils.Tick(Ticks)
+NumActiveCoro():int  = return CoroUtils.GetNumActiveCoroutines()
+
+AwaitXThenSignalY(X:event(int), Y:event(int))<suspends>:void=
+    X.Await()
+    Y.Signal(123)
+
+AwaitY(Y:event(int))<suspends>:void=
+    Y.Await()
+
+OuterAwaitX(X:event(int))<suspends>:void=
+    X.Await()
+
+AwaitYThenReenterX(X:event(int), Y:event(int), Z:event(int))<suspends>:void=
+    Y.Await()
+    Z.Signal(123)
+    X.Signal(123)
+
+AwaitZThenReparkX(X:event(int), Z:event(int))<suspends>:void=
+    Z.Await()
+    X.Await()
+
+# A cross-event chain with no re-entry resumes both awaiters.
+assert:
+    X := event(int){}
+    Y := event(int){}
+    spawn { AwaitXThenSignalY(X, Y) }
+    spawn { AwaitY(Y) }
+    Tick(1)
+    X.Signal(123)
+    Tick(2)
+    NumActiveCoro() = 0
+
+# Re-entry into X's drain via other events resumes every parked awaiter, including OuterAwaitX.
+# X.Signal drains [AwaitXThenSignalY, OuterAwaitX]; the first signals Y; Y's awaiter signals Z;
+# Z's awaiter re-parks a fresh awaiter on X; then Y's awaiter re-signals X, nested into X's drain.
+assert:
+    X := event(int){}
+    Y := event(int){}
+    Z := event(int){}
+    spawn { AwaitXThenSignalY(X, Y) }
+    spawn { OuterAwaitX(X) }
+    spawn { AwaitYThenReenterX(X, Y, Z) }
+    spawn { AwaitZThenReparkX(X, Z) }
+    Tick(1)
+    X.Signal(123)
+    Tick(2)
+    NumActiveCoro() = 0

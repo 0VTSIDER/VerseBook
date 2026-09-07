@@ -37,12 +37,12 @@ assert{var x:int = +1         ; set x *= +9223372036854775807; x = +922337203685
 bp_vm_only
 {
 # Runtime error on overflow
-assert_runtime_error{-9223372036854775808 * -1}
-assert_runtime_error{-1 * -9223372036854775808}
+assert_runtime_error("MathIntrinsicCallFailure"){-9223372036854775808 * -1}
+assert_runtime_error("MathIntrinsicCallFailure"){-1 * -9223372036854775808}
 
 # integer multiply overflow
-assert_runtime_error{var x:int = -9223372036854775808; set x *= -1}
-assert_runtime_error{var x:int = -1         ; set x *= -9223372036854775808}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = -9223372036854775808; set x *= -1}
+assert_runtime_error("MathIntrinsicCallFailure"){var x:int = -1         ; set x *= -9223372036854775808}
 }
 verse_vm_only
 {

@@ -1,0 +1,38 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+verse_vm_only{
+assert_semantic_error(3551):
+    Sleep()<suspends>:void = {}
+
+    F():void =
+        spawn:
+            loop:
+                Sleep()
+                return
+} #verse_vm_only
+
+assert_semantic_error(3556):
+    Sleep()<suspends>:void = {}
+
+    F()<suspends>:void =
+        branch:
+            loop:
+                Sleep()
+                return
+
+assert_semantic_error(3566):
+    F():void =
+        defer:
+            loop:
+                return
+        return
+
+assert_semantic_error(3626):
+    c := class:
+
+    F():void =
+        c:
+            block:
+                loop:
+                    @ignore_unreachable return
+

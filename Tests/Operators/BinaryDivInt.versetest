@@ -41,8 +41,8 @@ assert{not (+2 / 0)}
 bp_vm_only
 {
 # integer divide overflow
-assert_runtime_error{Floor(-9223372036854775808 / -1)}
-assert_runtime_error{Ceil(-9223372036854775808 / -1)}
+assert_runtime_error("IntegerOverflow"){Floor(-9223372036854775808 / -1)}
+assert_runtime_error("IntegerOverflow"){Ceil(-9223372036854775808 / -1)}
 }
 verse_vm_only
 {

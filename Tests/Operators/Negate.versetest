@@ -7,7 +7,7 @@ assert{ x:=2; y:=-1+1; x+y=2 }
 
 bp_vm_only
 {
-assert_runtime_error{ x:=-9223372036854775808; -x }
+assert_runtime_error("MathIntrinsicCallFailure"){ x:=-9223372036854775808; -x }
 }
 verse_vm_only
 {

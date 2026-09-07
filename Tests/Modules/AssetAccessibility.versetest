@@ -1,0 +1,72 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Reflected redirectors do not require user intervention:
+assert_valid:
+    vpackage(SomeProject, /SomeProject.com/Foo, ?PackageType:=Assets, ?Scope:=InternalUser, ?EnableAssetRedirectorReflection:=true):
+        snippet:
+            Assets := module:
+                Prefabs := module:
+                    PF_Something<public> := class:
+
+            # Redirectors:
+            OldModule := module:
+                PF_Something<scoped{/SomeProject.com/Foo}> := (/SomeProject.com/Foo:)Assets.Prefabs.PF_Something
+
+    vpackage(SomeProject, /SomeProject.com/Foo, ?Scope:=PublicUser, ?Dependencies:=("SomeProject/Assets"), ?EnableAssetRedirectorReflection:=true):
+        snippet:
+            using { /SomeProject.com/Foo/OldModule }
+            something_user := class:
+                Something:PF_Something
+
+# User-defined accessibility does not conflict with default accessibility for reflected modules:
+assert_valid:
+    vpackage(SomeProject, /SomeProject.com/Foo, ?PackageType:=Assets, ?Scope:=InternalUser, ?EnableAssetRedirectorReflection:=true):
+        snippet:
+            Assets := module:
+                Prefabs := module:
+                    PF_Something<public> := class:
+
+    vpackage(SomeProject, /SomeProject.com/Foo, ?Scope:=PublicUser, ?Dependencies:=("SomeProject/Assets"), ?EnableAssetRedirectorReflection:=true):
+        snippet:
+            Assets<public> := module:
+                Prefabs<public> := module:
+
+        snippet:
+            using { /SomeProject.com/Foo/Assets/Prefabs }
+            something_user := class:
+                Something:PF_Something
+
+    vpackage(OtherProject, /SomeProject.com/Bar, ?Scope:=PublicUser, ?Dependencies:=("SomeProject", "SomeProject/Assets")):
+        snippet:
+            using { /SomeProject.com/Foo/Assets/Prefabs }
+            MakeSomething():PF_Something = PF_Something{}
+
+# Reflected modules do not cause ambiguity errors when asset redirector reflection is disabled:
+assert_valid:
+    vpackage(SomeProject, /SomeProject.com/Foo, ?PackageType:=Assets, ?Scope:=InternalUser):
+        snippet:
+            Assets := module:
+                Prefabs := module:
+                    PF_Something<public> := class:
+
+    vpackage(SomeProject, /SomeProject.com/Foo, ?Scope:=PublicUser, ?Dependencies:=("SomeProject/Assets"), ?UploadedAtFNVersion:=4199):
+        snippet:
+            Prefabs := module:
+                PF_Something<public> := class:
+
+        snippet:
+            using { /SomeProject.com/Foo/Assets }
+            MakeSomething():Prefabs.PF_Something = Prefabs.PF_Something{}
+
+# Reflected assets can be defaulted to epic_internal accessibility:
+assert_valid:
+    vpackage(SomeProject, /SomeProject.com/Foo, ?PackageType:=Assets, ?Scope:=InternalUser, ?EnableAssetRedirectorReflection:=true, ?DefaultAssetAccessSpecifier:=EpicInternal):
+        snippet:
+            Assets := module:
+                Prefabs := module:
+                    PF_Something<epic_internal> := class:
+
+    vpackage(OtherProject, /SomeProject.com/Bar, ?Scope:=InternalUser, ?Dependencies:=("SomeProject/Assets")):
+        snippet:
+            using { /SomeProject.com/Foo/Assets/Prefabs }
+            MakeSomething():PF_Something = PF_Something{}

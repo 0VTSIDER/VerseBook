@@ -1,0 +1,102 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# BPVM generates coercion functions (the VerseVM does not) and currently coercion functions cannot cross package boundaries
+bp_vm_only
+{
+assert_ir_error(3502):
+    vpackage(P0, /mytest.com/Events, ?Role := External):
+        snippet:
+            using { /Verse.org/Native }
+
+            subscribable_thing<public>(t:type) := class:
+                Subscribe<public>(Callback:type {_(:t):void})<transacts>:void = external {}
+
+            director_base<public> := class:
+                HandlePayload<public>(P:int):void = external {}
+
+    vpackage(P1, /mytest.com/Intro, ?Dependencies := (P0), ?Role := Source):
+        snippet:
+            using { /mytest.com/Events }
+
+            director<public> := class(director_base):
+                Go<public>():void =
+                    E := subscribable_thing(int){}
+                    E.Subscribe(HandlePayload)
+
+assert_ir_error(3502):
+    vpackage(P0, /mytest.com/Events, ?Role := Source):
+        snippet:
+            subscribable_thing<public>(t:type) := class:
+                Subscribe<public>(Callback:type {_(:t):void})<transacts>:void = {}
+
+            director_base<public> := class:
+                HandlePayload<public>(P:int):void = {}
+
+    vpackage(P1, /mytest.com/Intro, ?Dependencies := (P0), ?Role := Source):
+        snippet:
+            using { /mytest.com/Events }
+
+            director := class(director_base):
+                Go():void =
+                    E := subscribable_thing(int){}
+                    E.Subscribe(HandlePayload)
+}
+
+verse_vm_only
+{
+assert_valid:
+    vpackage(P0, /mytest.com/Events, ?Role := Source):
+        snippet:
+            subscribable_thing<public>(t:type) := class:
+                Subscribe<public>(Callback:type {_(:t):void})<transacts>:void = {}
+
+            director_base<public> := class:
+                HandlePayload<public>(P:int):void = {}
+
+    vpackage(P1, /mytest.com/Intro, ?Dependencies := (P0), ?Role := Source):
+        snippet:
+            using { /mytest.com/Events }
+
+            director := class(director_base):
+                Go():void =
+                    E := subscribable_thing(int){}
+                    E.Subscribe(HandlePayload)
+
+assert_valid:
+    vpackage(P0, /mytest.com/Events, ?Role := External):
+        snippet:
+            using { /Verse.org/Native }
+
+            subscribable_thing<public>(t:type) := class:
+                Subscribe<public>(Callback:type {_(:t):void})<transacts>:void = external {}
+
+            director_base<public> := class:
+                HandlePayload<public>(P:int):void = external {}
+
+    vpackage(P1, /mytest.com/Intro, ?Dependencies := (P0), ?Role := Source):
+        snippet:
+            using { /mytest.com/Events }
+
+            director<public> := class(director_base):
+                Go<public>():void =
+                    E := subscribable_thing(int){}
+                    E.Subscribe(HandlePayload)
+}
+
+# Test forward use works to stress "IsUnsupportedCrossPackageFunctionCoercion"
+assert_valid:
+    vpackage(P0, /mytest.com/Fwd, ?Role := Source):
+        snippet:
+            m1<public> := module:
+                using { m2 }
+                director<public> := class(director_base):
+                    Go<public>():void =
+                        E := subscribable_thing(int){}
+                        E.Subscribe(HandlePayload)
+
+            m2<public> := module:
+                subscribable_thing<public>(t:type) := class:
+                    Subscribe<public>(Callback:type {_(:t):void})<transacts>:void = {}
+
+                director_base<public> := class:
+                    HandlePayload<public>(P:int):void = {}

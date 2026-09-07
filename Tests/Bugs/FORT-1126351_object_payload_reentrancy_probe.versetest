@@ -1,0 +1,43 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Interface-payload variant of the cross-event re-entrancy check: the event carries an interface payload,
+# so a resumed awaiter coerces `any -> non-optional interface`. Re-entering X's drain still resumes
+# every parked awaiter.
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+Tick(Ticks:int):void = CoroUtils.Tick(Ticks)
+NumActiveCoro():int  = return CoroUtils.GetNumActiveCoroutines()
+
+broadcaster := interface {}
+payload_obj := class(broadcaster):
+    V : int
+
+AwaitXThenSignalY(X:event(broadcaster), Y:event(int))<suspends>:void=
+    X.Await()
+    Y.Signal(0)
+
+OuterAwaitX(X:event(broadcaster))<suspends>:void=
+    X.Await()
+
+AwaitYThenReenterX(X:event(broadcaster), Y:event(int), Z:event(int))<suspends>:void=
+    Y.Await()
+    Z.Signal(0)
+    X.Signal(payload_obj{V := 123})
+
+AwaitZThenReparkX(X:event(broadcaster), Z:event(int))<suspends>:void=
+    Z.Await()
+    X.Await()
+
+# Re-entry into X's drain (interface payload) resumes every parked awaiter, including OuterAwaitX.
+assert:
+    X := event(broadcaster){}
+    Y := event(int){}
+    Z := event(int){}
+    spawn { AwaitXThenSignalY(X, Y) }
+    spawn { OuterAwaitX(X) }
+    spawn { AwaitYThenReenterX(X, Y, Z) }
+    spawn { AwaitZThenReparkX(X, Z) }
+    Tick(1)
+    X.Signal(payload_obj{V := 123})
+    Tick(2)
+    NumActiveCoro() = 0

@@ -1,0 +1,123 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+#
+# Tests map assignment with a bounded refinement key supplied by an
+# immutable interface field overridden with a narrower type.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+T := type{X:int where 0 <= X, X <= 10}
+
+I := interface:
+    Key:int
+
+C := class(I):
+    Key<override>:T = 1
+
+assert:
+    O := C{}
+    var M:[T]int = map{}
+    set M[O.Key] = 1
+
+BoundedFloatKey := type{Value:float where 0.0 <= Value, Value <= 10.0}
+
+FloatKeyProvider := interface:
+    Key:float
+
+BoundedFloatKeyProvider := class(FloatKeyProvider):
+    Key<override>:BoundedFloatKey = 1.0
+
+assert:
+    Provider := BoundedFloatKeyProvider{}
+    var FloatMap:[BoundedFloatKey]int = map{}
+    set FloatMap[Provider.Key] = 1
+
+# Tests a derived unique-class key supplied through a base unique-class interface field.
+RefinedMapKeyInterfaceOverrideUniqueClassBase := class<unique>:
+RefinedMapKeyInterfaceOverrideUniqueClassDerived := class(RefinedMapKeyInterfaceOverrideUniqueClassBase):
+RefinedMapKeyInterfaceOverrideUniqueClassProviderInterface := interface:
+    Key:RefinedMapKeyInterfaceOverrideUniqueClassBase
+RefinedMapKeyInterfaceOverrideUniqueClassProvider := class(RefinedMapKeyInterfaceOverrideUniqueClassProviderInterface):
+    Key<override>:RefinedMapKeyInterfaceOverrideUniqueClassDerived = RefinedMapKeyInterfaceOverrideUniqueClassDerived{}
+
+assert:
+    Provider := RefinedMapKeyInterfaceOverrideUniqueClassProvider{}
+    var Map:[RefinedMapKeyInterfaceOverrideUniqueClassDerived]int = map{}
+    set Map[Provider.Key] = 1
+
+# Tests a derived unique-interface key supplied through a base unique-interface interface field.
+RefinedMapKeyInterfaceOverrideUniqueInterfaceBase := interface<unique>:
+RefinedMapKeyInterfaceOverrideUniqueInterfaceDerived := interface(RefinedMapKeyInterfaceOverrideUniqueInterfaceBase):
+RefinedMapKeyInterfaceOverrideUniqueInterfaceKey := class(RefinedMapKeyInterfaceOverrideUniqueInterfaceDerived):
+RefinedMapKeyInterfaceOverrideUniqueInterfaceProviderInterface := interface:
+    Key:RefinedMapKeyInterfaceOverrideUniqueInterfaceBase
+RefinedMapKeyInterfaceOverrideUniqueInterfaceProvider := class(RefinedMapKeyInterfaceOverrideUniqueInterfaceProviderInterface):
+    Key<override>:RefinedMapKeyInterfaceOverrideUniqueInterfaceDerived = RefinedMapKeyInterfaceOverrideUniqueInterfaceKey{}
+
+assert:
+    Provider := RefinedMapKeyInterfaceOverrideUniqueInterfaceProvider{}
+    var Map:[RefinedMapKeyInterfaceOverrideUniqueInterfaceDerived]int = map{}
+    set Map[Provider.Key] = 1
+
+# Tests a tuple key containing a derived unique class and an int through a broader tuple field.
+RefinedMapKeyInterfaceOverrideTupleClassBase := class<unique>:
+RefinedMapKeyInterfaceOverrideTupleClassDerived := class(RefinedMapKeyInterfaceOverrideTupleClassBase):
+RefinedMapKeyInterfaceOverrideTupleProviderInterface := interface:
+    Key:tuple(RefinedMapKeyInterfaceOverrideTupleClassBase,int)
+RefinedMapKeyInterfaceOverrideTupleProvider := class(RefinedMapKeyInterfaceOverrideTupleProviderInterface):
+    Key<override>:tuple(RefinedMapKeyInterfaceOverrideTupleClassDerived,int) = (RefinedMapKeyInterfaceOverrideTupleClassDerived{}, 1)
+
+assert:
+    Provider := RefinedMapKeyInterfaceOverrideTupleProvider{}
+    var Map:[tuple(RefinedMapKeyInterfaceOverrideTupleClassDerived,int)]int = map{}
+    set Map[Provider.Key] = 1
+
+# Tests an option key containing a derived unique class through a broader option field.
+RefinedMapKeyInterfaceOverrideOptionClassBase := class<unique>:
+RefinedMapKeyInterfaceOverrideOptionClassDerived := class(RefinedMapKeyInterfaceOverrideOptionClassBase):
+RefinedMapKeyInterfaceOverrideOptionProviderInterface := interface:
+    Key:?RefinedMapKeyInterfaceOverrideOptionClassBase
+RefinedMapKeyInterfaceOverrideOptionProvider := class(RefinedMapKeyInterfaceOverrideOptionProviderInterface):
+    Key<override>:?RefinedMapKeyInterfaceOverrideOptionClassDerived = option{RefinedMapKeyInterfaceOverrideOptionClassDerived{}}
+
+assert:
+    Provider := RefinedMapKeyInterfaceOverrideOptionProvider{}
+    var Map:[?RefinedMapKeyInterfaceOverrideOptionClassDerived]int = map{}
+    set Map[Provider.Key] = 1
+
+# Tests named aliases of base and derived unique-class keys through an overridden field.
+RefinedMapKeyInterfaceOverrideAliasClassBase := class<unique>:
+RefinedMapKeyInterfaceOverrideAliasClassDerived := class(RefinedMapKeyInterfaceOverrideAliasClassBase):
+RefinedMapKeyInterfaceOverrideAliasBase := RefinedMapKeyInterfaceOverrideAliasClassBase
+RefinedMapKeyInterfaceOverrideAliasDerived := RefinedMapKeyInterfaceOverrideAliasClassDerived
+RefinedMapKeyInterfaceOverrideAliasProviderInterface := interface:
+    Key:RefinedMapKeyInterfaceOverrideAliasBase
+RefinedMapKeyInterfaceOverrideAliasProvider := class(RefinedMapKeyInterfaceOverrideAliasProviderInterface):
+    Key<override>:RefinedMapKeyInterfaceOverrideAliasDerived = RefinedMapKeyInterfaceOverrideAliasClassDerived{}
+
+assert:
+    Provider := RefinedMapKeyInterfaceOverrideAliasProvider{}
+    var Map:[RefinedMapKeyInterfaceOverrideAliasDerived]int = map{}
+    set Map[Provider.Key] = 1
+
+class1 := class {}
+
+class2 := class<castable><unique>(class1) {}
+
+F(X:class1, Y:castable_subtype(class1)):[]Y =
+    if (Z := Y[X]):
+        array{Z}
+    else:
+        ()
+
+G(X:class1, Y:castable_subtype(class1)):[]Y =
+    var Result:[]Y = array{}
+    set Result += F(X, Y)
+    Result
+
+assert:
+    X := class2{}
+    G(X, class2) = array{X}
+
+assert:
+    X := class1{}
+    G(X, class2) = array{}

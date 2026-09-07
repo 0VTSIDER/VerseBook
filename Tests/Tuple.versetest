@@ -85,10 +85,10 @@ assert_valid_syntax {"for(Num:Nums)\{1,2\}"}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tuple type errors
 
-# An empty tuple is equal to false in MaxVerse, but that's not implemented yet.
-assert_semantic_error(3509):
-    F() : void =
-        MyTuple : tuple() = false
+assert:
+    MyTuple : tuple() = false
+    MyTuple = ()
+    MyTuple = false
 
 # There's no way to create an instance of a single-element tuple yet.
 assert_semantic_error(3509):

@@ -21,25 +21,25 @@ verse_vm_todo
 NullTestObject:test_object=MakeNull(test_object)
 }
 
-assert_runtime_error{NullTestObject.Var=0}
-assert_runtime_error{set NullTestObject.Var = 0}
+assert_runtime_error("InvalidVarRead"){NullTestObject.Var=0}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Var = 0}
 
-assert_runtime_error{NullTestObject.Array[0]}
-assert_runtime_error{set NullTestObject.Array = array{}}
-assert_runtime_error{set NullTestObject.Array[0] = ""}
-assert_runtime_error{set NullTestObject.Array += array{""}}
+assert_runtime_error("InvalidVarRead"){NullTestObject.Array[0]}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Array = array{}}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Array[0] = ""}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Array += array{""}}
 
-assert_runtime_error{NullTestObject.Map[0]}
-assert_runtime_error{set NullTestObject.Map = map{}}
-assert_runtime_error{set NullTestObject.Map[0] = ""}
+assert_runtime_error("InvalidVarRead"){NullTestObject.Map[0]}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Map = map{}}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Map[0] = ""}
 
-assert_runtime_error{NullTestObject.Struct.D[""]}
-assert_runtime_error{set NullTestObject.Struct = test_struct{A:=0,B:=map{},C:=array{},D:=map{}}}
-assert_runtime_error{set NullTestObject.Struct.D = map{""=>0}}
+assert_runtime_error("InvalidVarRead"){NullTestObject.Struct.D[""]}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Struct = test_struct{A:=0,B:=map{},C:=array{},D:=map{}}}
+assert_runtime_error("InvalidVarRead"){set NullTestObject.Struct.D = map{""=>0}}
 
-assert_runtime_error{array{1}[NullTestObject.Var]=1}
-assert_runtime_error{map{0=>1}[NullTestObject.Var]=1}
+assert_runtime_error("InvalidVarRead"){array{1}[NullTestObject.Var]=1}
+assert_runtime_error("InvalidVarRead"){map{0=>1}[NullTestObject.Var]=1}
 
-assert_runtime_error{var Array:[]int=array{1}; set Array[NullTestObject.Var]=1}
-assert_runtime_error{var Map:[int]int=map{0=>1}; set Map[NullTestObject.Var]=1}
+assert_runtime_error("InvalidVarRead"){var Array:[]int=array{1}; set Array[NullTestObject.Var]=1}
+assert_runtime_error("InvalidVarRead"){var Map:[int]int=map{0=>1}; set Map[NullTestObject.Var]=1}
 }

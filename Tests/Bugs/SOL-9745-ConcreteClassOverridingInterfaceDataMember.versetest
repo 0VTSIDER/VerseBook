@@ -1,0 +1,100 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# A `concrete` class that re-declares an interface's uninitialized data member used to crash the
+# analyzer instead of reporting V3519.
+#
+# ValidateConcreteClassDataMemberValues gathers candidates from two places. Members reached
+# through an interface record the class implementing that interface; members declared on a class
+# record nothing, because that field is documented as being for interface members only. But a
+# class member that overrides an interface member resolves, via GetBaseOverriddenDefinition, to
+# the interface's definition -- so it looks like an interface member while carrying no
+# implementing class. Both candidates share a base definition, only the first survives
+# deduplication, and picking the wrong one dereferenced null.
+#
+# Every shape below has to report rather than crash. The interesting ones are those where the two
+# candidates name different implementing classes, since that is what the ordering has to resolve.
+
+# The class re-declares the member it inherits.
+assert_semantic_error(3519):
+    i_direct := interface { F:int }
+    c_direct := class<concrete>(i_direct) { F<override>:int }
+
+# The same, for a member of function type.
+assert_semantic_error(3519):
+    i_func := interface { F:type{__():void} }
+    c_func := class<concrete>(i_func) { F<override>:type{__():void} }
+
+# The class inherits the member without re-declaring it.
+assert_semantic_error(3519):
+    i_plain := interface { F:int }
+    c_plain := class<concrete>(i_plain) {}
+
+# A `var` member.
+assert_semantic_error(3519):
+    i_var := interface { var F:int }
+    c_var := class<concrete>(i_var) { var F<override>:int }
+
+# The interface is implemented by a non-concrete base, and the override is on the concrete class,
+# so the two candidates disagree about the implementing class.
+assert_semantic_error(3519):
+    i_split := interface { F:int }
+    mid_split := class(i_split) {}
+    c_split := class<concrete>(mid_split) { F<override>:int }
+
+# The override is on the non-concrete middle class instead.
+assert_semantic_error(3519):
+    i_mid := interface { F:int }
+    mid_mid := class(i_mid) { F<override>:int }
+    c_mid := class<concrete>(mid_mid) {}
+
+# Overridden at both levels.
+assert_semantic_error(3519):
+    i_both := interface { F:int }
+    mid_both := class(i_both) { F<override>:int }
+    c_both := class<concrete>(mid_both) { F<override>:int }
+
+# The interface is several classes up the chain.
+assert_semantic_error(3519):
+    i_deep := interface { F:int }
+    base_deep := class(i_deep) {}
+    mid_deep := class(base_deep) {}
+    c_deep := class<concrete>(mid_deep) { F<override>:int }
+
+# Two interfaces, one of them overridden.
+assert_semantic_error(3519, 3519):
+    i_multi_a := interface { F:int }
+    i_multi_b := interface { G:int }
+    c_multi := class<concrete>(i_multi_a, i_multi_b) { F<override>:int }
+
+# The declaring interface is reached by two paths, so it is walked once but overridden once.
+assert_semantic_error(3519):
+    i_diamond_base := interface { F:int }
+    i_diamond_a := interface(i_diamond_base) {}
+    i_diamond_b := interface(i_diamond_base) {}
+    c_diamond := class<concrete>(i_diamond_a, i_diamond_b) { F<override>:int }
+
+# The member is declared in a super-interface the class does not name directly.
+assert_semantic_error(3519):
+    i_super_base := interface { F:int }
+    i_super_sub := interface(i_super_base) {}
+    c_super := class<concrete>(i_super_sub) { F<override>:int }
+
+# Parametric interfaces: the two candidates have to agree on the base definition across
+# instantiation.
+assert_semantic_error(3519):
+    i_param(t:type) := interface { F:t }
+    c_param := class<concrete>(i_param(int)) { F<override>:int }
+
+assert_semantic_error(3519):
+    i_param_plain(t:type) := interface { F:t }
+    c_param_plain := class<concrete>(i_param_plain(int)) {}
+
+assert_semantic_error(3519):
+    i_param_split(t:type) := interface { F:t }
+    mid_param := class(i_param_split(int)) {}
+    c_param_split := class<concrete>(mid_param) { F<override>:int }
+
+# A parametric class implementing a parametric interface.
+assert_semantic_error(3519):
+    i_param_cls(t:type) := interface { F:t }
+    c_param_cls(t:type) := class<concrete>(i_param_cls(t)) { F<override>:t }

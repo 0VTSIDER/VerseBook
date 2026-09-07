@@ -1,5 +1,6 @@
 # Copyright Epic Games, Inc. All Rights Reserved.
 
+using { /Verse.org/Concurrency }
 using { /Verse.org/Tests/VerseTestScriptCmd }
 
 test_npc := class:
@@ -26,4 +27,22 @@ test_npc := class:
 assert:
     Npc := test_npc{}
     spawn{Npc.TryNavigate()}
+    CoroUtils.Tick(1)
+
+# Signalling the event here causes this task to be cancelled.
+OnSimulate(Event:event(int))<suspends>:void =
+    CoroUtils.WaitTicks(1)
+    Event.Signal(3)
+
+# This task should not be resumed when OnSimulate's cancellation finishes.
+AwaitEvent(Task:task(void), Event:event(int))<suspends>:void =
+    loop:
+        X := Event.Await()
+        X = 3 or Err()
+        CancelAndForget(Task)
+
+assert:
+    Event := event(int){}
+    Task := spawn{OnSimulate(Event)}
+    spawn{AwaitEvent(Task, Event)}
     CoroUtils.Tick(1)

@@ -232,3 +232,21 @@ F := class:
         }
 }
 
+
+# Bug - UE-390136: visit(const Vst::Macro&) does not indent the opening brace of a non-vertical clause,
+# so it lands at column 1. The gold value below is the current wrong output; replace this with the
+# simple assert_roundtrip{expr} form once it is fixed.
+assert_roundtrip(
+F():void =
+    block
+    {
+        c
+        d
+    }
+){
+F():void = 
+    block
+ {c
+    d
+    }
+}

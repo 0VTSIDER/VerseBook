@@ -1,0 +1,17 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+data := class:
+    Value:int
+
+CaptureLocalUsing()<suspends>:void =
+    Data := data{Value := 3}
+    using { Data }
+    branch:
+        CoroUtils.WaitTicks(0)
+        CoroUtils.LogEvent("{Value}")
+
+assert:
+    spawn{CaptureLocalUsing()}
+    CoroUtils.GetEventLogString() = "3"

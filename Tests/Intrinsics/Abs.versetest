@@ -10,7 +10,7 @@ assert{Abs(-2)=2}
 
 assert{Abs(-9223372036854775807)}
 bp_vm_only{
-assert_runtime_error{Abs(-9223372036854775808)}
+assert_runtime_error("MathIntrinsicCallFailure"){Abs(-9223372036854775808)}
 }
 verse_vm_only
 {

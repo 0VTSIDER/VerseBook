@@ -1,6 +1,5 @@
 # Copyright Epic Games, Inc. All Rights Reserved.
 
-<# Disabled pending fix for FORT-1017607
 assert_semantic_error(3510):
     covariant_interface(t:type) := interface{Field:t}
     F(X:covariant_interface(int)) : covariant_interface(float) = X
@@ -37,4 +36,3 @@ assert_semantic_error(3509):
     class_inheriting_covariant_class(t:type) := class(covariant_class(t)) {}
     F0(X:class_inheriting_covariant_class(float)) : void = {}
     F1(X:class_inheriting_covariant_class(int)) : void = F0(X)
-#>

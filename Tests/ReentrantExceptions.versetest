@@ -5,7 +5,7 @@ verse_vm_todo
 
 using { /Verse.org/Tests/VerseTestScriptCmd }
 
-assert_runtime_error:
+assert_runtime_error("Internal"):
     # this sequence of reentrant calls creates a call stack that
     # intersperses verse and c++ frames such that every verse frame
     # reenters bpvm (via an invocation of UObject::ProcessEvent). the

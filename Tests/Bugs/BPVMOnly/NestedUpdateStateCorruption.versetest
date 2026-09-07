@@ -1,11 +1,11 @@
 # Copyright Epic Games, Inc. All Rights Reserved.
 
-# BPVM BUG: Nested Update() call corrupts task _State
+# Nested Update() call would corrupt task _State in BPVM (FIXED)
 #
-# SUMMARY:
+# SUMMARY (historical — the bug this test now guards against):
 # When Event.Signal() is called from within a rush/sync arm to wake a branch
-# in the SAME coroutine, BPVM triggers a nested Update() call that overwrites
-# the task's _State field. This causes other suspended arms to incorrectly
+# in the SAME coroutine, BPVM triggered a nested Update() call that overwrote
+# the task's _State field. This caused other suspended arms to incorrectly
 # re-execute from their beginning instead of resuming from their Wait point.
 #
 # TRIGGER CONDITIONS:
@@ -38,16 +38,18 @@
 #       if (TaskGetState() >= BeginLabel) -> resuming, jump to resume point
 #   - Since corrupted _State < arm 2's BeginLabel, arm 2 re-executes!
 #
+# RESIDUAL (separate, still-open BPVM issue — NOT the _State bug): TestNested
+# Concurrency still shows one divergence. VVM cancels a rush's losing arm when
+# the winner completes; BPVM's synchronous-destruct cancellation model lets the
+# loser (R2) run to completion, so "X" still appears one tick later. That arm
+# no longer RE-EXECUTES (the _State fix), but it is not cancelled either.
+#
 # WHY VVM WORKS:
 # VVM represents each branch/rush arm as a distinct VTask with its own
 # YieldPC/YieldFrame/YieldTask fields, updated on resume. When the nested
 # Update occurs, it updates the branch's VTask state, not a shared _State
 # field. Each arm knows where to resume independently.
-#
-# KEY FILES:
-# - VerseTask.h:316-337      - BPVM TVerseCall::Return
-# - VerseTask.cpp:309-334    - Update() sets _State unconditionally
-# - SolarisCodeGenerator.cpp:7526-7546 - EmitJumpIfResumed state comparison
+
 
 using { /Verse.org/Tests/VerseTestScriptCmd }
 using { /Verse.org/Concurrency }
@@ -116,9 +118,9 @@ TestMinimalRush()<suspends>: void =
 assert:
     spawn{TestMinimalRush()}
     Tick(4)
-    # VVM: A, B, D at tick 0; C, W, E, F at tick 1; G at tick 2; empty tick 3
-    # BPVM: A, B, D at tick 0; C, W, E, D (re-exec!), F at tick 1; X, G at tick 2
-    AssertLogStr["TestMinimalRush", "ABD,CWEF,G,,", ?BPVMExpected:="ABD,CWEDF,XG,,"]
+    # FIXED: BPVM now matches VVM. A, B, D at tick 0; C, W, E, F at tick 1; G at tick 2.
+    # (Pre-fix BPVM re-executed arm 2: "ABD,CWEDF,XG,,".)
+    AssertLogStr["TestMinimalRush", "ABD,CWEF,G,,"]
 
 
 ############################################
@@ -158,8 +160,8 @@ TestMinimalSync()<suspends>: void =
 assert:
     spawn{TestMinimalSync()}
     Tick(3)
-    # VVM: D appears once; BPVM: D appears twice
-    AssertLogStr["TestMinimalSync", "ABD,CWE,FZ,", ?BPVMExpected:="ABD,CWED,FZ,"]
+    # FIXED: D appears once on both VMs. (Pre-fix BPVM re-executed arm 2: "ABD,CWED,FZ,".)
+    AssertLogStr["TestMinimalSync", "ABD,CWE,FZ,"]
 
 
 ############################################
@@ -196,9 +198,9 @@ TestMultipleArms()<suspends>: void =
 assert:
     spawn{TestMultipleArms()}
     Tick(4)
-    # VVM: A,1,2,3 at tick 0; S,W,E at tick 1; F at tick 2; G,Z at tick 3
-    # BPVM: Arms 2 and 3 both re-execute after signal
-    AssertLogStr["TestMultipleArms", "A123,SWE,F,GZ,", ?BPVMExpected:="A123,SWE23,F,GZ,"]
+    # FIXED: A,1,2,3 at tick 0; S,W,E at tick 1; F at tick 2; G,Z at tick 3 on both VMs.
+    # (Pre-fix BPVM re-executed arms 2 and 3: "A123,SWE23,F,GZ,".)
+    AssertLogStr["TestMultipleArms", "A123,SWE,F,GZ,"]
 
 
 ############################################
@@ -208,7 +210,8 @@ assert:
 # The nested rush is inside sync arm 1, and sync arm 2 (D) is also suspended.
 #
 # Note: In rush, when arm 1 completes, arm 2 (R2) is CANCELLED - so X never
-# appears in VVM. In BPVM, the state corruption causes R2 to re-execute.
+# appears in VVM. Post-fix BPVM no longer re-executes R2, but still does not
+# cancel it (separate cancellation-model issue), so X appears once on tick 2.
 #
 TestNestedConcurrency()<suspends>: void =
     Event := event(){}
@@ -242,10 +245,13 @@ assert:
     spawn{TestNestedConcurrency()}
     Tick(4)
     # VVM: Rush arm R2 is cancelled when R1 wins, so X never appears.
-    #      S, W (branch wakes), E, F on tick 1; G, Z on tick 3
-    # BPVM: State corruption causes R2 AND D to re-execute. X appears because
-    #       R2 restarts and runs to completion instead of being cancelled.
-    AssertLogStr["TestNestedConcurrency", "AR1R2D,SWEF,,GZ,", ?BPVMExpected:="AR1R2D,SWER2FD,X,GZ,"]
+    #      S, W (branch wakes), E, F on tick 1; G, Z on tick 3.
+    # BPVM: _State fix stops R2/D from RE-EXECUTING (was "AR1R2D,SWER2FD,X,GZ,").
+    #       One residual divergence remains: BPVM does not cancel the losing rush
+    #       arm R2, so R2 runs to completion and logs "X" on tick 2. This is a
+    #       SEPARATE cancellation-model difference (see header RESIDUAL note), not
+    #       the _State corruption, so the ?BPVMExpected override is kept here.
+    AssertLogStr["TestNestedConcurrency", "AR1R2D,SWEF,,GZ,", ?BPVMExpected:="AR1R2D,SWEF,X,GZ,"]
 
 
 ############################################
@@ -281,7 +287,7 @@ TestSignalFromDefer()<suspends>: void =
 assert:
     spawn{TestSignalFromDefer()}
     Tick(4)
-    # VVM: Arm 1 resumes at tick 1, logs C, scope exits, defer runs (d), signal wakes W
-    #      All on tick 1. Then F at tick 2, Z, then G.
-    # BPVM: Same but D re-executes due to state corruption
-    AssertLogStr["TestSignalFromDefer", "ABD,CdW,FZ,G,", ?BPVMExpected:="ABD,CdWD,FZ,G,"]
+    # FIXED: Arm 1 resumes at tick 1, logs C, scope exits, defer runs (d), signal wakes W,
+    #        all on tick 1; then F at tick 2, Z, then G — identical on both VMs.
+    # (Pre-fix BPVM re-executed arm 2: "ABD,CdWD,FZ,G,".)
+    AssertLogStr["TestSignalFromDefer", "ABD,CdW,FZ,G,"]

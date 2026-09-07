@@ -22,7 +22,7 @@ class_same_name() := class_same_name(void)
 assert:
     C := class_same_name(){}
     C.Value = false
-    C.Method(void)
+    C.Method(false)
     CInt := class_same_name(int){}
     CInt.Value = false
 
@@ -38,7 +38,7 @@ c_int := class(interface_same_name(int)) {}
 assert:
     C := c{}
     # C.Value = false       # SOL-7849
-    C.Method(void)
+    C.Method(false)
     CInt := c_int{}
     # CInt.Value = false    # SOL-7849
     CInt.Method(10) = 10

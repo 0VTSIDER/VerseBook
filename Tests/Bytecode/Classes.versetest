@@ -1,0 +1,47 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Bytecode shape of class instantiation, field access and method calls.
+# See Bytecode.versetest for an explanation of `assert_bytecode` and the `# CHECK:` directive syntax.
+# The freshly allocated object register is captured and threaded through field unification, the
+# constructor call, the unwrap, the bound local, and the field/method access.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+point := class:
+    X:int = 0
+    Y:int = 0
+
+counter := class:
+    V:int = 0
+    Get():int = V
+
+# `point{X := 3, Y := 4}` allocates the object (NewObject -> OBJ), unifies each archetype field on OBJ,
+# runs the generated constructor with OBJ as Self, unwraps it into the bound local P, and `.X` reads back
+# via LoadField on P.
+assert_bytecode:
+    # CHECK: [[OBJ:r[0-9]+]] = NewObject(Archetype:{{.*}}
+    # CHECK: UnifyField(Object: [[OBJ]], Name: {{.*}}point:)X{{.*}}, Value: c{{[0-9]+}}=3)
+    # CHECK: UnifyField(Object: [[OBJ]], Name: {{.*}}point:)Y{{.*}}, Value: c{{[0-9]+}}=4)
+    # CHECK: [[CTOR:r[0-9]+]] = CallWithSelf(Callee: {{.*}}point_ConstructorProcedure{{.*}}, Self: [[OBJ]],{{.*}}
+    # CHECK: UnifyNativeObject(Token: [[CTOR]], Object: [[OBJ]])
+    # CHECK: [[UNWRAP:r[0-9]+]] = UnwrapNativeConstructorWrapper(Object: [[OBJ]])
+    # CHECK: [[P:r[0-9]+]] = Move(Source: [[UNWRAP]])
+    P := point{X := 3, Y := 4}
+
+    # CHECK: [[FIELD:r[0-9]+]] = LoadField(Object: [[P]], Name: {{.*}}point:)X{{.*}})
+    # CHECK: [[CMP:r[0-9]+]] = Gt(LeftSource: [[FIELD]], RightSource: c{{[0-9]+}}=0)
+    P.X > 0
+
+# A method call loads the function from the object (LoadField -> GET) and then `Call`s it; the call result
+# is compared.
+assert_bytecode:
+    # CHECK: [[OBJ:r[0-9]+]] = NewObject(Archetype:{{.*}}
+    # CHECK: [[CTOR:r[0-9]+]] = CallWithSelf(Callee: {{.*}}counter_ConstructorProcedure{{.*}}, Self: [[OBJ]],{{.*}}
+    # CHECK: [[UNWRAP:r[0-9]+]] = UnwrapNativeConstructorWrapper(Object: [[OBJ]])
+    # CHECK: [[O:r[0-9]+]] = Move(Source: [[UNWRAP]])
+    O := counter{V := 7}
+    
+    # CHECK: [[GET:r[0-9]+]] = LoadField(Object: [[O]], Name: {{.*}}counter:)Get{{.*}})
+    # CHECK: [[RET:r[0-9]+]] = Call(Callee: [[GET]], Arguments: (){{.*}})
+    # CHECK: [[CMP:r[0-9]+]] = Gt(LeftSource: [[RET]], RightSource: c{{[0-9]+}}=0)
+    O.Get() > 0

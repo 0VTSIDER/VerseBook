@@ -1,0 +1,36 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Fixture 03 - leaf interface change.
+#
+# Single leaf package whose public signature changes between phases (adds a
+# new public method). This package has no dependencies so it should be forced
+# to rebuild when the new method is added as normal.
+#
+# Phases:
+#   1. cold build of P0 - P0 Compiled
+#   2. P0 gets a new public method - P0 Compiled
+#   3. settled - P0 SkippedExternal
+
+incremental_compilation
+{
+    # Phase 1: cold build
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Greet<public>():void = {}
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+
+    # Phase 2: add a new public method
+    vpackage(P0, /A, ?Scope:=InternalUser):
+        snippet:
+            Module<public> := module:
+                Greet<public>():void = {}
+                NewMethod<public>():void = {}
+    build_packages{}
+    expected_rebuild_set := array{ "P0" }
+
+    # Phase 3: settled
+    build_packages{}
+    expected_rebuild_set := array{ }
+}

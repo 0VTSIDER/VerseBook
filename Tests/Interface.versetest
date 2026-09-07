@@ -310,3 +310,67 @@ assert_semantic_error(3599):
     c1 := class{ A():int = 24 }
     i1 := interface(c1) { B():int }
     c2 := class(i1) { B<override>():int = 42 }
+
+# SOL-9502: an <internal> member of a <scoped> interface must not be widened by the scoped grant.
+assert_semantic_error(3593, 3593):
+    A := module:
+        base<scoped { B }> := interface:
+            Func<internal>(): void = {}
+            FuncForB<scoped { B }>(): void = {}
+    B := module:
+        using { A }
+        some_class := class(base):
+            Func<override>(): void = {}
+
+# SOL-9502: content uploaded before the fix keeps the prior (lenient) behavior.
+assert_valid:
+    vpackage(P0, /Pkg, ?UploadedAtFNVersion:=4100):
+        snippet:
+            A := module:
+                base<scoped { B }> := interface:
+                    Func<internal>(): void = {}
+            B := module:
+                using { A }
+                some_class := class(base):
+                    Func<override>(): void = {}
+
+# SOL-9502: a member explicitly scoped to B is still overridable from B.
+assert_valid:
+    A := module:
+        base<scoped { B }> := interface:
+            FuncForB<scoped { B }>(): void = {}
+    B := module:
+        using { A }
+        some_class := class(base):
+            FuncForB<override>(): void = {}
+
+# SOL-9502: a default-access (internal) member of a <scoped> interface is not accessible from B.
+assert_semantic_error(3593, 3593):
+    A := module:
+        base<scoped { B }> := interface:
+            Func(): void
+    B := module:
+        using { A }
+        some_class := class(base):
+            Func<override>(): void = {}
+
+# SOL-9502: a public member of a <scoped> interface stays accessible/overridable from B.
+assert_valid:
+    A := module:
+        base<scoped { B }> := interface:
+            Func<public>(): void = {}
+    B := module:
+        using { A }
+        some_class := class(base):
+            Func<override>(): void = {}
+
+# SOL-9502: a member scoped to a shared parent module is accessible from a sibling under that parent.
+assert_valid:
+    Parent := module:
+        A := module:
+            base<scoped { Parent }> := interface:
+                Func<scoped { Parent }>(): void = {}
+        B := module:
+            using { A }
+            some_class := class(base):
+                Func<override>(): void = {}
