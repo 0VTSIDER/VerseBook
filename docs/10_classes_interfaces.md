@@ -3114,8 +3114,8 @@ assert_semantic_error(3502):
         Value:t
     Test()<decides>:void =
         C := container(int){Value := 42}
-        if (C2 := container(string)[C]):
-            {}
+        if (C2 := container(string)[C]) {}
+<#
 -->
 <!-- 120-->
 ```verse
@@ -3129,9 +3129,9 @@ container(t:type) := class:
 
 Test()<decides>:void =
     C := container(int){Value := 42}
-    if (C2 := container(string)[C]):  # ERROR 3502
-        {}
+    if (C2 := container(string)[C]) {}  # ERROR 3502
 ```
+<!-- #> -->
 
 However, concrete instantiations of parametric types can be cast
 targets, and non-parametric classes can be marked `<castable>` even
@@ -3144,7 +3144,12 @@ int_container := class<castable>(container(int)):
     Extra:string
 string_container := class<castable>(container(string)):
     Extra:string
-Base:container(int) = int_container{Value := 42, Extra := "test"}
+assert:
+    Base:container(int) = int_container{Value := 42, Extra := "test"}
+    if (IC := int_container[Base]):
+        Print("Extra: {IC.Extra}")
+    not string_container[Base]
+<#
 -->
 <!-- 121-->
 ```verse

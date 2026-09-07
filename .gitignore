@@ -1,4 +1,5 @@
 verse/
+ERR_*
 
 # Python
 __pycache__/

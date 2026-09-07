@@ -15,11 +15,13 @@ const fs   = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// -- HARD-CODED COMMAND ---------------------------------------------------------
-// Note: First tries to find VerseCLRVM-Win64-Shipping.exe in PATH,
-// then falls back to the standard Engine/Binaries location
-const CMD = 'VerseCLRVM-Win64-Shipping.exe';
-const FALLBACK_CMD = '/mnt/c/fortniteMain/Engine/Binaries/Win64/VerseCLRVM-Win64-Shipping.exe';
+// -- COMMAND --------------------------------------------------------------------
+// Note: First tries to find the CLR VM in PATH, then falls back to $VERSE_BIN
+// (the Engine/Binaries/Win64 directory of the fortniteMain repository).
+// $VERSE_CLR_VM overrides both with an explicit path.
+const VERSE_BIN = process.env.VERSE_BIN || '/mnt/d/fortniteMain/Engine/Binaries/Win64';
+const CMD = process.env.VERSE_CLR_VM || 'VerseCLRVM.exe';
+const FALLBACK_CMD = path.join(VERSE_BIN, 'VerseCLRVM.exe');
 const ARG_TEMPLATE = file => `--open=${file}`;
 // -------------------------------------------------------------------------------
 

@@ -1,28 +1,29 @@
 #!/bin/bash
-bin/vtest verse/02_primitives --verbose > ERR_02
-bin/vtest verse/03_containers --verbose > ERR_03
-bin/vtest verse/04_operators --verbose > ERR_04
-bin/vtest verse/05_mutability --verbose > ERR_05
-bin/vtest verse/06_functions --verbose > ERR_06
-bin/vtest verse/07_control --verbose > ERR_07
+# Run the snippet tests for every chapter extracted from docs/ by bin/extract_all.
+# Per-chapter output lands in ERR_<chapter> (e.g. ERR_08_failure).
 
-bin/vtest verse/08_failure --verbose > ERR_08
+set -u
 
-bin/vtest verse/09_structs_enums --verbose > ERR_09
+if [ ! -d verse ]; then
+  echo "No verse/ directory. Run bin/extract_all first." >&2
+  exit 1
+fi
 
-bin/vtest verse/10_classes_interfaces --verbose > ERR_10
+status=0
 
-bin/vtest verse/11_types --verbose > ERR_11
+for dir in verse/*/; do
+  chapter=$(basename "$dir")
+  printf '%-24s ' "$chapter"
 
-bin/vtest verse/12_access --verbose > ERR_12
+  if ! bin/vtest "$dir" --verbose > "ERR_$chapter" 2>&1; then
+    status=1
+  fi
 
-bin/vtest verse/13_effects --verbose > ERR_13
+  # Echo the summary counts so the console shows progress at a glance.
+  grep -E '^(Total|Successes|Failures):' "ERR_$chapter" | tr -s ' \n' ' '
+  echo
+done
 
-bin/vtest verse/14_concurrency --verbose > ERR_14
-bin/vtest verse/15_live_variables --verbose > ERR_15
-
-bin/vtest verse/16_modules --verbose > ERR_16
-
-bin/vtest verse/17_persistable --verbose > ERR_17
-bin/vtest verse/18_evolution --verbose > ERR_18
-
+echo
+echo "Per-chapter details in ERR_* files."
+exit $status

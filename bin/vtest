@@ -5,18 +5,27 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 
 
-// Available Verse VMs, we search the $PATH first. If the executable cannot be
-// found then we default to Engine/Binaries/Win64 (moved for UE6).
-const testScriptVM = findExecutable("VerseTestScriptCmdVM-Win64-Shipping.exe",
-                                    "/mnt/c/fortniteMain/Engine/Binaries/Win64/VerseTestScriptCmdVM-Win64-Shipping.exe"
-                                   );
-const clrVM = findExecutable("VerseCLRVM-Win64-Shipping.exe",
-                             "/mnt/c/fortniteMain/Engine/Binaries/Win64/VerseCLRVM-Win64-Shipping.exe"
-                            );
+// Directory holding the Verse VMs from the fortniteMain repository. Override
+// with $VERSE_BIN when the engine lives somewhere else.
+const verseBin = process.env.VERSE_BIN ||
+      "/mnt/d/fortniteMain/Engine/Binaries/Win64";
 
-const wslPath = findExecutable("wslpath", "/usr/bin/wslpath");
+// Available Verse VMs. For each we try, in order: an explicit env override, the
+// $PATH, then $VERSE_BIN. Development builds produce an unsuffixed executable
+// name while other configurations carry a -Win64-<Config> suffix, so we accept
+// either.
+const testScriptVM = findVM("VERSE_TESTSCRIPT_VM",
+                            ["VerseTestScriptCmdVM.exe",
+                             "VerseTestScriptCmdVM-Win64-Shipping.exe"]
+                           );
+const clrVM = findVM("VERSE_CLR_VM",
+                     ["VerseCLRVM.exe",
+                      "VerseCLRVM-Win64-Shipping.exe"]
+                    );
 
-function findExecutable(executable, default_exe) {
+const wslPath = findOnPath("wslpath") || "/usr/bin/wslpath";
+
+function findOnPath(executable) {
   // Use `which` on Unix or `where` on Windows
   const command = process.platform === 'win32' ? 'where' : 'which';
   const result = spawnSync(command, [executable], { encoding: 'utf8' });
@@ -28,10 +37,25 @@ function findExecutable(executable, default_exe) {
       fs.accessSync(pth, fs.constants.X_OK);
       return path.resolve(pth);
     } catch {
-      return default_exe;
+      return null;
     }
   }
-  return default_exe;
+  return null;
+}
+
+function findVM(envVar, names) {
+  if (process.env[envVar]) return process.env[envVar];
+
+  for (const name of names) {
+    const onPath = findOnPath(name);
+    if (onPath) return onPath;
+
+    const inVerseBin = path.join(verseBin, name);
+    if (fs.existsSync(inVerseBin)) return inVerseBin;
+  }
+
+  // Nothing found. Return the preferred location so failures name a real path.
+  return path.join(verseBin, names[0]);
 }
 
 function printUsage() {
@@ -39,12 +63,17 @@ function printUsage() {
   console.log('');
   console.log('Runs Verse tests on a file or all .verse/.versetest files in a directory.');
   console.log('Automatically selects VM based on file extension:');
-  console.log('  .verse      -> CLR VM (Engine/Binaries/Win64)');
-  console.log('  .versetest  -> TestScript VM (Engine/Binaries/Win64)');
+  console.log(`  .verse      -> CLR VM       (${clrVM})`);
+  console.log(`  .versetest  -> TestScript VM (${testScriptVM})`);
   console.log('');
   console.log('Options:');
   console.log('  --verbose   Show detailed error messages for failures');
   console.log('  --raw       Show complete VM output for failures');
+  console.log('');
+  console.log('Environment:');
+  console.log('  VERSE_BIN             Directory holding the VMs');
+  console.log('  VERSE_TESTSCRIPT_VM   Full path to the TestScript VM');
+  console.log('  VERSE_CLR_VM          Full path to the CLR VM');
   console.log('');
   console.log('Examples:');
   console.log('  vtest verse/08_failure');
@@ -159,6 +188,16 @@ function parseErrorMessages(output) {
         errors.push({ lineNumber: 'N/A', message });
       }
     }
+    // Current TestScript VM format, which carries no log prefix:
+    //   <file>(<line>,<col>, <endLine>,<endCol>): Verse compiler error: <message>
+    else {
+      const re = /^(.+?)\((\d+),(\d+),\s*(\d+),(\d+)\):\s*(.+)/;
+      const m = re.exec(line.trim());
+      if (m) {
+        const [_, file, lineNumber, startCol, endLine, endCol, message] = m;
+        errors.push({ lineNumber, message: message.trim() });
+      }
+    }
     i++;
   }
 
@@ -166,7 +205,10 @@ function parseErrorMessages(output) {
 }
 
 function isSuccess(output) {
-  return !output.includes('Build Failure:') && !output.includes('LogVerseBuild: Error:');
+  return !output.includes('Build Failure:') &&
+         !output.includes('LogVerseBuild: Error:') &&
+         !output.includes('Verse compiler error:') &&
+         !/\*\*\* Testing completed with \d+ errors?\. \*\*\*/.test(output);
 }
 
 function runTest(filePath) {

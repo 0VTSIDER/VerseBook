@@ -244,7 +244,7 @@ while keeping it hidden elsewhere:
 bounding_box:=class{}
 Graphics := module:
     CollidableShape<scoped{Physics}> := interface:
-        GetBounds():bounding_box
+        GetBounds<scoped{Physics}>():bounding_box
 
 Physics := module:
     using{Graphics}
@@ -256,9 +256,11 @@ Physics := module:
 <!-- 06 -->
 ```verse
 Graphics := module:
-    # Define an interface scoped to the physics module
+    # Define an interface scoped to the physics module. Its members need the
+    # same scope, otherwise they stay internal to Graphics and cannot be
+    # overridden from Physics.
     CollidableShape<scoped{Physics}> := interface:
-        GetBounds():bounding_box
+        GetBounds<scoped{Physics}>():bounding_box
 
 Physics := module:
     using{Graphics}

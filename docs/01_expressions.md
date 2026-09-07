@@ -143,7 +143,7 @@ Character literals represent individual text units. Verse has two character type
 LetterA := 'a'          # Printable ASCII character
 Space := ' '
 Tab := '\t'             # Escape sequence
-LetterA := 0o61         # Hexadecimal notation: 0oXX (97 decimal = 'a')
+LetterAHex := 0o61      # Hexadecimal notation: 0oXX (97 decimal = 'a')
 ```
 
 `char32` literals represent Unicode code points:

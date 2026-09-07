@@ -108,6 +108,17 @@ function extractPrependComment(lines, verseBlockStart) {
   return commentLines;
 }
 
+// Comments that introduce the *following* snippet rather than annotate the
+// preceding one: <!-- 04 -->, <!-- 28 FAILURE ... -->, <!--NoCompile--> and a
+// bare <!--versetest-->. extractAppendComment must never consume one of these
+// as trailing test code, or the marker word leaks into the generated file as a
+// bare expression (e.g. "Unknown identifier `NoCompile`").
+function isSnippetMarker(trimmed) {
+  return /^<!--\s*\d+(\s+FAILURE.*?)?\s*-->$/.test(trimmed) ||
+         /^<!--\s*NoCompile\s*-->$/.test(trimmed) ||
+         /^<!--\s*versetest\s*-->$/.test(trimmed);
+}
+
 function extractAppendComment(lines, verseBlockEnd) {
   // Look forward from verseBlockEnd to find <!--versetest or <!-- comment
   let commentLines = [];
@@ -122,12 +133,13 @@ function extractAppendComment(lines, verseBlockEnd) {
   if (i < lines.length) {
     const trimmed = lines[i].trim();
 
+    // Markers belong to the next snippet, not this one.
+    if (isSnippetMarker(trimmed)) {
+      return commentLines;
+    }
+
     // Check for single-line comment like <!-- content -->
     if (trimmed.startsWith('<!--') && trimmed.endsWith('-->')) {
-      // Skip numbered comments like <!-- 04 -->
-      if (/^<!--\s*\d+\s*-->$/.test(trimmed)) {
-        return commentLines;
-      }
       // Extract content between <!-- and -->
       const match = trimmed.match(/^<!--\s*(.*?)\s*-->$/);
       if (match && match[1]) {
@@ -237,7 +249,10 @@ function separateTypeDefinitions(snippetLines) {
 
     // Check if this line starts a type definition at base indentation
     // Pattern: identifier := (class|struct|module|interface|enum):
-    const isTypeDef = /^[a-zA-Z_][a-zA-Z0-9_]*\s*:=\s*(class|struct|module|interface|enum)/.test(trimmed);
+    // The optional parameter list covers parametric definitions such as
+    // `container(t:type) := class:`, which must be hoisted to module scope too
+    // (class definitions are not allowed inside an assert block).
+    const isTypeDef = /^[a-zA-Z_][a-zA-Z0-9_]*\s*(\([^()]*\))?\s*:=\s*(class|struct|module|interface|enum)/.test(trimmed);
 
     if (isTypeDef && line.match(/^\S/)) {
       // This is a type definition at base indentation
@@ -312,6 +327,22 @@ function extractVerseSnippets(markdownContent) {
       // Look for append comment after the closing ```
       // If no comment found, returns empty array
       const appendLines = extractAppendComment(lines, i);
+
+      // The "display-only" convention: a prepend ending in `<#` comments out
+      // everything emitted after it (hoisted types, the assert block and the
+      // displayed snippet), and an appended `#>` closes that comment. If only
+      // one half is present the generated file cannot parse, so say so instead
+      // of silently writing a file that fails with a confusing syntax error.
+      // `<#` may sit on its own line or be tacked onto the end of the last
+      // prepend line (e.g. `}<#`), so match a trailing occurrence either way.
+      const opensComment = prependLines.some(l => l.trim().endsWith('<#'));
+      const closesComment = appendLines.some(l => l.trim().endsWith('#>'));
+      if (opensComment !== closesComment) {
+        const detail = opensComment
+              ? 'prepend opens `<#` but no `<!-- #> -->` follows the block'
+              : 'appended `#>` has no matching `<#` at the end of the prepend';
+        console.warn(`Warning: snippet ${number}: ${detail}`);
+      }
 
       // Separate type definitions from test code
       const { typeDefLines, testCodeLines } = separateTypeDefinitions(currentSnippet);
