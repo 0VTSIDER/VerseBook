@@ -238,7 +238,8 @@ see the containing scope.
 The most powerful use of scoped access is enabling controlled
 collaboration between modules. A definition can be created in one
 module but scoped to another, making it accessible where it is needed
-while keeping it hidden elsewhere:
+while keeping it hidden elsewhere — the definition itself, not its
+members; see [below](#scoping-a-definition-does-not-scope-its-members):
 
 <!--versetest
 bounding_box:=class{}
@@ -443,6 +444,105 @@ base := class:
 derived := class(base):
     # Can override with same or more restrictive access
     ComputeValue<override>():int = 100  # Now internal to this module
+```
+<!-- #> -->
+
+#### Scoping a Definition Does Not Scope Its Members
+
+A `<scoped>` grant applies only to the definition that carries it. The members
+of that definition keep their own accessibility, which defaults to `internal`.
+Granting `A<scoped{B}>` lets `B` name `A` but does not let `B` touch anything
+*inside* `A`:
+
+<!--versetest
+assert_semantic_error(3593):
+    Graphics := module:
+        shape<scoped{Physics}> := class:
+            Size:int = 1
+    Physics := module:
+        using{Graphics}
+        Report():int =
+            S := shape{}
+            S.Size
+<#
+-->
+<!-- 901 -->
+```verse
+Graphics := module:
+    shape<scoped{Physics}> := class:
+        Size:int = 1            # internal to Graphics
+
+Physics := module:
+    using{Graphics}
+    Report():int =
+        S := shape{}
+        S.Size                  # ERROR: Size is internal to Graphics
+```
+<!-- #> -->
+
+To make a member reachable, mark the member too:
+
+<!--versetest
+Graphics := module:
+    shape<scoped{Physics}> := class:
+        Size<scoped{Physics}>:int = 1
+Physics := module:
+    using{Graphics}
+    Report():int =
+        S := Graphics.shape{}
+        S.Size
+<#
+-->
+<!-- 902 -->
+```verse
+Graphics := module:
+    shape<scoped{Physics}> := class:
+        Size<scoped{Physics}>:int = 1
+```
+<!-- #> -->
+
+The same applies at every level of nesting: reaching `A.B.C` from a granted
+scope needs the grant on `A`, on `B`, and on `C`. A `<scoped>` container holding
+an internal member is still an error.
+
+This also governs interface implementation. An `<internal>` member of a
+`<scoped>` interface cannot be overridden from the granted scope. Only members
+that are themselves `<scoped{...}>` or `<public>` can be overridden:
+
+<!--versetest
+bounding_box := class{}
+Graphics := module:
+    collidable<scoped{Physics}> := interface:
+        GetBounds<scoped{Physics}>():bounding_box
+        Describe<public>():void
+Physics := module:
+    using{Graphics}
+    sphere := class<abstract>(collidable):
+        GetBounds<override>():bounding_box
+        Describe<override>():void = {}
+assert_semantic_error(3593, 3593):
+    Graphics2 := module:
+        collidable2<scoped{Physics2}> := interface:
+            Reset():void
+    Physics2 := module:
+        using{Graphics2}
+        sphere2 := class<abstract>(collidable2):
+            Reset<override>():void = {}
+<#
+-->
+<!-- 903 -->
+```verse
+Graphics := module:
+    collidable<scoped{Physics}> := interface:
+        GetBounds<scoped{Physics}>():bounding_box  # overridable from Physics
+        Describe<public>():void                    # overridable from Physics
+        Reset():void                               # internal - NOT overridable
+
+Physics := module:
+    using{Graphics}
+    sphere := class<abstract>(collidable):
+        GetBounds<override>():bounding_box
+        Describe<override>():void = {}
 ```
 <!-- #> -->
 
@@ -663,6 +763,28 @@ MigrateOldAPI():int = OldAPI()
 # NewCode():int = OldAPI()
 ```
 <!-- #> -->
+
+`@deprecated` accepts two optional fields:
+
+- `Message` — text shown alongside the deprecation warning. Passing `false`
+  means "no message" and is accepted.
+- `DiscontinuedAtFNVersion` — the version at which use stops being a warning and
+  becomes a hard error.
+
+The version comparison is `>=`: a package uploaded at **exactly** the cutoff
+already counts as discontinued, not merely deprecated.
+
+```verse
+@deprecated{Message := "Use NewSpawn instead."}
+OldSpawn():void = {}
+
+@deprecated{Message := "Removed.", DiscontinuedAtFNVersion := 2000}
+Older():void = {}
+# A package uploaded at FN 20.00 or later gets an error, not a warning.
+```
+
+`@deprecated` may also be applied to a module, in which case it covers the
+module's members.
 
 The `@deprecated` annotation can be applied to:
 - Functions and methods
@@ -1182,7 +1304,7 @@ GoodMessage<localizes> : message = "Text"
 <!-- 35 -->
 ```verse
 # ERROR: Missing type annotation
-# BadMessage<localizes> := "Text"  # ERROR 3639
+# BadMessage<localizes> := "Text"  # ERROR
 
 # Valid: Explicit type
 GoodMessage<localizes> : message = "Text"
@@ -1199,7 +1321,7 @@ ValidMessage<localizes> : message = "AB"
 <!-- 36 -->
 ```verse
 # ERROR: Expression not allowed
-# InvalidMessage<localizes> : message = "A" + "B"  # ERROR 3638
+# InvalidMessage<localizes> : message = "A" + "B"  # ERROR
 
 # Valid: Literal only
 ValidMessage<localizes> : message = "AB"
@@ -1218,11 +1340,11 @@ my_class := class{Value:int}
 <!-- 37 -->
 ```verse
 # ERROR: Optional types not supported
-# OptionalMsg<localizes>(Player:?string) : message = "{Player}"  # ERROR 3509
+# OptionalMsg<localizes>(Player:?string) : message = "{Player}"  # ERROR
 
 # ERROR: Custom classes not supported
 my_class := class{Value:int}
-# ClassMsg<localizes>(Obj:my_class) : message = "{Object}"  # ERROR 3509
+# ClassMsg<localizes>(Obj:my_class) : message = "{Object}"  # ERROR
 ```
 <!-- #> -->
 
@@ -1238,7 +1360,7 @@ ParamMessage<localizes>(Name:string) : message = "{Name}"
 <!-- 38 -->
 ```verse
 # ERROR: Expressions not allowed
-# ExprMessage<localizes>(Name:string) : message = "{"Hello"}"  # ERROR 3652
+# ExprMessage<localizes>(Name:string) : message = "{"Hello"}"  # ERROR
 
 # Valid: Parameter names only
 ParamMessage<localizes>(Name:string) : message = "{Name}"

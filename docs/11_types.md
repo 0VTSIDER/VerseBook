@@ -865,7 +865,7 @@ assert:
 <!-- 38 -->
 ```verse
 # Invalid: integer literal in float constraint
-# bad_float := type{_X:float where _X <= 142}  # ERROR 3502
+# bad_float := type{_X:float where _X <= 142}  # ERROR
 
 # Valid: float literal
 good_float := type{_X:float where _X <= 142.0}
@@ -879,9 +879,9 @@ constraints:
 <!-- 39 -->
 ```verse
 # Invalid: NaN in constraint
-# nan_type := type{_X:float where _X <= NaN}      # ERROR 3502
-# nan_type := type{_X:float where NaN <= _X}      # ERROR 3502
-# nan_type := type{_X:float where 0.0/0.0 <= _X}  # ERROR 3502
+# nan_type := type{_X:float where _X <= NaN}      # ERROR
+# nan_type := type{_X:float where NaN <= _X}      # ERROR
+# nan_type := type{_X:float where 0.0/0.0 <= _X}  # ERROR
 ```
 
 Since `NaN` comparisons are always false, such constraints would be meaningless.
@@ -955,7 +955,7 @@ Half(100.0)  # Returns 50.0
 Half(1.0)    # Returns 0.5
 
 # Cannot pass infinity
-# Half(Inf)  # ERROR 3509: Inf not in finite
+# Half(Inf)  # ERROR: Inf not in finite
 ```
 <!-- #> -->
 
@@ -1004,7 +1004,7 @@ assert_semantic_error(3532):
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 not_infinity := type{_X:float where Inf > _X}
 
-# ERROR 3532: Cannot distinguish - percent ⊂ not_infinity
+# ERROR: Cannot distinguish - percent ⊂ not_infinity
 # F(X:percent):float = 0.0
 # F(X:not_infinity):float = X
 
@@ -1288,6 +1288,10 @@ helps you design flexible, reusable code.
 
 Unlike `any`, which erases type information, `void` serves as a
 "discard" type indicating that a value's specific type does not matter.
+
+`void` also participates in a wider unification with `true`, `tuple()` and the
+`false` literal — see
+[void, true, tuple() and false](02_primitives.md#void-true-tuple-and-false).
 
 Functions with `void` return type can return any value, which is then
 discarded by the type system:

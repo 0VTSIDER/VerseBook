@@ -95,6 +95,19 @@ set C *= 2                                 # like saying, set C = C * 2
 For integers, the operator `/` is failable, and the result is a
 `rational` type if it succeeds.
 
+### Overflow and VM Differences
+
+`int` behaves differently on the two VMs at the edges of the 64-bit range:
+
+- **VerseVM** uses arbitrary precision. Arithmetic that would exceed 64 bits
+  simply produces the larger value.
+- **BPVM** uses 64-bit integers and raises a runtime error
+  (`MathIntrinsicCallFailure`) on overflow — including via `+=`, `*=`, unary
+  negation of the minimum value, and the bitwise intrinsics.
+
+Code that must behave identically on both VMs should stay inside the signed
+64-bit range.
+
 ## Rationals
 
 The `rational` type represents exact fractions as ratios of
@@ -1505,3 +1518,148 @@ LogMessage(Msg:string) : void =
 
 Here, `LogMessage` performs an action (printing) but does not return a
 result. The `void` return type makes that explicit.
+
+### void, true, tuple() and false
+
+Verse has a single "there is nothing interesting here" value. It can be written
+`false` or `()`, and the types `void`, `true` and `tuple()` all describe it.
+These are interchangeable:
+
+<!--versetest
+assert:
+    Nothing:void    = false
+    Unit:tuple()    = false
+    Flag:true       = false
+    Unit = ()
+    Unit = false
+    Nothing = false
+    Flag = false
+<#
+-->
+<!-- 905 -->
+```verse
+Nothing:void    = false
+Unit:tuple()    = false
+Flag:true       = false
+
+# All the same value
+Unit = ()
+Unit = false
+```
+<!-- #> -->
+
+`true` is a subtype of `logic`, so the unit value flows into logic positions:
+
+<!--versetest
+assert:
+    Flag:true = false
+    AsLogic:logic = Flag
+<#
+-->
+<!-- 906 -->
+```verse
+Flag:true = false
+AsLogic:logic = Flag
+```
+<!-- #> -->
+
+The empty value also stands in for empty containers. `false` is accepted
+wherever an empty array or map is expected:
+
+<!--versetest
+assert:
+    Empty:[]int = false
+    Empty.Length = 0
+    Empty = false
+<#
+-->
+<!-- 907 -->
+```verse
+Empty:[]int = false
+Empty.Length = 0        # 0 - false is the empty array
+Empty = false
+```
+<!-- #> -->
+
+and `void`/`true` interchange through optionals, arrays and maps:
+
+<!--versetest
+assert:
+    MaybeVoid:?void = option{0}
+    MaybeTrue:?true = MaybeVoid
+    MaybeTrue?
+<#
+-->
+<!-- 908 -->
+```verse
+MaybeVoid:?void = option{0}
+MaybeTrue:?true = MaybeVoid     # ?void and ?true interchange
+```
+<!-- #> -->
+
+#### void is a type, not a value
+
+A common mistake is passing `void` where the unit *value* is wanted. `void`
+names a type; the value is `false` (or `()`):
+
+<!--versetest
+Ignore(:void):int = 42
+assert:
+    Ignore(false) = 42
+<#
+-->
+<!-- 909 -->
+```verse
+Ignore(:void):int = 42
+
+Ignore(false)    # OK
+Ignore()         # OK
+# Ignore(void)   # ERROR - `void` is a type, not a value
+```
+<!-- #> -->
+
+!!! warning
+    The resulting error reads *"expects a value of type `true`, but this
+    argument is an incompatible value of type `true`"*. Both sides print as
+    `true`, because the type of a type expression renders the same way. If you
+    see a message that appears to say a type is incompatible with itself, check
+    whether you passed a type name where a value belongs.
+
+#### Conversion is one-way
+
+Any value converts to `void`, and that extends through containers in ordinary
+parameter positions — `[]int` satisfies `[]void`. A *type parameter* bound to
+`[]void` is invariant, though, so only `[]void` (or `[]true`) fits there:
+
+<!--versetest
+assert_valid:
+    Main():void =
+        X:void = 1
+assert_valid:
+    Sink(:[]void):void = {}
+    Main():void =
+        Y:[]int = array{1}
+        Sink(Y)
+assert_semantic_error(3509):
+    box(t:type) := class:
+        Put(:t):void = {}
+    Main():void =
+        Y:[]int = array{1}
+        box([]void){}.Put(Y)
+<#
+-->
+<!-- 910 -->
+```verse
+X:void = 1              # OK - any value converts to void
+
+Sink(:[]void):void = {}
+Y:[]int = array{1}
+Sink(Y)                 # OK - []int satisfies []void
+
+box(t:type) := class:
+    Put(:t):void = {}
+
+# box([]void){}.Put(Y)  # ERROR - a type parameter bound to []void is
+                        # invariant, so []int does not fit
+```
+<!-- #> -->

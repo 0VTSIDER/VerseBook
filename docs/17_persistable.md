@@ -49,6 +49,12 @@ The following primitive types are persistable by default:
    - **`option`** - Persistable if the wrapped type is persistable
    - **`tuple`** - Persistable if all element types are persistable
 
+!!! warning
+    Persistence stores integers as 64-bit values. Serializing an integer outside
+    that range fails at runtime (`IntegerBoundsExceeded` on VerseVM), even
+    though VerseVM itself can represent it. Do not persist values produced by
+    arbitrary-precision arithmetic without range-checking them first.
+
 ## Custom Persistable Types
 
 You can create custom persistable types using the `<persistable>`

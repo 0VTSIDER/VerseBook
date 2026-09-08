@@ -844,6 +844,30 @@ ConcatenatedResult := Concatenate(First, Second, Third)  # Single operation
 ChainedResult = ConcatenatedResult
 ```
 
+#### Last
+
+`Last` reads from the end of an array. It is failable, so it must be called with
+`[]` in a failure context. `Last[]` is the final element; `Last[N]` counts back
+from the end, so `Last[0]` is the last element and `Last[1]` the one before it.
+
+<!--versetest
+assert:
+    array{10, 20, 30}.Last[] = 30
+    array{10, 20, 30}.Last[2] = 10
+    not array{}.Last[]
+<#
+-->
+<!-- 918 -->
+```verse
+Values := array{10, 20, 30}
+
+Values.Last[]        # 30
+Values.Last[2]       # 10 - two back from the end
+array{}.Last[]       # fails - empty array
+Values.Last[-1]      # fails - negative index
+```
+<!-- #> -->
+
 Arrays in Verse are thus immutable values with predictable behavior, but through `var` they offer the convenience of mutable variables. They can be concatenated, iterated, sliced, searched, and manipulated, making them one of the most flexible and fundamental data structures in the language.
 
 ## Maps
@@ -1533,7 +1557,7 @@ CreateDerivedMap():weak_map(derived_class, value_struct) =
 # OK: weak_map is covariant in key type
 BaseMap:weak_map(base_class, value_struct) = CreateDerivedMap()
 
-# ERROR 3509: Cannot go the other way (contravariance)
+# ERROR: Cannot go the other way (contravariance)
 # DerivedMap:weak_map(derived_class, value_struct) = BaseMap
 ```
 <!-- #> -->

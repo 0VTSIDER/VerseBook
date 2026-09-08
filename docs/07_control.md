@@ -858,6 +858,59 @@ Length := (1..10).Length
 Ranges work exclusively with the `int` type. Other numeric types,
 booleans, types, or objects are not supported.
 
+### For Without a Generator
+
+A `for` domain does not have to contain a generator. If it contains only
+failable expressions, the `for` behaves like the equivalent `if (X := Y)` chain:
+the body runs **at most once**, and if any domain expression fails the body does
+not run at all. The result is therefore an empty or single-element array.
+
+<!--versetest
+assert:
+    Some:?int = option{7}
+    for(Some?) { 1 } = array{1}
+assert:
+    None:?int = false
+    for(None?) { 1 } = array{}
+<#
+-->
+<!-- 911 -->
+```verse
+Some:?int = option{7}
+for(Some?) { 1 }        # array{1} - filter succeeded, body ran once
+
+None:?int = false
+for(None?) { 1 }        # array{} - filter failed, body never ran
+```
+<!-- #> -->
+
+### Failable Filters Before a Generator
+
+A failable filter or binding may also precede a generator. A binding made this
+way is visible to the generator that follows it, and if the binding fails the
+generator is never evaluated:
+
+<!--versetest
+GetThing()<transacts><decides>:int = 2
+PassesFilter()<transacts><decides>:void = {}
+assert:
+    List:[]int = for(PassesFilter[], I:=1..3) { I }
+    List = array{1,2,3}
+assert:
+    List:[]int = for(Thing := GetThing[], I:=Thing..Thing+2) { Thing*10+I }
+    List = array{22,23,24}
+<#
+-->
+<!-- 913 -->
+```verse
+# A failable call used purely as a guard
+for(PassesFilter[], I:=1..3) { I }          # array{1,2,3}
+
+# A failable binding that feeds the generator
+for(Thing := GetThing[], I:=Thing..Thing+2) { Thing*10+I }   # array{22,23,24}
+```
+<!-- #> -->
+
 ## First Expressions
 
 The `first` expression is similar to `for`, but instead of evaluating
@@ -953,6 +1006,33 @@ FindOptional(Arr:[]int, Target:int):?int =
         Index := first(I -> V : Arr, V = Target). I
             Index
 ```
+
+### First With Failable Filters
+
+`first` accepts the same failable filters and bindings before a generator. The
+difference is the outcome when a binding fails: `for` yields an empty array,
+whereas `first` *fails*.
+
+<!--versetest
+FirstGetThing()<transacts><decides>:int = 2
+FirstGetNoThing()<transacts><decides>:int =
+    0 = 1
+    0
+assert:
+    22 = first(Thing := FirstGetThing[], I:=Thing..Thing+2) { Thing*10+I }
+assert:
+    not first(Thing := FirstGetNoThing[]; I:=Thing..Thing+2) { Thing*10+I }
+<#
+-->
+<!-- 914 -->
+```verse
+# Binding succeeds - first yields the first body value
+first(Thing := GetThing[], I:=Thing..Thing+2) { Thing*10+I }     # 22
+
+# Binding fails - the whole `first` fails
+first(Thing := GetNoThing[]; I:=Thing..Thing+2) { Thing*10+I }   # fails
+```
+<!-- #> -->
 
 ## Return Statements
 

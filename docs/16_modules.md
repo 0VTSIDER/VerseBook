@@ -227,12 +227,12 @@ Config := module:
 # Invalid: Contains non-definition expressions
 BadModule := module:
     MaxValue:int = 100
-    1 + 2  # ERROR 3560: Not a definition
+    1 + 2  # ERROR: Not a definition
 
 # Invalid: Contains function call
 BadModule2 := module:
     InitFunction():void = {}
-    InitFunction()  # ERROR 3585: Cannot call function in module body
+    InitFunction()  # ERROR: Cannot call function in module body
 ```
 
 The restriction ensures that module initialization is deterministic and does not execute arbitrary code when the module is loaded.
@@ -246,7 +246,7 @@ All data definitions at module scope must explicitly specify their type. Type in
 ```verse
 # Invalid: Missing type annotation
 BadModule := module:
-    Value := 42  # ERROR 3547: Must specify type domain
+    Value := 42  # ERROR: Must specify type domain
 
 # Valid: Explicit type annotation
 GoodModule := module:
@@ -418,20 +418,20 @@ expression or embed it in other expressions:
 <!-- 11 -->
 ```verse
 # Invalid: using in expression context
-# f():void = using{MyModule}  # ERROR 3669
+# f():void = using{MyModule}  # ERROR
 
 # Invalid: using in conditional
 # if (using{MyModule}, Condition?):
-#     DoSomething()  # ERROR 3669
+#     DoSomething()  # ERROR
 
 # Invalid: using in class/struct/interface body
 # my_class := class:
-#     using{MyModule}  # ERROR 3537
+#     using{MyModule}  # ERROR
 #     Field:int
 
 # Invalid: using module path in function body
 # ProcessData():void =
-#     using{/MyProject/UtilityModule}  # ERROR 3669
+#     using{/MyProject/UtilityModule}  # ERROR
 #     Calculate()
 ```
 
@@ -545,6 +545,63 @@ sequentially. When you import a nested module directly, Verse needs to
 know about its parent module first. This is why importing the parent
 before the child always works, while the reverse order fails.
 
+### Using a Value
+
+`using` also accepts an expression that evaluates to a class instance. Its
+members become directly nameable for the remainder of the enclosing block,
+which is useful for cutting repetition when working against one object:
+
+<!--versetest
+settings := class:
+    Volume:int = 3
+Describe():int =
+    Config := settings{}
+    using { Config }
+    Volume
+assert:
+    Describe() = 3
+<#
+-->
+<!-- 916 -->
+```verse
+settings := class:
+    Volume:int = 3
+
+Describe():int =
+    Config := settings{}
+    using { Config }
+    Volume              # resolves to Config.Volume
+```
+<!-- #> -->
+
+A local `using` is captured like any other local, so the names stay valid inside
+a concurrent body:
+
+<!--versetest
+data := class:
+    Value:int
+CaptureLocalUsing()<suspends>:void =
+    Data := data{Value := 3}
+    using { Data }
+    branch:
+        CoroUtils.WaitTicks(0)
+        CoroUtils.LogEvent("{Value}")
+assert:
+    spawn{CaptureLocalUsing()}
+    CoroUtils.GetEventLogString() = "3"
+<#
+-->
+<!-- 917 -->
+```verse
+CaptureLocalUsing()<suspends>:void =
+    Data := data{Value := 3}
+    using { Data }
+    branch:
+        WaitTicks(0)
+        Log("{Value}")   # Value still resolves inside the branch
+```
+<!-- #> -->
+
 ### Module Aliases with import
 
 The `import` expression creates a local alias for a module, binding
@@ -652,6 +709,11 @@ When you need to disambiguate between identifiers with the same name
 from different modules, or when you want to explicitly specify the
 scope of an identifier, use a qualified access expression using
 parentheses and a colon:
+
+This comes up in practice when a name you define collides with one added to the
+standard library. If your module defines `Last` and the array extension `Last`
+is also in scope, `MyModule.Last(X)` becomes ambiguous and must be written
+`MyModule.(MyModule:)Last(X)` to select yours.
 
 
 <!-- BUG? Or bad error message?

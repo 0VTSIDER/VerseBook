@@ -397,6 +397,24 @@ case(WinnerID):
 ```
 <!-- #> -->
 
+#### Resolution Stops Unstarted Arms
+
+`race` starts its arms in order. If the race resolves before every arm has
+started — which happens when one arm completes another synchronously — the
+remaining arms **never start at all**. Their side effects do not run.
+
+An arm that is already executing when the race resolves is not cut off
+mid-statement: it continues to its next suspension point and is then cancelled
+along with the other leftover arms.
+
+When more than one arm could complete during that first pass, the first
+completer wins.
+
+!!! note
+    Earlier BPVM builds did start the later arms, running their side effects up
+    to their first suspension point before cancelling them. Both VMs now agree
+    that those arms never begin.
+
 ### The rush Expression
 
 The `rush` expression occupies a unique middle ground between `sync`
@@ -501,6 +519,54 @@ When `Value` is set, arm 1 executes `return V` inside
 abandoned, arm 2 never completes, and defers run during unwinding.
 When `Value` is not set, arm 1 completes normally and `sync` waits
 for both arms to finish.
+
+#### Detached Bodies Cannot Return
+
+The behaviour above applies to `sync`, `race` and `rush` arms, which run as part
+of the enclosing function's frame. `spawn`, `branch` and `defer` bodies are
+*detached* from that frame, so there is nothing for a `return` to return from,
+and the compiler rejects it:
+
+<!--versetest
+assert_semantic_error(3551):
+    Wait()<suspends>:void = {}
+    F():void =
+        spawn:
+            Wait()
+            return
+assert_semantic_error(3566):
+    F():void =
+        defer:
+            return
+        return
+<#
+-->
+<!-- 915 -->
+```verse
+F():void =
+    spawn:
+        Wait()
+        return       # ERROR  - cannot return out of spawn
+
+G()<suspends>:void =
+    branch:
+        Wait()
+        return       # ERROR  - cannot return out of branch
+
+H():void =
+    defer:
+        return       # ERROR  - cannot return out of defer
+    return
+```
+<!-- #> -->
+
+The same applies inside a class or archetype body block. To end a detached body
+early, use `break` in a loop or restructure with a failable expression.
+
+| Construct | `return` behaviour |
+|---|---|
+| `sync`, `race`, `rush` arm | Returns from the enclosing function; the expression is abandoned |
+| `spawn`, `branch`, `defer`, class / archetype body block | Rejected at compile time |
 
 ### The branch Expression
 

@@ -356,7 +356,7 @@ assert_semantic_error(3532):
 -->
 <!-- 26-->
 ```verse
-# ERROR 3532: First can handle all calls to second
+# ERROR: First can handle all calls to second
 # F(?Y:int=42, ?X:int=42):int = X
 # F(?X:int):int = X  # ERROR - can call first as F(?X := 10)
 ```
@@ -1348,7 +1348,7 @@ assert_semantic_error(3506):
 -->
 <!-- 87-->
 ```verse
-# ERROR 3506: G used before defined
+# ERROR: G used before defined
 F():void =
     X := G()     # ERROR: G not yet defined
     G():int = 42
@@ -1376,7 +1376,7 @@ assert_semantic_error(3612):
 -->
 <!-- 88-->
 ```verse
-# ERROR 3612: super not allowed in nested function
+# ERROR: super not allowed in nested function
 base_class := class:
     F(X:int):int = X
 

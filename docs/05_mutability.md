@@ -261,7 +261,7 @@ assert_semantic_error(3549):
 <!-- 14 -->
 ```verse
 # Invalid
-# var (var X):int = 0  # ERROR 3549
+# var (var X):int = 0  # ERROR
 ```
 <!-- #> -->
 
@@ -736,7 +736,7 @@ Available compound operators:
 - `set *= ` - Multiplication assignment (int, float)
 - `set /= ` - Division assignment (float only)
 
-**Important**: `set /=` does not work with integers because integer division is failable.
+Do note that `set /=` does not work with integers because integer division is failable.
 
 Compound assignments work anywhere regular assignment does:
 
@@ -791,6 +791,52 @@ set A[0] += array{1}
 set A[0] += array{2}
 A[0] = array{1, 2}
 ```
+
+### Mutating Parametric Containers
+
+Compound assignment works when the element type is a class type parameter, so
+generic containers can be written without special-casing:
+
+<!--versetest
+queue(t:type) := class:
+    var Contents<private>:[]t = ()
+    Push<public>(Arg:t)<transacts>:void =
+        set Contents += array. Arg
+    Pop<public>()<transacts><decides>:t =
+        Result := Contents[Contents.Length - 1]
+        set Contents = for (Key->Val:Contents; Key <> Contents.Length - 1). Val
+        Result
+assert:
+    Q := queue(int){}
+    Q.Push(1)
+    Q.Push(2)
+    Q.Pop[] = 2
+    Q.Pop[] = 1
+    not Q.Pop[]
+<#
+-->
+<!-- 919 -->
+```verse
+queue(t:type) := class:
+    var Contents<private>:[]t = ()
+
+    Push<public>(Arg:t)<transacts>:void =
+        set Contents += array. Arg          # polymorphic +=
+
+    Pop<public>()<transacts><decides>:t =
+        Result := Contents[Contents.Length - 1]
+        set Contents = for (Key->Val:Contents; Key <> Contents.Length - 1). Val
+        Result
+
+Q := queue(int){}
+Q.Push(1)
+Q.Push(2)
+Q.Pop[]      # 2
+```
+<!-- #> -->
+
+Assignment into an element of a parametric container also works:
+`set X.Contents[0] = ...`.
 
 ### Tuple Mutability: Replacement Only
 

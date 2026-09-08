@@ -230,6 +230,14 @@ The `let` clause introduces bindings visible to subsequent field
 initializers. Unlike `block`, `let` permits only variable
 declarations.
 
+#### Restrictions Inside Archetype Bodies
+
+An archetype body initializes fields; it is not a general statement block. Two
+things in particular are rejected:
+
+- Mutating assignment such as `set X += 3`.
+- Calling a `<constructor>` function of the class being instantiated.
+
 ### Self
 
 Within class methods, `Self` refers to the current instance:
@@ -1647,8 +1655,8 @@ EntityTransformer:transformer(entity) = transformer(entity){}
 PlayerTransformer:transformer(player) = transformer(player){}
 
 # Invalid: Cannot use one where the other is expected
-# X:transformer(entity) = PlayerTransformer  # ERROR 3509
-# Y:transformer(player) = EntityTransformer  # ERROR 3509
+# X:transformer(entity) = PlayerTransformer  # ERROR
+# Y:transformer(player) = EntityTransformer  # ERROR
 ```
 
 **Why this is necessary:** If a `transformer(player)` could be used as
@@ -1660,8 +1668,8 @@ be unsafe.
 
 #### Bivariant
 
-When a type parameter is not used in any method signatures (only in
-private implementation details or not at all), the parametric class is
+When a type parameter is not used in any member signature, neither in the
+type's own members nor in any member it inherits, the parametric class is
 **bivariant**. Any instantiation can be converted to any other:
 
 <!--versetest
@@ -1717,6 +1725,33 @@ Y:container(player) = EntityContainer  # Also valid
 
 **Why this works:** Since the type parameter does not affect the
 observable behavior, the instantiations are interchangeable.
+
+#### Inherited Members Constrain Variance
+
+Variance is computed over a type's full member set, including members inherited
+from a parametric base. A derived type with an empty body is *not* automatically
+bivariant:
+
+<!--versetest
+assert_semantic_error(3510):
+    holder(t:type) := interface:
+        Value:t
+    derived(t:type) := interface(holder(t)) {}
+    F(X:derived(int)):derived(float) = X
+<#
+-->
+<!-- 904 -->
+```verse
+holder(t:type) := interface:
+    Value:t                          # covariant use of t
+
+# Empty body, but inherits Value:t - so `derived` is covariant, not bivariant
+derived(t:type) := interface(holder(t)) {}
+
+# Invalid: covariance only allows the subtype -> supertype direction
+# F(X:derived(int)):derived(float) = X   # ERROR
+```
+<!-- #> -->
 
 ### Recursive Parametric Types
 
@@ -1810,17 +1845,17 @@ structural type containing itself:
 <!-- 71-->
 ```verse
 # Invalid: Direct array recursion
-# t(u:type) := []t(u)  # ERROR 3502
+# t(u:type) := []t(u)  # ERROR
 
 # Invalid: Direct map recursion
-# t(u:type) := [int]t(u)  # ERROR 3502
+# t(u:type) := [int]t(u)  # ERROR
 
 # Invalid: Direct optional recursion
-# t(u:type) := ?t(u)  # ERROR 3502
+# t(u:type) := ?t(u)  # ERROR
 
 # Invalid: Direct function recursion
-# t(u:type) := u->t(u)  # ERROR 3502
-# t(u:type) := t(u)->u  # ERROR 3502
+# t(u:type) := u->t(u)  # ERROR
+# t(u:type) := t(u)->u  # ERROR
 ```
 
 These fail because they create infinite type expansion—the compiler
@@ -1865,12 +1900,12 @@ with a **different type argument**:
 ```verse
 # Invalid: Type parameter changes
 # my_type(t:type) := class:
-#     Next:my_type(?t)  # ERROR 3509 - ?t is different from t
+#     Next:my_type(?t)  # ERROR - ?t is different from t
 
 # Invalid: Alternating type parameters
 # bi_list(t:type, u:type) := class:
 #     Value:t
-#     Next:?bi_list(u, t)  # ERROR 3509 - parameters swapped
+#     Next:?bi_list(u, t)  # ERROR - parameters swapped
 ```
 
 **Why this is disallowed:** Polymorphic recursion makes type inference
@@ -1926,10 +1961,10 @@ inheritance through parametric types:
 <!-- 76-->
 ```verse
 # Invalid: Inheriting from parametric self
-# t(u:type) := class(t(u)){}  # ERROR 3590
+# t(u:type) := class(t(u)){}  # ERROR
 
 # Invalid: Inheriting from type variable
-# inherits_from_variable(t:type) := class(t){}  # ERROR 3590
+# inherits_from_variable(t:type) := class(t){}  # ERROR
 ```
 
 **Why this is disallowed:** Inheritance requires knowing the parent's
@@ -2453,6 +2488,34 @@ DefaultConfig := config{}
 
 A concrete class C can be constructed with C{}. A concrete class may have
 subclasses that are not concrete.
+
+A `<concrete>` class must supply a value for every data member, including
+members inherited from an interface. Re-declaring the member with `<override>`
+does not satisfy the requirement — it still needs an initializer. This applies
+to `var` members and to members of function type as well:
+
+<!--versetest
+assert_semantic_error(3519):
+    has_field := interface { Field:int }
+    thing := class<concrete>(has_field) {}
+<#
+-->
+<!-- 920 -->
+```verse
+has_field := interface:
+    Field:int
+
+# ERROR - Field has no value
+# thing := class<concrete>(has_field) {}
+
+# ERROR - re-declaring without a value does not help
+# thing := class<concrete>(has_field) { Field<override>:int }
+
+# OK
+thing := class<concrete>(has_field):
+    Field<override>:int = 0
+```
+<!-- #> -->
 
 ### Unique
 
@@ -3120,7 +3183,7 @@ assert_semantic_error(3502):
 <!-- 120-->
 ```verse
 # Invalid: parametric classes cannot be castable
-# container(t:type) := class<castable>:  # ERROR 3678
+# container(t:type) := class<castable>:  # ERROR
 #     Value:t
 
 # Invalid: cannot cast to parametric type
@@ -3129,7 +3192,7 @@ container(t:type) := class:
 
 Test()<decides>:void =
     C := container(int){Value := 42}
-    if (C2 := container(string)[C]) {}  # ERROR 3502
+    if (C2 := container(string)[C]) {}  # ERROR
 ```
 <!-- #> -->
 
