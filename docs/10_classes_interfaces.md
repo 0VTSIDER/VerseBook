@@ -1,13 +1,11 @@
 # Classes and Interfaces
 
-Classes and interfaces are Verse's object-oriented building blocks.
-Classes provide single inheritance with fields and methods, enabling
-you to model hierarchies of game entities with shared behavior.
-Interfaces define contracts for both data and behavior, supporting
-multiple inheritance of specifications.
+A class has fields and methods and supports single inheritance. An
+interface specifies data and behaviour without implementing it, and a
+class may implement several.
 
-Together they provide is-a relationships (class inheritance) and
-can-do contracts (interface implementation).
+The two express different relationships: class inheritance gives
+*is-a*, interface implementation gives *can-do*.
 
 ## Classes
 
@@ -15,7 +13,12 @@ A class is a type that bundles data (fields) with operations
 (methods). Class definitions must occur at module scope—you cannot
 define a class inside another class, struct, interface, or function:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3502):
+    outer := class:
+        inner := class:
+            Value:int
+-->
 <!-- 01-->
 ```verse
 # Valid: class at module scope
@@ -100,7 +103,11 @@ All methods in non-abstract classes must have implementations. Unlike
 interfaces (which can declare abstract methods), a concrete class
 method declaration without an implementation is an error:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3591):
+    invalid_class := class:
+        Compute():int
+-->
 <!-- 05-->
 ```verse
 # Valid: method with implementation
@@ -349,7 +356,14 @@ use a subclass wherever a superclass is expected.
 1. **Single class inheritance only:** A class can inherit from at most
    one class, but can implement multiple interfaces:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3589):
+    b1 := class<abstract>:
+        Value1:int
+    b2 := class<abstract>:
+        Value2:int
+    invalid := class<abstract>(b1, b2){}
+-->
 <!-- 14-->
 ```verse
 base1 := class:
@@ -727,7 +741,7 @@ MakePlayer<constructor>(InName:string, InLevel:int)<transacts> := player:
     Health := InLevel * 100
 ```
 
-Here's an example of calling this constructor:
+Calling it:
 
 <!--versetest
 player := class:
@@ -974,7 +988,7 @@ MakeDerived<constructor>(Base:int, Derived:int) := derived:
 ```
 <!-- #>-->
 
-Here's an example showing execution order:
+The order in which these run:
 
 <!--versetest
 base := class:
@@ -1018,7 +1032,12 @@ In most contexts, you **cannot redefine names** that already exist in
 an enclosing scope. This applies to functions, variables, classes,
 interfaces, and modules:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3532):
+    F(X:int):int = X + 1
+    c := class:
+        F(X:int):int = X + 2
+-->
 <!-- 32-->
 ```verse
 # ERROR: Function at module level shadows class method
@@ -1444,7 +1463,7 @@ container(t:type) := class:
 <!-- #>-->
 
 
-Here's an example showing that different instantiations create distinct types:
+Different instantiations are distinct types:
 
 <!--versetest
 container(t:type) := class:
@@ -1471,7 +1490,25 @@ others based on **variance**. Variance determines when
 `parametric_class(supertype)` is expected (or vice versa).
 
 The variance of a parametric type depends on how the type parameter is
-used within the class definition:
+used within the class definition. The four cases below all use this
+pair of classes:
+
+<!--versetest
+entity := class:
+    ID:int
+player := class(entity):
+    Name:string
+<#
+-->
+<!-- 930 -->
+```verse
+entity := class:
+    ID:int
+
+player := class(entity):
+    Name:string
+```
+<!-- #> -->
 
 #### Covariant
 
@@ -1495,25 +1532,16 @@ ProcessProducer(P:producer(entity)):int = P.Get().ID
 -->
 <!-- 53-->
 ```verse
-# Base class hierarchy
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Covariant class - type parameter only in return position
 producer(t:type) := class:
     Value:t
 
     Get():t = Value  # Returns t - covariant position
 
-# Can use producer(player) where producer(entity) expected
 ProcessProducer(P:producer(entity)):int = P.Get().ID
 ```
 <!-- #>-->
 
-Here's an example demonstrating covariance:
+With those definitions in place:
 
 <!--versetest
 # Base class hierarchy
@@ -1534,19 +1562,15 @@ ProcessProducer(P:producer(entity)):int = P.Get().ID
 -->
 <!-- 531-->
 ```verse
-# Covariance allows subtype → supertype
 PlayerProducer:producer(player) = producer(player){Value := player{ID := 1, Name := "Alice"}}
 EntityProducer:producer(entity) = PlayerProducer  # Valid!
 
 Result := ProcessProducer(PlayerProducer)  # Works!
 ```
 
-**Why this is safe:** If you expect to get an `entity` from a
-producer, receiving a `player` (which is a subtype of `entity`) is
-always valid—a `player` has all the properties of an `entity`.
-
-**Direction:** `producer(player)` → `producer(entity)` ✓ (follows
-subtype direction)
+This is safe because a `player` has everything an `entity` has. If you
+expect to get an `entity` out of a producer, receiving a `player`
+instead is always acceptable.
 
 #### Contravariant
 
@@ -1560,13 +1584,6 @@ for details on variance). This means instantiations follow the
 <!--versetest-->
 <!-- 54-->
 ```verse
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Contravariant class - type parameter only in parameter position
 consumer(t:type) := class:
     Process(Item:t):void = {}  # Accepts t - contravariant position
 ```
@@ -1594,13 +1611,9 @@ ProcessPlayers(C:consumer(player)):void =
 ProcessPlayers(EntityConsumer)                    # Works!
 ```
 
-**Why this is safe:** If you have a function that accepts any
-`entity`, it can certainly handle the more specific `player` type. A
-`consumer(entity)` can consume anything a `consumer(player)` can
-consume, plus more.
-
-**Direction:** `consumer(entity)` → `consumer(player)` ✓ (opposite of
-subtype direction)
+The direction reverses because a `consumer(entity)` accepts everything
+a `consumer(player)` accepts, and more. Anything able to handle any
+`entity` can certainly handle a `player`.
 
 #### Invariant
 
@@ -1623,19 +1636,13 @@ transformer(t:type) := class:
 -->
 <!-- 55-->
 ```verse
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Invariant class - type parameter in both positions
+# Type parameter in both positions
 transformer(t:type) := class:
     Transform(Input:t):t = Input  # Both parameter and return
 ```
 <!-- #>-->
 
-Here's an example showing that no variance exists between different instantiations:
+Neither direction is allowed:
 
 <!--versetest
 entity := class:
@@ -1647,6 +1654,16 @@ player := class(entity):
 # Invariant class - type parameter in both positions
 transformer(t:type) := class:
     Transform(Input:t):t = Input  # Both parameter and return
+assert_semantic_error(3509):
+    ent := class:
+        ID:int
+    pl := class(ent):
+        Name:string
+    tr(t:type) := class:
+        Transform(Input:t):t = Input
+    G():void =
+        PT:tr(pl) = tr(pl){}
+        X:tr(ent) = PT
 -->
 <!-- 551-->
 ```verse
@@ -1659,12 +1676,9 @@ PlayerTransformer:transformer(player) = transformer(player){}
 # Y:transformer(player) = EntityTransformer  # ERROR
 ```
 
-**Why this is necessary:** If a `transformer(player)` could be used as
-a `transformer(entity)`, you could pass any `entity` to its
-`Transform` method, which expects specifically a `player`. This would
-be unsafe.
-
-**Direction:** No conversion allowed in either direction
+Neither direction is safe. If a `transformer(player)` were usable as a
+`transformer(entity)`, you could hand any `entity` to a `Transform`
+that expects a `player`.
 
 #### Bivariant
 
@@ -1686,20 +1700,14 @@ container(t:type) := class:
 -->
 <!-- 56-->
 ```verse
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Bivariant class - type parameter not used in public interface
+# Type parameter not used in the public interface
 container(t:type) := class:
     DoSomething():void = {}  # Doesn't use t at all
 ```
 <!-- #>-->
 
 
-Here's an example showing that bivariant classes allow conversion in both directions:
+Both directions are allowed:
 
 <!--versetest
 entity := class:
@@ -1723,8 +1731,8 @@ X:container(entity) = PlayerContainer  # Valid
 Y:container(player) = EntityContainer  # Also valid
 ```
 
-**Why this works:** Since the type parameter does not affect the
-observable behavior, the instantiations are interchangeable.
+The type parameter does not affect observable behaviour, so the
+instantiations are interchangeable.
 
 #### Inherited Members Constrain Variance
 
@@ -1805,7 +1813,7 @@ SumList(List:?list_node(int)):int =
 ```
 <!-- #>-->
 
-Here's an example of using the linked list:
+Using it:
 
 <!--versetest
 # Linked list node
@@ -1841,7 +1849,10 @@ IntList := list_node(int){
 You cannot define a parametric type that directly aliases to a
 structural type containing itself:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3502):
+    t1(u:type) := []t1(u)
+-->
 <!-- 71-->
 ```verse
 # Invalid: Direct array recursion
@@ -1874,7 +1885,7 @@ nested_list(t:type) := class:
     Items:[]nested_list(t)  # OK - wrapped in class
 ```
 
-Here's an example of constructing a tree with two children:
+Constructing a tree with two children:
 
 <!--versetest
 # Valid: Indirect recursion through class
@@ -1896,6 +1907,15 @@ Tree := nested_list(int){
 Polymorphic recursion occurs when a parametric type references itself
 with a **different type argument**:
 
+<!--versetest
+assert_semantic_error(3509):
+    my_type(t:type) := class:
+        Next:my_type(?t)
+assert_semantic_error(3509):
+    bi_list(t:type, u:type) := class:
+        Value:t
+        Next:?bi_list(u, t)
+-->
 <!-- 73-->
 ```verse
 # Invalid: Type parameter changes
@@ -1908,14 +1928,10 @@ with a **different type argument**:
 #     Next:?bi_list(u, t)  # ERROR - parameters swapped
 ```
 
-**Why this is disallowed:** Polymorphic recursion makes type inference
-undecidable and can create infinitely complex types. When you
-instantiate `my_type(int)`, it would need `my_type(?int)`, which needs
-`my_type(??int)`, and so on forever.
-
-**Current limitation:** While polymorphic recursion is theoretically
-sound in some type systems, Verse currently does not support it to
-keep type checking tractable.
+Polymorphic recursion makes type inference undecidable: instantiating
+`my_type(int)` would need `my_type(?int)`, which needs `my_type(??int)`,
+and so on without end. It is sound in some type systems, but Verse does
+not support it, to keep type checking tractable.
 
 **Disallowed: Mutual Recursion**
 
@@ -1932,11 +1948,10 @@ Mutual recursion between multiple parametric types is not supported:
 #     Next:?t1(t)  # References t1
 ```
 
-**Why this is disallowed:** Similar to polymorphic recursion, mutual
-recursion complicates type inference and can create circular
-dependencies that are difficult for the compiler to resolve.
+Mutual recursion raises the same problem, creating circular
+dependencies the compiler cannot resolve.
 
-**Workaround:** Combine into a single type:
+Combine them into a single type instead:
 
 <!-- NoCompile-->
 <!-- 75-->
@@ -1957,7 +1972,10 @@ combined_node(t:type) := class:
 You cannot inherit from a type variable or create recursive
 inheritance through parametric types:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3590):
+    t2(u:type) := class(t2(u)){}
+-->
 <!-- 76-->
 ```verse
 # Invalid: Inheriting from parametric self
@@ -1967,9 +1985,9 @@ inheritance through parametric types:
 # inherits_from_variable(t:type) := class(t){}  # ERROR
 ```
 
-**Why this is disallowed:** Inheritance requires knowing the parent's
-structure,but with parametric recursion, this structure would be
-self-referential before being defined.
+Inheritance requires knowing the parent's structure, but under
+parametric recursion that structure would be self-referential before it
+is defined.
 
 
 ### Parametric Interfaces
@@ -2039,7 +2057,7 @@ comparable_equivalence(t:subtype(comparable)) := class(equivalence(t, comparable
 ```
 <!-- #> -->
 
-Here's an example of using the parametric interface:
+Using it:
 
 <!--versetest
 equivalence(t:type, u:type) := interface:
@@ -2081,7 +2099,7 @@ player_producer := class(producer_interface(player)):
     Produce<override>():player = player{ID := 1, Name := "Test"}
 ```
 
-Here's an example of covariant subtyping:
+Covariant subtyping in use:
 
 <!--versetest
 entity := class:
@@ -2121,7 +2139,7 @@ int_processor := class(int_handler):
         Print("Handling: {Item}")
 ```
 
-Here's an example of using specialized interfaces in casts:
+Using specialized interfaces in casts:
 
 <!--versetest
 generic_handler(t:type) := interface:
@@ -2417,6 +2435,12 @@ constrained(t:subtype(base_class)) := class:
     Data:t
 UseConstrained(C:constrained(t) where t:subtype(base_class)):int =
     C.Data.ID
+assert_semantic_error(3509, 3506):
+    bc := class:
+        ID:int
+    con(t:subtype(bc)) := class:
+        Data:t
+    Use(C:con(t) where t:type):int = C.Data.ID
 <#
 -->
 <!-- 99-->
@@ -3351,7 +3375,14 @@ For fields, `<final>` prevents modification through archetype
 construction. When a field is marked `<final>` and has a default value,
 that value is locked and cannot be changed when creating instances:
 
-<!-- versetest-->
+<!--versetest
+assert_semantic_error(3568):
+    foo2 := class<computes>:
+        Val<final>:int = 0
+        X:int = 5
+    G2():void =
+        InvalidFoo := foo2{Val := 10}
+-->
 <!-- 1241-->
 ```verse
 foo := class<computes>:
@@ -3379,7 +3410,16 @@ themselves, it can be used on interface *members* to prevent overriding
 in implementing classes. Final interface members must provide a complete
 implementation (body for methods, value for fields):
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3568):
+    base_behavior2 := interface:
+        GetID<final>():int = 42
+        MaxCount<final>:int = 100
+        Process():void
+    concrete_impl2 := class(base_behavior2):
+        Process<override>():void = {}
+        GetID<override>():int = 99
+-->
 <!-- 124001 -->
 ```verse
 base_behavior := interface:
@@ -3405,7 +3445,16 @@ When an interface extends another interface with final members, those
 members remain final and cannot be overridden by any implementing
 classes:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3568):
+    b3 := interface:
+        GetVersion<final>():int = 1
+    d3 := interface(b3):
+        GetName():string
+    impl3 := class(d3):
+        GetName<override>():string = "Implementation"
+        GetVersion<override>():int = 2
+-->
 <!-- 124002 -->
 ```verse
 base := interface:

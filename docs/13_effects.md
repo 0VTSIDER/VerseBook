@@ -1,34 +1,28 @@
 # Effects
 
-Every function tells two stories. The first story, told through types,
-describes what data flows in and what data flows out. The second
-story, told through effects, describes what the function does along
-the way — whether it reads from memory, writes to storage, might fail,
-or could suspend execution. While most languages leave this second
-story implicit, Verse makes it explicit, turning side effects from
-hidden surprises into documented contracts.
+An effect specifier states what a function does besides returning a
+value: whether it reads or writes mutable state, allocates, might
+fail, or might suspend. Effects are part of the signature, so the
+declaration alone tells you what the function is permitted to do.
 
-Think about a simple game function that updates a player's score. In
-most languages, you'd see a signature like `UpdateScore(player,
-points)` and have to guess what happens inside. Does it modify the
-player object? Write to a database? Print to a log? Trigger
-animations? Without reading the implementation, you can't know. In
-Verse, effects are part of the signature itself, declaring upfront
-exactly what kinds of operations the function might perform.
+Compare the two. `UpdateScore(Player, Points)` says nothing about
+whether it touches the heap, writes a log, or blocks for a frame.
+`UpdateScore(Player, Points)<writes>` says it modifies state, and the
+compiler holds it to that.
 
 This explicitness might seem like extra work at first, but it
 fundamentally changes how you reason about code. When you see
 `<reads>` on a function, you know it observes mutable state. When you
 see `<writes>`, you know it modifies that state. When you see
 `<decides>`, you know it might fail. These are not comments or
-documentation that might be wrong — they are compiler-enforced
+documentation that might be wrong; they are compiler-enforced
 contracts that must be accurate.
 
 ## Understanding Effects
 
 Effects represent observable interactions between your code and the
 world around it. Reading a player's health, updating a score, spawning
-a particle effect, waiting for an animation to complete — all these
+a particle effect, waiting for an animation to complete: all these
 operations have effects that ripple beyond simple computation. Verse's
 effect system captures these interactions, making them visible and
 verifiable.
@@ -65,7 +59,7 @@ Effects compose naturally through function calls. If function A calls
 function B, and B has certain effects, then A must declare at least
 those same effects (with some exceptions we'll explore). This
 propagation ensures that effects can't be hidden or laundered through
-intermediate functions — the true nature of an operation is always
+intermediate functions, so the true nature of an operation is always
 visible at every level of the call stack.
 
 **Why Effects Matter**
@@ -75,7 +69,7 @@ optimization. For developers, effects act as documentation that can't
 lie. When you are debugging why a value changed unexpectedly, you can
 trace through the call chain looking only at functions with
 `<writes>`. When you are trying to understand why a function might
-fail, you look for `<decides>`. This is not guesswork — it is guaranteed
+fail, you look for `<decides>`. None of this is guesswork; it is guaranteed
 by the type system.
 
 For the compiler, explicit effects enable powerful optimizations and
@@ -89,7 +83,7 @@ The effect system also enforces architectural decisions. Want to
 ensure your math library remains pure? Mark its functions
 `<computes>`. Building a predictive client system that must run on
 players' machines? Use `<predicts>` to ensure no server-only
-operations sneak in. These are not just conventions — they are
+operations sneak in. These are not conventions but
 compiler-enforced guarantees.
 
 ## Effect Families and Specifiers
@@ -193,7 +187,7 @@ Specifying `<reads>` clears the `writes` and `allocates` bits, and
 
 The cardinality family deals with whether functions return values
 successfully. Every function either succeeds (returning its declared
-type) or fails (producing no value). Most functions always succeed —
+type) or fails (producing no value). Most functions always succeed:
 they are deterministic transformations that always produce output. But
 functions marked with `<decides>` can fail, turning failure into a
 control flow mechanism.
@@ -228,7 +222,7 @@ if (ValidateHealth[Player.Health]):
 -->
 
 The beauty of the decides effect is that it unifies validation with
-control flow. You do not check conditions and then act on them — the
+control flow. You do not check conditions and then act on them; the
 check itself drives the program's path.
 
 ### Heap effects
@@ -237,7 +231,7 @@ The heap family governs access to mutable memory. This is perhaps the
 most important family for understanding program behavior, as it
 determines whether functions can observe or modify state.
 
-The `<computes>` specifier marks pure functions — those that neither
+The `<computes>` specifier marks pure functions, those that neither
 read nor write mutable state. These functions are deterministic: given
 the same inputs, they always produce the same outputs. They're the
 mathematical ideal of computation, transforming data without side
@@ -329,7 +323,7 @@ HealPlayer(P:player, Amount:float)<transacts>:void =
 -->
 
 The `<allocates>` effect indicates functions that create observably
-unique values — either objects marked `<unique>` or values containing
+unique values: either objects marked `<unique>` or values containing
 mutable fields. Each call to such a function returns a distinct value,
 even if the inputs are identical.
 
@@ -365,7 +359,7 @@ PlayVictorySequence()<suspends>:void =
     ShowRewardsScreen()
 ```
 
-The `suspends` effect is viral — any function that calls a suspending
+The `suspends` effect is viral: any function that calls a suspending
 function must itself be marked `<suspends>`. This ensures you always
 know which functions might take time to complete.
 
@@ -378,6 +372,11 @@ does not propagate as a failure effect:
 
 <!--versetest
 DoAsyncWork():void={}
+assert_semantic_error(3511):
+    Validate10(Value:int)<decides><computes>:void =
+        Value > 0
+    G10():void =
+        Validate10(5)
 -->
 <!-- 10 -->
 ```verse
@@ -412,8 +411,8 @@ CallAsync()<suspends>:void =
 ```
 
 The asymmetry exists because `<suspends>` and `<decides>` represent
-fundamentally different control flow mechanisms—suspension is about
-time, while failure is about success/failure. Mixing their syntactic
+fundamentally different control flow mechanisms. Suspension is about
+time, while failure is about whether an expression produces a value. Mixing their syntactic
 forms creates ambiguity about what's being handled.
 
 ### Internal effects
@@ -462,14 +461,14 @@ The `<converges>` specifier can be used on:
 - Abstract method signatures in classes and interfaces
 - Function signatures in type expressions
 
-Regular function implementations cannot use `<converges>` — only their declarations in abstract contexts or as native functions.
+Regular function implementations cannot use `<converges>`; it is allowed only on declarations in abstract contexts and on native functions.
 
 
 <!-- TODO: write more -->
 
 ## Effect Composition
 
-Effects generally propagate up the call chain — a function must
+Effects generally propagate up the call chain: a function must
 declare all the effects of the functions it calls. However, certain
 language constructs can hide specific effects, preventing them from
 propagating further.
@@ -523,8 +522,8 @@ TryGetItem(Items:[]item, Index:int):?item =
 The `defer` expression provides cleanup code that runs when exiting a
 scope, but has strict effect limitations:
 
-- Cannot contain `<suspends>` operations—deferred code must execute synchronously
-- Cannot contain `<decides>` operations—deferred code must always succeed
+- Cannot contain `<suspends>` operations, because deferred code must execute synchronously
+- Cannot contain `<decides>` operations, because deferred code must always succeed
 
 <!--versetest
 resource:=class{}
@@ -557,7 +556,7 @@ essential when storing functions in variables, passing them as
 parameters, or choosing between different implementations.
 
 A function with **fewer effects** can be used where a function with
-**more effects** is expected. This is effect subtyping—a function that
+**more effects** is expected. This is effect subtyping: a function that
 does less is compatible with a context that allows more:
 
 <!--versetest-->
@@ -576,7 +575,7 @@ Result := F[5]  # Must use [] syntax since type has <decides>
 
 In this example, `PureAdd` has only `<computes>`, but it can be
 assigned to a variable expecting `<computes><decides>`. The pure
-function is a valid implementation of the failable interface—it simply
+function is a valid implementation of the failable interface; it simply
 never exercises the failure capability.
 
 This principle applies to all effects:
@@ -605,7 +604,13 @@ When deciding subtyping, effects have the following impact:
 While you can add effects through subtyping, you **cannot remove**
 effects that a function actually has:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3509):
+    Validate20(X:int)<computes><decides>:int =
+        X > 0
+        X
+    F20:type{_(:int)<computes>:int} = Validate20
+-->
 <!-- 20 -->
 ```verse
 Validate(X:int)<computes><decides>:int =
@@ -634,13 +639,13 @@ Increment(C:counter)<transacts>:int =
 # The function writes state, type does not permit it
 ```
 
-This restriction ensures type safety—the type signature is a promise
+This restriction ensures type safety: the type signature is a promise
 about what effects the function might perform, and the actual function
 must honor that promise.
 
 When you conditionally select between functions with different
 effects, the resulting expression has the union of all possible
-effects. This is *effect joining*—the compiler conservatively assumes
+effects. This is *effect joining*: the compiler conservatively assumes
 the result might perform any effect that any branch could perform:
 
 <!--versetest-->
@@ -769,7 +774,7 @@ The following table summarize the interaction of effects and types:
 | Select between `<reads>` and `<transacts>` | Result: `<transacts>` | Effect joining |
 
 These rules ensure that effect annotations remain trustworthy
-contracts—functions can do less than declared (subtyping), but never
+contracts: functions can do less than declared (subtyping), but never
 more, and conditional selection conservatively accounts for all
 possibilities (joining).
 
@@ -797,7 +802,14 @@ monster := class<unique><allocates>:
 
 Classes, interfaces, and structs **cannot** be marked with `<suspends>` or `<decides>`:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3512):
+    invalid_class29 := class<suspends>{}
+assert_semantic_error(3512):
+    invalid_interface29 := interface<decides>{}
+assert_semantic_error(3512):
+    invalid_struct29 := struct<decides>{}
+-->
 <!-- 29 -->
 ```verse
 # Valid effect specifiers for classes/interfaces/structs:
@@ -811,8 +823,8 @@ valid_struct := struct<transacts>{}
 # invalid_struct := struct<decides>{}     # ERROR
 ```
 
-This restriction applies to the class/struct **declaration** itself —
-the archetype constructor `my_class{...}` cannot be failable or
+This restriction applies to the class/struct **declaration** itself.
+The archetype constructor `my_class{...}` cannot be failable or
 suspending. However, **constructor functions** can use `<decides>`:
 
 <!--NoCompile-->
@@ -830,13 +842,23 @@ MakeMyClass<constructor>(V:int)<transacts><decides> := my_class:
         V
 ```
 
-This provides failable construction when needed — the object either
+This provides failable construction when needed: the object either
 exists fully formed or the constructor function fails and no object
 is created.
 
 Field default values and block clauses in classes have strict effect requirements:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3582):
+    Helper30()<transacts>:int = 42
+    bad_class30 := class:
+        Value:int = Helper30()
+assert_semantic_error(3512, 3512):
+    bad_class30b := class<computes>:
+        var Counter:int = 0
+        block:
+            set Counter = 1
+-->
 <!-- 30 -->
 ```verse
 # Field initializers must use pure functions
@@ -874,7 +896,11 @@ full `<transacts>` to initialize their state.
 
 When classes or interfaces inherit from interfaces with construction effects, they must declare at least the same construction effects:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3512):
+    transacting31 := interface<transacts>{}
+    invalid31 := class<computes>(transacting31){}
+-->
 <!-- 31 -->
 ```verse
 # Interface with transacts effect
@@ -889,7 +915,12 @@ valid_class := class<transacts>(transacting_interface){}
 
 Interface field initializers must also respect the interface's declared construction effects:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3512):
+    tc32 := class<transacts>{}
+    invalid_interface32 := interface<computes>:
+        Instance:tc32 = tc32{}
+-->
 <!-- 32 -->
 ```verse
 transacting_class := class<transacts>{}
@@ -953,6 +984,5 @@ changed to `<transacts>`, but it can be refined to `<computes>`.
 Effects transform side effects from hidden gotchas into visible,
 verifiable contracts. By making the implicit explicit, Verse helps you
 write more predictable, maintainable, and correct code. The effect
-system is not a burden — it is a tool that helps you express your intent
-clearly and have the compiler verify that your implementation matches
+system lets you state your intent explicitly and have the compiler verify that your implementation matches
 that intent.

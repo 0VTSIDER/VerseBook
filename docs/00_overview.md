@@ -518,7 +518,7 @@ RunExample<public>()<suspends>:void =
 ```
 <!-- #> -->
 
-This example demonstrates Verse in a practical context. Let's explore what makes this code uniquely Verse:
+Several things in this example are specific to Verse:
 
 **Type System and Data Modeling**
 

@@ -1,14 +1,13 @@
 # Functions
 
-Functions are reusable code blocks that perform actions and produce
-outputs based on inputs. Think of them as abstractions for behaviors,
-much like ordering food from a menu at a restaurant. When you order,
-you tell the waiter what you want from the menu, such as
-`OrderFood("Ramen")`. You do not need to know how the kitchen prepares
-your dish, but you expect to receive food after ordering. This
-abstraction is what makes functions powerful - you define the
-instructions once and reuse them in different contexts throughout your
-code.
+A function takes zero or more arguments and produces a result. You
+define the behaviour once and call it wherever it is needed; callers
+do not depend on how it is implemented.
+
+Verse function signatures carry effects as well as types, so a
+declaration states what a function may do as well as what it takes and
+returns. Functions are also values: they can be stored in variables,
+passed as arguments, and returned from other functions.
 
 ## Parameters
 
@@ -88,6 +87,10 @@ Positional arguments come first:
 
 <!--versetest
 Configure(Required:int, ?Option1:string = "", ?Option2:logic = false):void = {}
+assert_semantic_error(3629, 3509):
+    Cfg7(Required:int, ?Option1:string, ?Option2:logic):void = { }
+    G7():void =
+        Cfg7(?Option1:="test", 42, ?Option2:=true)
 <#
 -->
 <!-- 07-->
@@ -195,7 +198,11 @@ F3()                                        # Returns 3
 
 Function types preserve named parameter names:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3509):
+    Calc15(?Amount:float, ?Rate:float):float = Amount * Rate
+    F15:type{_(?Value:float, ?Factor:float):float} = Calc15
+-->
 <!-- 15-->
 ```verse
 Calculate(?Amount:float, ?Rate:float):float = Amount * Rate
@@ -368,7 +375,13 @@ Tuples can be used to provide positional arguments. However, you
 cannot mix a pre-constructed tuple variable with additional named
 arguments:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3509):
+    Calc28(A:int, B:int, ?C:int = 0):int = A + B + C
+    Args28:tuple(int, int) = (1, 2)
+    G28():void =
+        Calc28(Args28, ?C := 5)
+-->
 <!-- 28-->
 ```verse
 Calculate(A:int, B:int, ?C:int = 0):int = A + B + C
@@ -488,7 +501,12 @@ When a tuple parameter contains **only** named parameters (no
 positional parameters), you must provide an empty tuple `()` even when
 using all defaults:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3509):
+    Conf34(Base:int, (?Width:int = 10, ?Height:int = 20)):int = Base + Width + Height
+    G34():void =
+        Conf34(5)
+-->
 <!-- 34-->
 ```verse
 # Tuple with only named parameters
@@ -748,7 +766,12 @@ The compiler selects the appropriate overload based on the receiver type.
 **Must be called**: Extension methods cannot be referenced as
 first-class values without calling them:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3506):
+    (N:int).Double50():int = N * 2
+    G50():void =
+        F := 5.Double50
+-->
 <!-- 50-->
 ```verse
 (N:int).Double():int = N * 2
@@ -767,6 +790,10 @@ same signature as methods defined directly in classes or interfaces:
 player := class:
     Health():int = 100
 
+assert_semantic_error(3532):
+    player51 := class:
+        Health():int = 100
+    (P:player51).Health():int = 50
 <#
 -->
 <!-- 51-->
@@ -918,6 +945,16 @@ TestValid():void =
     var ProcessDog:type{_(:dog):dog} = AnimalToDog
     set ProcessDog = AnimalToDog  # OK: tuple(animal)->dog <: tuple(dog)->dog
     set ProcessDog = DogToWorkingDog  # OK: tuple(dog)->working_dog <: tuple(dog)->dog
+assert_semantic_error(3509):
+    an64 := class:
+        Name:string
+    dg64 := class(an64):
+        Breed:string
+    A2D64(X:an64):dg64 = dg64{Name := X.Name, Breed := "Unknown"}
+    D2A64(X:dg64):an64 = X
+    G64()<transacts>:void =
+        var P:type{_(:an64):dg64} = A2D64
+        set P = D2A64
 <#
 -->
 <!-- 64 -->
@@ -959,6 +996,12 @@ Suspendable()<suspends>:int = 42
 UsePure(F()<computes>:int):int = F()
 UseTransactional(F()<transacts>:int):int = F()
 UseSuspendable(F()<suspends>:int):task(int) = spawn{ F() }
+assert_semantic_error(3509):
+    Pure65()<computes>:int = 42
+    Trans65()<transacts>:int = 42
+    UsePure65(F()<computes>:int):int = F()
+    G65():void =
+        UsePure65(Trans65)
 -->
 <!-- 65-->
 ```verse
@@ -1860,6 +1903,14 @@ e := class<allocates>:
 
 myf := class<allocates>(e):
     func<override>(C:c):d = d{}
+assert_semantic_error(3532, 3532):
+    c109 := class{}
+    d109 := class(c109){}
+    e109 := class:
+        func(C:c109):c109 = C
+        func(E:e109):e109 = E
+    g109 := class(e109):
+        func(D:d109):d109 = D
 <#
 -->
 <!-- 109-->

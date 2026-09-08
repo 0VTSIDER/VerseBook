@@ -3,22 +3,15 @@
 !!! note "Unreleased Feature"
     Live variables have not yet been released. This chapter documents planned functionality that is not currently available.
 
-Live variables represent a reactive programming paradigm in Verse,
-enabling variables to automatically recompute their values when
-dependencies change. Rather than requiring explicit callbacks or event
-handlers, live variables establish dynamic relationships between data,
-creating a declarative system where changes propagate naturally
-through your code.
+A live variable recomputes its value whenever something it depends on
+changes. You state the relationship once, and Verse tracks which
+variables were read while evaluating it and re-evaluates when any of
+them is updated.
 
-Traditional programming requires manual tracking of dependencies and
-explicit updates when values change. If variable `A` depends on
-variable `B`, you must remember to update `A` whenever `B` changes,
-often through callback functions or observer patterns. Live variables
-eliminate this bookkeeping by automatically tracking which variables
-are read during evaluation and re-evaluating when those dependencies
-change. This creates more maintainable code where the intent—that `A`
-should always reflect some function of `B` — is expressed directly in
-the code itself.
+If `A` is defined in terms of `B`, you do not write a callback or an
+observer to keep them in step, and you cannot forget to. The intent
+that `A` always reflects some function of `B` is in the declaration
+itself.
 
 Live variables build a foundation for reactive programming constructs,
 including `await`, `upon`, and `when`. Understanding live variables is

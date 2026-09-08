@@ -1,8 +1,8 @@
 # Verse Code Evolution and Compatibility
 
-Verse takes a unique approach to code evolution, designed with the ambitious goal of creating software that could remain functional and valuable for decades or even centuries. This vision stems from Verse's role as the programming language for a persistent, global metaverse where code must coexist, evolve, and maintain compatibility across vast timescales.
+Verse is designed so that published code keeps working. Because code in a persistent, shared world may be depended on long after it was written, the language enforces backward compatibility rather than leaving it to convention: the compiler rejects changes that would break existing users.
 
-At its core, Verse embraces three fundamental principles that shape how code evolves: future-proof design that avoids being rooted in past artifacts of other languages, a metaverse-first approach where code persistence and compatibility are critical, and strong static verification that catches runtime problems at compile time. These principles create a foundation for a language that can grow and adapt while maintaining the stability required for a global, persistent codebase.
+Three ideas shape the rules that follow. Avoid inheriting features from older languages that would be hard to keep stable. Treat persistence and compatibility as primary constraints rather than later concerns. Verify as much as possible at compile time, so incompatibilities surface before publication rather than after.
 
 ## The Nature of Code Publication
 

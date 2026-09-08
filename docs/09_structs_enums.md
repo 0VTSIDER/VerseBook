@@ -1,10 +1,8 @@
 # Structs and Enums
 
-Structs and enums represent Verse's value-oriented type system, providing lightweight alternatives to classes for simple data aggregation and fixed sets of named values. Unlike classes with their object-oriented features, structs and enums focus on simplicity, immutability, and value semantics.
+Structs and enums are Verse's value types. A struct groups related data with no methods and no inheritance; its fields are public and immutable by default. An enum defines a fixed set of named values, which `case` can match exhaustively.
 
-Structs bundle related data without methods or inheritance, perfect for mathematical types, configuration data, and simple records. Enums define fixed sets of named constants, replacing magic numbers with meaningful names and providing compile-time safety through exhaustive pattern matching.
-
-Together, structs and enums complement classes and interfaces by offering simpler, more constrained type constructors optimized for specific use cases.
+Both are more limited than classes by design. Reach for them when you need data rather than behaviour.
 
 ## Structs
 
@@ -230,7 +228,7 @@ Each value in the enum becomes a named constant of that enum type. The compiler 
 placeholder := enum{}
 <#
 -->
-<!-- 06 -->
+<!-- 28 -->
 ```verse
 placeholder := enum{}  # Valid but rarely useful
 ```
@@ -247,7 +245,7 @@ status := enum:
 CurrentStatus:status = status.Active
 <#
 -->
-<!-- 07 -->
+<!-- 29 -->
 ```verse
 status := enum:
     Active
@@ -271,9 +269,14 @@ M()<transacts>:void =
     GoodAssignment:status = status.Active
     var CurrentStatus:status = status.Active
     set CurrentStatus = status.Inactive
+assert_semantic_error(3509):
+    status30 := enum:
+        Active
+        Inactive
+    BadAssignment30:status30 = status30
 <#
 -->
-<!-- 08 -->
+<!-- 30 -->
 ```verse
 # ERROR: Cannot use type as value
 BadAssignment:status = status  # Compile error
@@ -559,6 +562,17 @@ GetStatusCode(S:status):int =
         status.Active => 1
         status.Inactive => 2
         status.Pending => 3
+assert_semantic_error(3616):
+    status17 := enum:
+        Active
+        Inactive
+        Pending
+    GetCode17(S:status17):int =
+        case (S):
+            status17.Active => 1
+            status17.Inactive => 2
+            status17.Pending => 3
+            status17.Pending => 4
 <#
 -->
 <!-- 17 -->
@@ -590,6 +604,15 @@ GetStatusCode(S:status):int =
     case (S):
         status.Active => 1
         _ => 0
+assert_semantic_error(3616):
+    status18 := enum:
+        Active
+        Inactive
+    GetCode18(S:status18):int =
+        case (S):
+            status18.Active => 1
+            _ => 0
+            status18.Inactive => 2
 <#
 -->
 <!-- 18 -->
@@ -636,6 +659,16 @@ ProcessStatus(S:status):int =
         status.Active => 1
         status.Inactive => 2
         @ignore_unreachable status.Inactive => 3
+assert_semantic_error(3616):
+    status20 := enum:
+        Active
+        Inactive
+    Proc20(S:status20):int =
+        case (S):
+            status20.Active => 1
+            status20.Inactive => 2
+            @ignore_unreachable status20.Inactive => 3
+            status20.Active => 4
 <#
 -->
 <!-- 20 -->

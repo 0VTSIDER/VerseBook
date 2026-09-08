@@ -1,18 +1,15 @@
 # Types
 
-Every value has a type, and understanding the type system is
-fundamental to mastering any language. Types are not merely labels -
-they form a rich hierarchy that governs how values flow through your
-program, what operations are permitted, and how the compiler reasons
-about your code. The type system combines static verification with
-practical flexibility, catching errors at compile time while still
-allowing sophisticated patterns of code reuse and abstraction.
+Every value has a type. Types determine what operations are permitted
+and where a value can be used, and they are checked at compile time.
+Types are also values in Verse, which is what makes generic code
+possible.
 
-At the top of this hierarchy sits `any`, the universal supertype from
-which all other types descend. At the bottom lies `false`, the empty
-type that contains no values at all (the uninhabited type). Between
-these extremes exists a carefully designed lattice of types, each with
-its own capabilities and constraints.
+The types form a lattice rather than a tree, so a type can have several
+supertypes. At the top sits `any`, the supertype from which all other
+types descend. At the bottom lies `false`, the empty type that contains
+no values at all. Everything else sits between them, each type with its
+own capabilities and constraints.
 
 ## Understanding Subtyping
 
@@ -49,19 +46,15 @@ GetInt(MyRat)  # Compile error -  rational is not a subtype of int
 ```
 <!-- #> -->
 
-The subtyping relationship extends to composite types in sophisticated
-ways. Arrays and tuples follow covariant subtyping rules for their
-elements. This means that `[]int` is a subtype of `[]rational`.
-Similarly, `tuple(int, int)` is a subtype of `tuple(rational,
-rational)`. This covariance allows collections of more specific types
-to be used where collections of more general types are expected.
+Composite types have their own subtyping rules. Arrays, options and
+tuples are covariant in their elements, so `[]int` is a subtype of
+`[]rational` and `tuple(int, int)` is a subtype of `tuple(rational,
+rational)`.
 
-Maps exhibit more complex subtyping behavior. A map type `[K1]V1` is a
-subtype of `[K2]V2` when `K2` is a subtype of `K1` (contravariant in
-keys) and `V1` is a subtype of `V2` (covariant in values). The
-contravariance in keys might seem counterintuitive at first, but it
-ensures type safety: if you can look up values using a more general
-key type, you must be able to handle more specific key types as well.
+Maps are covariant in both parts: `[K1]V1` is a subtype of `[K2]V2`
+when `K1` is a subtype of `K2` and `V1` is a subtype of `V2`. See
+[Variance](03_containers.md#variance) for why iteration forces keys to
+be covariant rather than contravariant.
 
 Classes and interfaces introduce nominal subtyping through
 inheritance. When a class inherits from another class or implements an
@@ -860,6 +853,8 @@ good_float := type{_X:float where _X <= 142.0}
 
 assert:
      1
+assert_semantic_error(3502):
+    bad_float38 := type{_X:float where _X <= 142}
 <#
 -->
 <!-- 38 -->
@@ -875,7 +870,10 @@ good_float := type{_X:float where _X <= 142.0}
 **NaN Not Allowed:** Not a Number cannot appear in
 constraints:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3502):
+    nan_type39 := type{_X:float where _X <= NaN}
+-->
 <!-- 39 -->
 ```verse
 # Invalid: NaN in constraint
@@ -942,6 +940,11 @@ Half(X:finite):float = X / 2.0
 assert:
    Half(100.0)
    Half(1.0)
+assert_semantic_error(3509):
+    finite41 := type{_X:float where -Inf < _X, _X < Inf}
+    Half41(X:finite41):float = X / 2.0
+    G41():void =
+        Half41(Inf)
 <#
 -->
 <!-- 41 -->
@@ -1081,7 +1084,7 @@ assert:
 ```
 <!-- #> -->
 
-Here is an example that highlights how the return type of `=` is computed:
+How the return type of `=` is computed:
 
 <!--46b -->
 ```verse

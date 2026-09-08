@@ -1,8 +1,8 @@
 # Mutability
 
-Immutability is the default in Verse. When you create a value, it stays that value forever — unchanging, predictable, and safe to share. This foundational principle makes programs easier to reason about, eliminates entire categories of bugs, and enables powerful optimizations. But games are dynamic worlds where state constantly evolves: health decreases, scores increase, inventories change. Verse embraces both paradigms, providing immutability by default while offering controlled, explicit mutation when you need it.
+Values in Verse are immutable by default: once created, a value never changes. Mutation is available but opt-in and visible. You declare a variable with `var`, change it with `set`, and the effect system records both in the signature of any function that does so.
 
-The distinction between immutable and mutable data in Verse goes deeper than just whether values can change. It fundamentally affects how data flows through your program, how values are shared between functions, and how the compiler reasons about your code. Understanding this distinction is crucial for writing efficient, correct Verse programs.
+The distinction reaches further than whether a value can change. It also determines how data is shared between functions, which is why structs and classes behave differently when you mutate them.
 
 ## The Pure Foundation
 
@@ -67,7 +67,7 @@ List2 := linked_list{Value := 1, Next := option{linked_list{Value := 2}}}
 List1.Equals[List2] # This succeeds
 ```
 
-Pure computation forms the backbone of functional programming in Verse. It's predictable, testable, and parallelizable. When a function is marked `<computes>`, you know it will always produce the same output for the same input, with no hidden dependencies or surprising behaviors.
+A function marked `<computes>` always produces the same output for the same input, with no hidden dependencies. That is what makes it safe to cache, reorder, or run in parallel.
 
 ## Introducing Mutation
 
@@ -239,7 +239,13 @@ If you need multiple identifiers with similar purposes, use descriptive names (e
 
 **Cannot redeclare with assignment syntax:**
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3653):
+    G13()<transacts>:void =
+        var A13:int = 1
+        var B13:int = 2
+        A13 := B13
+-->
 <!-- 13 -->
 ```verse
 var A:int = 1
@@ -291,6 +297,14 @@ assert:
     Stats2.Position.X = 100.0
     set Stats2.Inventory = Stats2.Inventory + array{"Sword"}
     Stats2.Inventory = array{"Sword"}
+assert_semantic_error(3509):
+    pt15 := struct<computes>{X:float = 0.0}
+    stats15 := struct<computes>:
+        Level:int = 1
+        Position:pt15 = pt15{}
+    G15()<transacts>:void =
+        Stats1:stats15 = stats15{}
+        set Stats1.Level = 2
 <#
 -->
 <!-- 15 -->
@@ -364,6 +378,13 @@ assert:
     Player2.Name = "Villain"
     set Player2.Health = 75.0
     Player2.Health = 75.0
+assert_semantic_error(3509):
+    gc18 := class:
+        Name:string = "Hero"
+        var Health:float = 100.0
+    G18()<transacts>:void =
+        Player1:gc18 = gc18{}
+        set Player1 = gc18{}
 <#
 -->
 <!-- 18 -->
@@ -399,6 +420,14 @@ assert:
     Box:container = container{}
     set Box.MutableData = 42
     Box.MutableData = 42
+assert_semantic_error(3509):
+    pt19 := struct<computes>{X:float = 0.0}
+    container19 := class:
+        ImmutableData:pt19 = pt19{}
+        var MutableData:int = 0
+    G19()<transacts>:void =
+        Box:container19 = container19{}
+        set Box.ImmutableData = pt19{X := 1.0}
 <#
 -->
 <!-- 19 -->

@@ -1,15 +1,10 @@
 # Primitive Data Types
 
-Verse provides a rich set of primitive types that cover fundamental
-programming needs. The numeric types `int`, `float`, and `rational`
-handle mathematical operations, counters, and measurements. The
-`logic` type represents boolean values for conditions and flags. The
-`char`, `char32`, and `string` types handle text for character
-data, player names, and messages. Two special types, `any` and `void`,
-serve unique roles in the type hierarchy as the supertype of all types
-and the empty type respectively.
-
-Let's explore each primitive type in detail, starting with the numeric types that form the backbone of game logic.
+Verse's primitive types are the numeric types `int`, `float`, and
+`rational`; `logic` for boolean values; `char`, `char32`, and `string`
+for text; and two types with special roles in the hierarchy: `any`, the
+supertype of all types, and `void`, which discards whatever it is
+given.
 
 ## Intrinsics
 
@@ -1341,6 +1336,11 @@ MaybeValueExplicit(T:type, Value:t, Condition:logic where t:subtype(T)):?T =
 assert:
     X:?int = MaybeValueExplicit(int, 5, false)
     Y:?float = MaybeValueExplicit(float, 3.14, true)
+assert_semantic_error(3509):
+    Maybe818(T:type, Value:t, Condition:logic where t:subtype(T)):?T =
+        if (Condition?) then option{Value} else false
+    G818():void =
+        Z:?int = Maybe818(int, 3.14, true)
 <#
 -->
 <!-- 818 -->
@@ -1419,6 +1419,7 @@ Identity(X:t where t:type):t = X
 assert:
     Identity(42)
 
+assert_syntax_error(3100){"MakeDefault85(where t:type):t = false"}
 <#
 -->
 <!-- 85 -->
@@ -1597,12 +1598,34 @@ MaybeTrue:?true = MaybeVoid     # ?void and ?true interchange
 ```
 <!-- #> -->
 
-#### void is a type, not a value
+#### Write the value, not the type name
 
-A common mistake is passing `void` where the unit *value* is wanted. `void`
-names a type; the value is `false` (or `()`):
+`void` names a type; the unit value is `false` (or `()`). A parameter declared
+literally `:void` accepts any value, so passing the type name happens to work
+there. It does not work when `void` reaches the parameter through a type
+parameter, so write the value:
 
 <!--versetest
+assert_valid:
+    IgA(:void):int = 42
+    G909a():void =
+        X := IgA(void)
+assert_semantic_error(3509):
+    holder909(t:type) := interface:
+        Method(X:t):t = X
+    holder909_void := holder909(void)
+    c909 := class(holder909_void) {}
+    G909b():void =
+        C := c909{}
+        C.Method(void)
+assert_valid:
+    holder909b(t:type) := interface:
+        Method(X:t):t = X
+    holder909b_void := holder909b(void)
+    c909b := class(holder909b_void) {}
+    G909c():void =
+        C := c909b{}
+        C.Method(false)
 Ignore(:void):int = 42
 assert:
     Ignore(false) = 42
@@ -1612,14 +1635,23 @@ assert:
 ```verse
 Ignore(:void):int = 42
 
-Ignore(false)    # OK
+Ignore(false)    # OK - the unit value
 Ignore()         # OK
-# Ignore(void)   # ERROR - `void` is a type, not a value
+
+# A `:void` parameter accepts anything, so even the type name is taken here
+Ignore(void)     # OK, but misleading - prefer `false`
+
+# Through a type parameter bound to void, the type name is rejected:
+holder(t:type) := interface:
+    Method(X:t):t = X
+
+# C.Method(void)    # ERROR
+# C.Method(false)   # OK
 ```
 <!-- #> -->
 
 !!! warning
-    The resulting error reads *"expects a value of type `true`, but this
+    That last error reads *"expects a value of type `true`, but this
     argument is an incompatible value of type `true`"*. Both sides print as
     `true`, because the type of a type expression renders the same way. If you
     see a message that appears to say a type is incompatible with itself, check

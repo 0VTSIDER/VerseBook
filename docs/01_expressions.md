@@ -1,11 +1,10 @@
 # Expressions
 
-Everything is an expression. This design principle sets Verse apart
-from many other languages where statements and expressions are
-distinct concepts. Every piece of code you write produces a value,
-even constructs you might expect to be purely side-effecting. This
-creates a programming model where code can be composed and combined in
-ways that feel natural and predictable.
+Everything in Verse is an expression: every piece of code produces a
+value, including constructs that in other languages would be
+statements. An `if`, a loop, a variable declaration, and a block all
+evaluate to something. Because there is no statement/expression
+divide, any of them can appear wherever a value is expected.
 
 ## Primary Expressions
 
@@ -317,7 +316,12 @@ IsEqual := logic{X = Y}              # True if equal, false otherwise
 
 The `logic{}` expression requires at least a superficial possibility of failure. Pure expressions without `<decides>` effect cause errors:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3513, 3547):
+    Bad18a := logic{0}
+assert_semantic_error(3660):
+    Bad18b := logic{}
+-->
 <!-- 18 -->
 ```verse
 # ERROR: logic{0} has no decides effect
@@ -1130,6 +1134,8 @@ writing correct Verse code.
 assert:
     Result := (1; 2; 3)
     Result = 3
+assert_semantic_error(3560, 3547):
+    Result49 := 1; 2
 -->
 <!-- 49 -->
 ```verse
@@ -1140,7 +1146,10 @@ Result := (1; 2; 3)     # Evaluates 1, then 2, then 3; returns 3
 
 **Commas** (within parentheses) create *tuples* - they group multiple values into a single composite value:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3560, 3547):
+    Result50 := 1, 2
+-->
 <!-- 50 -->
 ```verse
 Result := (1, 2, 3)     # Creates a tuple of three elements
@@ -1285,7 +1294,10 @@ for (X := 1..3, X <> 2) { X }      # Same meaning in this context
 In `array{}` constructors, you can separate elements with commas **or**
 semicolons (but not mixed):
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3547):
+    MixedArray61 := array{1, 2; 3}
+-->
 <!-- 61 -->
 ```verse
 CommaArray := array{1, 2, 3}       # Commas work

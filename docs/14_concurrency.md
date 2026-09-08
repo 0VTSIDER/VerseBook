@@ -1,25 +1,15 @@
 # Concurrency
 
-Concurrency is a fundamental aspect of Verse, allowing you to control
-time flow as naturally as you control program flow. Unlike traditional
-programming languages that bolt on concurrency as an afterthought,
-Verse integrates time flow control directly into the language through
-dedicated expressions and effects.
+Concurrency in Verse is part of the language rather than a library. An
+async expression can suspend and resume across simulation updates, and
+a set of constructs (`sync`, `race`, `rush`, `branch`, `spawn`)
+combines async work under defined rules for completion and
+cancellation.
 
-Game development inherently requires managing multiple simultaneous
-activities. Think about a typical game scene: NPCs patrol their routes
-while particle effects play, UI elements animate as cooldown timers
-count down, and background music fades between tracks. All these
-activities happen concurrently, overlapping in time. Verse recognizes
-this reality and provides first-class language constructs to express
-these parallel behaviors naturally.
-
-The language achieves this through a combination of structured and
-unstructured concurrency primitives, all built on the concept of async
-expressions that can suspend and resume across multiple simulation
-updates. This approach makes concurrent programming feel as natural as
-writing sequential code, while avoiding the traditional pitfalls of
-thread-based concurrency like data races and deadlocks.
+A game scene runs many things at once: NPCs follow their routes, timers
+count down, music crossfades between tracks. These constructs let that
+be written as ordinary nested code, with the compiler tracking which
+functions can suspend through the `<suspends>` effect.
 
 ## Core Concepts
 
@@ -72,7 +62,12 @@ Concurrent operations require the `<suspends>` effect specifier (see
 concurrency expressions, call other suspending functions, and
 cooperatively yield execution:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3512):
+    Nap(:float)<transacts><suspends>:void = {}
+    G1():void =
+        Nap(1.0)
+-->
 <!-- 01 -->
 ```verse
 # Function marked with suspends can use async expressions
@@ -115,6 +110,12 @@ constructs in immediate (non-suspending) functions:
 <!--versetest
 Operation1<public>()<suspends>:void = {}
 Operation2<public>()<suspends>:void = {}
+assert_semantic_error(3512):
+    Op2()<suspends>:void = {}
+    G2():void =
+        sync:
+            Op2()
+            Op2()
 -->
 <!-- 02 -->
 ```verse
@@ -666,7 +667,13 @@ relationship, just an independent task pursuing its goal.
 The spawned function must have the `<suspends>` effect. You **cannot**
 spawn functions with the `<decides>` effect:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3511, 3538):
+    FailableWork12()<decides>:void =
+        false?
+    G12()<suspends>:void =
+        spawn{FailableWork12()}
+-->
 <!-- 12 -->
 ```verse
 AsyncWork()<suspends>:void =
@@ -1111,6 +1118,11 @@ ValidDefer()<suspends>:void =
     defer:
         Print("Cleanup happens immediately")
     Sleep(1.0)
+assert_semantic_error(3512, 3567):
+    Nap44(:float)<transacts><suspends>:void = {}
+    G44()<suspends>:void =
+        defer:
+            Nap44(1.0)
 <#
 -->
 <!-- 44 -->
@@ -1757,6 +1769,12 @@ from an event, preventing accidental signals:
 
 <!--versetest
 ProcessValue(:int):void={}
+assert_semantic_error(3506):
+    G65a(Source:awaitable(int))<suspends>:void =
+        Source.Signal(123)
+assert_semantic_error(3506):
+    G65b(Target:signalable(int))<suspends>:void =
+        Value := Target.Await()
 -->
 <!-- 65 -->
 ```verse
@@ -2053,6 +2071,13 @@ ProcessWithRush(I:int)<suspends>:void =
 M()<suspends>:void =
     for (I := 0..10):
         ProcessWithRush(I)
+assert_semantic_error(3552):
+    Op76()<suspends>:void = {}
+    G76()<suspends>:void =
+        for (I := 0..10):
+            rush:
+                Op76()
+                Op76()
 <#
 -->
 <!-- 76 -->

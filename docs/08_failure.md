@@ -1,20 +1,13 @@
 # Failure
 
-Most programming languages treat control flow as a matter of true or
-false, yes or no, one or zero. They evaluate boolean conditions and
-branch accordingly, creating a world of binary decisions that often
-requires checking conditions twice - once to see if something is
-possible, and again to actually do it. Verse takes a different
-approach. Instead of asking "is this true?", Verse asks "does this
-succeed?"
+Where most languages branch on a boolean test, Verse branches on
+whether an expression *succeeds*. An expression that might not succeed
+is called **failable**, and failure is what drives control flow.
 
-This distinction might seem subtle, but it changes how programs are
-written and reasoned about. Failure is not an error or an
-exception-it is a first-class concept that drives control flow. When an
-expression fails, it does not crash your program or throw an exception
-that needs to be caught. Instead, failure is a normal, expected
-outcome that your code handles gracefully through the structure of the
-language itself.
+Failure is neither an error nor an exception. A failing expression does
+not crash the program and raises nothing to be caught. It simply
+produces no value, and the construct around it decides what happens
+next.
 
 Consider the simple act of accessing an array element. In traditional languages, you might write:
 
@@ -897,6 +890,11 @@ When calling decides functions in non-decides contexts, you must handle failure 
 FindPlayer(Name:string)<transacts><decides>:string=Name
 GetDefaultPlayer():string="Default"
 UsePlayer(P:string):void=return
+assert_semantic_error(3512):
+    player57 := class{}
+    FindPlayer57(Name:string)<transacts><decides>:player57 = player57{}
+    Bad57(Name:string):void =
+        Player := FindPlayer57[Name]
 -->
 <!-- 57 -->
 ```verse
@@ -1037,4 +1035,4 @@ This perspective makes code more readable and intent more clear. When you see a 
 
 Failure in Verse is not something to be feared or avoided - it is a tool to be embraced. It makes programs safer by eliminating certain categories of bugs. It makes code clearer by unifying validation and action. It makes complex operations simpler by providing automatic rollback. Most importantly, it aligns the way we write programs with the way we think about actions and decisions in the real world.
 
-As you write more Verse code, you'll find that failure becomes second nature. You'll reach for failable expressions naturally when expressing conditions. You'll structure your functions to fail early when preconditions are not met. You'll compose failures to create sophisticated control flow without nested conditionals. And you'll appreciate how this different way of thinking about control flow leads to code that is both more robust and more expressive than traditional approaches.
+In practice this shifts how conditions get written: preconditions fail early instead of nesting, and failable expressions compose where other languages would need nested `if`s.

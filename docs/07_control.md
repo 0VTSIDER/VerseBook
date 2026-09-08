@@ -1,11 +1,9 @@
 # Control Flow
 
-Every program has a natural rhythm to its execution, a sequence in
-which instructions are processed and decisions are made. In Verse,
-this flow is more than just a mechanical progression through lines of
-code - it is a carefully orchestrated dance between different types of
-expressions, each contributing to the overall behavior of your
-program.
+Control flow in Verse is built from expressions rather than
+statements: `if`, `case`, `loop`, `for`, `first`, and `block` all
+produce values, so any of them can be used where a value is expected.
+This chapter covers each of those, along with `return` and `defer`.
 
 ## Blocks
 
@@ -164,7 +162,7 @@ or want to emphasize the condition-action separation.
 
 The condition in an `if` must contain at least one expression that can
 fail. This requirement ensures `if` is used for its intended
-purpose—handling uncertain outcomes:
+purpose, handling uncertain outcomes:
 
 <!--NoCompile-->
 <!-- 10 -->
@@ -178,7 +176,7 @@ if (FirstItem := Items[0]):
     Process(FirstItem)
 ```
 
-Empty conditions are also not allowed—every `if` must test something.
+Empty conditions are also not allowed: every `if` must test something.
 
 If any expression in the condition fails, control flow proceeds to the
 `else` branch if present. Any effects performed while evaluating the
@@ -202,7 +200,7 @@ else:
     # Counter rolled back to original value - increment undone!
 ```
 
-This speculative execution makes conditional logic safer—you can
+This speculative execution makes conditional logic safer. You can
 perform operations optimistically, knowing they'll be reversed if
 subsequent conditions fail.
 
@@ -453,7 +451,7 @@ GameLoop():void =
 ```
 
 The `break` expression exits the loop entirely, terminating iteration.
-`break` has "bottom" type—a type that represents a computation that
+`break` has "bottom" type, a type that represents a computation that
 never returns normally. Since the bottom type is a subtype of all
 other types, `break` can be used in any type context:
 
@@ -475,7 +473,7 @@ the if-expression, showing that `break` is compatible in any type context.
 
 **Loop Return Value:** The loop expression itself produces a value of type
 `true`, regardless of what expressions appear in its body.
-This return value is rarely useful in practice—loops are typically used for
+This return value is rarely useful in practice; loops are typically used for
 their side effects.
 
 When `break` appears in nested loops, it exits only the innermost
@@ -827,7 +825,7 @@ resulting array is what gets stored.
    variables in the for clause is not allowed.
 
 The range operator `..` has strict limitations that distinguish it
-from other iterable types. Ranges are *not first-class values*—they
+from other iterable types. Ranges are *not first-class values*. They
 are expressions that iteratively yield each integer in the range as a
 separate value. Ranges cannot be used in some contexts where you
 might expect them to work:
@@ -918,7 +916,7 @@ the body for every iteration of the domain clause, it evaluates only
 the **first** iteration of the domain clause that succeeds. Instead
 of yielding an array as `for` does, it yields the value of the body
 for that single iteration. If no iteration reaches the body, `first`
-fails — so it requires a `<decides>` context.
+fails, so it requires a `<decides>` context.
 
 <!--versetest
 player:=struct{ Name:string }
@@ -968,7 +966,7 @@ IndexOf(Arr:[]int, Target:int)<decides>:int =
 
 Note that `first` yields the value of the **body** expression, not the
 iteration variable. This is what makes it possible to search for one
-thing and yield another — for example, finding an index by matching a
+thing and yield another: finding an index by matching a
 value.
 
 **First vs For:**
@@ -1054,7 +1052,7 @@ ValidateInput(Value:int):string =
 ```
 
 Return statements can only appear in specific positions within your
-code—they must be in "tail position," meaning they must be the last
+code. They must be in "tail position," meaning they must be the last
 operation performed before control exits a scope. This restriction
 ensures predictable control flow:
 
@@ -1245,7 +1243,7 @@ ExampleWithFailure()<transacts><decides>:void =
 ```
 
 When the `RiskyOperation` fails, the entire function also fails, and
-speculative execution undoes everything—including the defer
+speculative execution undoes everything, including the defer
 registration. The resource cleanup never happens because the resource
 acquisition itself is rolled back.
 
@@ -1348,7 +1346,7 @@ ProcessWithCleanup():void =
 ```
 
 The execution order follows the LIFO principle at each nesting
-level—inner defers execute after the outer defer's code, maintaining
+level: inner defers execute after the outer defer's code, maintaining
 the stack-like cleanup order.
 
 **Defers in Control Flow:**

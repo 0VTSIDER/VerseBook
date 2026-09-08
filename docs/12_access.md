@@ -1,15 +1,11 @@
 # Access Specifiers
 
-Access specifiers control visibility and accessibility of code
-elements. They provide a nuanced spectrum of access levels that
-reflect the complex reality of modern software development,
-particularly in the context of a persistent, global metaverse where
-code from many authors must coexist safely.
+An access specifier controls where a definition can be referenced
+from. Verse has five levels, plus one reserved for Epic-authored code.
 
-Five primary visibility levels are defined that form a carefully
-designed hierarchy, each serving specific architectural
-needs. Understanding when and why to use each level is crucial for
-creating well-structured, maintainable code.
+The choice matters most for code you publish: making something
+`<public>` is a commitment you cannot easily withdraw, because other
+people's code may come to depend on it.
 
 | Specifier | Visibility | Usage |
 |-----------|------------|-------|
@@ -1299,6 +1295,8 @@ The type annotation `: message` is required. Implicit typing is not supported:
 <!--versetest
 
 GoodMessage<localizes> : message = "Text"
+assert_semantic_error(3639, 3560):
+    BadMessage35<localizes> := "Text"
 <#
 -->
 <!-- 35 -->
@@ -1316,6 +1314,8 @@ GoodMessage<localizes> : message = "Text"
 <!--versetest
 
 ValidMessage<localizes> : message = "AB"
+assert_semantic_error(3638, 3560):
+    InvalidMessage36<localizes> : message = "A" + "B"
 <#
 -->
 <!-- 36 -->
@@ -1335,6 +1335,11 @@ Not all types are supported as parameters:
 <!--versetest
 
 my_class := class{Value:int}
+assert_semantic_error(3506, 3506):
+    OptionalMsg37<localizes>(Player:?string) : message = "{Player}"
+assert_semantic_error(3506, 3506):
+    my_class37 := class{Value:int}
+    ClassMsg37<localizes>(Obj:my_class37) : message = "{Obj}"
 <#
 -->
 <!-- 37 -->
@@ -1355,6 +1360,8 @@ Only parameter names and Unicode code points are allowed inside `{}`:
 <!--versetest
 
 ParamMessage<localizes>(Name:string) : message = "{Name}"
+assert_semantic_error(3652, 3506, 3506):
+    ExprMessage38<localizes>(Name:string) : message = "{"Hello"}"
 <#
 -->
 <!-- 38 -->

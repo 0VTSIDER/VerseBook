@@ -1,8 +1,6 @@
 # Container Types
 
-Container types in Verse manage collections and structured data. Optionals represent values that may or may not be present. Tuples group multiple values of different types into ordered sequences. Arrays hold zero or more values with efficient indexed access. Maps associate keys with values for fast lookups. Weak maps extend regular maps with weak reference semantics for persistent storage.
-
-Let's explore each container type in detail, starting with optionals that elegantly handle the presence or absence of values.
+Verse has five container types. An optional (`?t`) holds either a value or nothing. A tuple groups a fixed number of values that may have different types. An array (`[]t`) holds any number of values of one type, with indexed access. A map (`[k]v`) associates keys with values. A `weak_map` is a map that does not keep its keys alive, and is the basis for persistent storage.
 
 ## Optionals
 
@@ -57,7 +55,7 @@ GetAFloatOrFail()<transacts><decides>:float = 3.14
 MaybeAFloat := option{GetAFloatOrFail[]}
 ```
 
-This symmetry is important. The `?` operator unwraps an optional into a `<decides>` expression, while `option{...}` wraps a `<decides>` expression into an optional. Together they provide a smooth bridge between computations that may fail and values that may be absent.
+The two are inverses: `?` turns an optional into a `<decides>` expression, and `option{...}` turns a `<decides>` expression into an optional.
 
 Although an optional value itself is immutable, you can keep one in a variable and change which optional the variable points to. The keyword `set` is used for this:
 
@@ -88,7 +86,8 @@ Y := Idx?                           # unwraps the optional
 Y = 1
 ```
 
-Here the optional signals the possibility of failure directly in the type. The `?` operator makes it easy to use the result in an expression, while `option{...}` allows you to turn conditional computations back into optionals. The effect is that the idea of "maybe a value, maybe not" becomes a first-class part of the language, rather than an afterthought, and programmers are encouraged to handle the absence of values in a disciplined way.
+The return type `?int` states in the signature that the search may not
+find anything, so callers cannot forget to handle that case.
 
 ## Tuple
 
@@ -186,13 +185,13 @@ Tuples can be used directly with the `+` and `+=` operators on arrays, and will 
 <!--versetest-->
 <!-- 77 -->
 ```verse
-var Numbers:[]int = array{1, 2, 3}
+var Values:[]int = array{1, 2, 3}
 
 # Concatenate using a tuple - automatically converted to array
-set Numbers = Numbers + (4, 5, 6)
+set Values = Values + (4, 5, 6)
 
 # Shorthand form also works with tuples
-set Numbers += (7, 8, 9)
+set Values += (7, 8, 9)
 
 # Result: array{1, 2, 3, 4, 5, 6, 7, 8, 9}
 ```
@@ -868,7 +867,7 @@ Values.Last[-1]      # fails - negative index
 ```
 <!-- #> -->
 
-Arrays in Verse are thus immutable values with predictable behavior, but through `var` they offer the convenience of mutable variables. They can be concatenated, iterated, sliced, searched, and manipulated, making them one of the most flexible and fundamental data structures in the language.
+Arrays are immutable values; a `var` holding an array can be reassigned, but the array itself never changes in place.
 
 ## Maps
 
@@ -1032,16 +1031,32 @@ Instructions:[direction]string = map{
 
 **Rational numbers as keys:**
 
-<!--versetest-->
+Integer division is failable, so a rational cannot be written directly as a map
+literal key: failure in map literal keys is not implemented. Bind the keys
+first, in a failure context:
+
+<!--versetest
+assert:
+    Half := 1/2
+    Third := 1/3
+    TwoThirds := 2/3
+    Whole := 1/1
+    Fractions:[rational]string = map{Half => "half", Third => "third", TwoThirds => "two thirds", Whole => "whole"}
+    Fractions[Half] = "half"
+    Fractions[2/2] = "whole"
+<#
+-->
 <!-- 74 -->
 ```verse
-Fractions:[rational]string = map{
-    1/2 => "half",
-    1/3 => "third",
-    2/3 => "two thirds",
-    1/1 => "whole"
-}
+Half := 1/2
+Third := 1/3
+Whole := 1/1
+
+Fractions:[rational]string = map{Half => "half", Third => "third", Whole => "whole"}
+
+Fractions[2/2] = "whole"   # 2/2 and 1/1 are the same key
 ```
+<!-- #> -->
 
 Equivalent rational numbers (like `1/1` and `2/2`) are treated as the same key.
 
@@ -1197,6 +1212,14 @@ dog := class<unique>(animal) {}
 
 class1 := class<unique> {}
 class2 := class<unique>(class1) {}
+assert_semantic_error(3509):
+    animal2 := class<unique> {}
+    dog2 := class<unique>(animal2) {}
+    F()<transacts><decides>:void =
+        var M : [dog2]int = map{}
+        K2 : dog2 = dog2{}
+        K1 : animal2 = K2
+        set M[K1] = 2
 -->
 <!-- 62 -->
 ```verse
@@ -1332,6 +1355,10 @@ Because `weak_map` is a supertype of `map`, you can assign regular maps to weak_
 <!--versetest
 M():void =
     var MyWeakMap:weak_map(int,int) = map{1 => 2}
+assert_semantic_error(3506):
+    G()<transacts>:void =
+        var W:weak_map(int,int) = map{1 => 2}
+        Size := W.Length
 <#
 -->
 <!-- 70 -->
@@ -1347,9 +1374,13 @@ var MyWeakMap:weak_map(int,int) = map{1 => 2}
 <!--versetest
 M():void =
     var MyWeakMap:weak_map(int,int) = map{1 => 2, 3 => 4}
+assert_semantic_error(3524):
+    G()<transacts>:void =
+        var W:weak_map(int,int) = map{1 => 2, 3 => 4}
+        for (Entry : W) {}
 <#
 -->
-<!-- 71 -->
+<!-- 83 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{1 => 2, 3 => 4}
 # ERROR: Cannot iterate over weak_map
@@ -1362,9 +1393,13 @@ var MyWeakMap:weak_map(int,int) = map{1 => 2, 3 => 4}
 <!--versetest
 M():void =
     var MyWeakMap:weak_map(int,int) = map{}
+assert_semantic_error(3509):
+    G()<transacts>:void =
+        var W:weak_map(int,int) = map{}
+        C:comparable = W
 <#
 -->
-<!-- 72 -->
+<!-- 84 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{}
 # ERROR: weak_map cannot be converted to comparable
@@ -1377,9 +1412,13 @@ var MyWeakMap:weak_map(int,int) = map{}
 <!--versetest
 M():void =
     var MyWeakMap:weak_map(int,int) = map{1 => 2}
+assert_semantic_error(3509):
+    G()<transacts>:void =
+        var W:weak_map(int,int) = map{1 => 2}
+        Result:[int]int = if (true?) then W else map{3 => 4}
 <#
 -->
-<!-- 73 -->
+<!-- 85 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{1 => 2}
 
@@ -1398,9 +1437,14 @@ When using `weak_map` as a module-scoped variable (for persistent data), there a
 M():void =
     var LocalData:weak_map(int, int) = map{}
     if (set LocalData[1] = 100) {}
+assert_semantic_error(3502):
+    p86 := class<unique><allocates><computes><persistent><module_scoped_var_weak_map_key>{}
+    M86 := module:
+        var PlayerData:weak_map(p86, int) = map{}
+        GetAll():weak_map(p86, int) = PlayerData
 <#
 -->
-<!-- 74 -->
+<!-- 86 -->
 ```verse
 # Module-scoped persistent weak_map
 var PlayerData:weak_map(player, int) = map{}
@@ -1418,9 +1462,15 @@ GetAllData():weak_map(player, int) =
 M():void =
     var LocalData:weak_map(int, int) = map{}
     set LocalData = map{}
+assert_semantic_error(3502):
+    p87 := class<unique><allocates><computes><persistent><module_scoped_var_weak_map_key>{}
+    M87 := module:
+        var PlayerData:weak_map(p87, int) = map{}
+        Reset()<transacts>:void =
+            set PlayerData = map{}
 <#
 -->
-<!-- 75 -->
+<!-- 87 -->
 ```verse
 var PlayerData:weak_map(player, int) = map{}
 
@@ -1447,7 +1497,7 @@ M()<transacts>:void =
         if (set LocalData[Key] = Score) {}
 <#
 -->
-<!-- 76 -->
+<!-- 88 -->
 ```verse
 var PlayerData:weak_map(player, int) = map{}
 
@@ -1475,9 +1525,13 @@ regular_class := class<unique> {}
 
 M():void =
     var LocalData:weak_map(regular_class, int) = map{}
+assert_semantic_error(3502):
+    regular89 := class<unique><allocates><computes>{}
+    M89 := module:
+        var InvalidData:weak_map(regular89, int) = map{}
 <#
 -->
-<!-- 77 -->
+<!-- 89 -->
 ```verse
 # Valid key type
 persistent_class := class<unique><allocates><computes><persistent><module_scoped_var_weak_map_key> {}
@@ -1500,6 +1554,12 @@ regular_struct := struct:
 
 M():void =
     var LocalData:weak_map(int, regular_struct) = map{}
+assert_semantic_error(3502):
+    p78 := class<unique><allocates><computes><persistent><module_scoped_var_weak_map_key>{}
+    rs78 := struct:
+        Value:int
+    M78 := module:
+        var InvalidData:weak_map(p78, rs78) = map{}
 <#
 -->
 <!-- 78 -->
@@ -1542,6 +1602,14 @@ CreateDerivedMap():weak_map(derived_class, value_struct) =
 
 F():void=
     BaseMap:weak_map(base_class, value_struct) = CreateDerivedMap()
+assert_semantic_error(3509):
+    b2 := class<unique> {}
+    d2 := class(b2) {}
+    v2 := struct {}
+    Mk():weak_map(d2, v2) = map{}
+    G():void =
+        BM:weak_map(b2, v2) = Mk()
+        DM:weak_map(d2, v2) = BM
 <#
 -->
 <!-- 79 -->

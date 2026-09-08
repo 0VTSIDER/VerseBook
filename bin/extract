@@ -288,12 +288,13 @@ function separateTypeDefinitions(snippetLines) {
   return { typeDefLines, testCodeLines };
 }
 
-function extractVerseSnippets(markdownContent) {
+function extractVerseSnippets(markdownContent, sourceName) {
   const snippets = [];
   const lines = markdownContent.split('\n');
   let inVerseBlock = false;
   let currentSnippet = [];
   let verseBlockStart = -1;
+  const seenNumbers = new Set();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -341,7 +342,26 @@ function extractVerseSnippets(markdownContent) {
         const detail = opensComment
               ? 'prepend opens `<#` but no `<!-- #> -->` follows the block'
               : 'appended `#>` has no matching `<#` at the end of the prepend';
-        console.warn(`Warning: snippet ${number}: ${detail}`);
+        console.warn(`Warning: ${sourceName} snippet ${number}: ${detail}`);
+      }
+
+      // Snippet numbers become filenames, so a duplicate silently overwrites
+      // the earlier snippet's test. Catch that rather than losing coverage.
+      if (seenNumbers.has(number)) {
+        console.warn(`Warning: ${sourceName} snippet ${number}: duplicate number, ` +
+                     `this snippet overwrites the earlier one`);
+      }
+      seenNumbers.add(number);
+
+      // Claim check: if the displayed code says something is an error, the
+      // prepend should prove it with assert_semantic_error/assert_syntax_error.
+      // Otherwise the claim is untested prose and can be (and has been) wrong.
+      const claimsError = currentSnippet.some(l => /#.*\bERROR\b/.test(l));
+      const provesError = prependLines.some(
+        l => /assert_semantic_error|assert_syntax_error/.test(l));
+      if (claimsError && !provesError) {
+        console.warn(`Warning: ${sourceName} snippet ${number}: displayed code claims an ` +
+                     `ERROR but the prepend does not assert one`);
       }
 
       // Separate type definitions from test code
@@ -407,7 +427,7 @@ function main() {
   const markdownContent = fs.readFileSync(markdownFile, 'utf-8');
 
   // Extract snippets
-  const snippets = extractVerseSnippets(markdownContent);
+  const snippets = extractVerseSnippets(markdownContent, path.basename(markdownFile));
 
   if (snippets.length === 0) {
     console.log('No Verse code snippets found');

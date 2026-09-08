@@ -1,25 +1,14 @@
 # Modules
 
-Modules and paths are fundamental concepts for code organization,
-namespace management, and the ability to share and reuse code across
-projects. Think of modules as containers that group related
-functionality together, similar to packages in other programming
-languages, but with stronger guarantees about versioning and
-compatibility.
+A module groups related definitions under a name and controls what the
+rest of the world can see of them. You might keep inventory handling in
+one module, combat in another, and UI in a third, each exposing only
+what its callers need.
 
-In the context of game development, modules allow you to separate
-different aspects of your game logic into manageable, reusable
-pieces. For example, you might have one module for player inventory
-management, another for combat mechanics, and yet another for UI
-interactions. Each module encapsulates its own functionality while
-exposing only the necessary interfaces to other parts of your code.
-
-The module system is designed to support the vision of a persistent,
-shared Metaverse where code can be published once and used by anyone,
-anywhere, with confidence that it will continue to work even as the
-original author updates and improves it. This is achieved through
-strict backward compatibility rules and a global namespace system that
-ensures every piece of published code has a unique, permanent address.
+Modules also give every published definition a unique, permanent path
+in a global namespace. Together with the compatibility rules in
+[Code Evolution](18_evolution.md), that is what allows code to be
+published once and depended on by others afterwards.
 
 Each module is intrinsically linked to the file system structure of
 your project. When you create a folder in your Verse project, that
@@ -415,6 +404,18 @@ The `using` directive is a statement-level declaration that must
 appear at the top level of your code. You cannot use it as an
 expression or embed it in other expressions:
 
+<!--versetest
+assert_semantic_error(3669):
+    M11 := module:
+        Helper():int = 1
+    f11():void = using{M11}
+assert_semantic_error(3537):
+    M11b := module:
+        Helper():int = 1
+    my_class11 := class:
+        using{M11b}
+        Field:int
+-->
 <!-- 11 -->
 ```verse
 # Invalid: using in expression context
@@ -1456,6 +1457,15 @@ ProcessCombat(Player:player_stats, Enemy:enemy_stats):void =
     Print(Player.GetInfo())
     Print(Enemy.GetInfo())
 }
+assert_semantic_error(3588):
+    ps52 := class:
+        Health:int = 100
+    es52 := class:
+        Health:int = 80
+    Proc52(P:ps52, E:es52):void =
+        using{P}
+        using{E}
+        X := Health
 <#
 -->
 <!-- 52 -->
