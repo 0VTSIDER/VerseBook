@@ -1,4 +1,16 @@
-# Handle binary files
+# Normalize line endings so the working tree stops churning between CRLF and
+# LF. Without this, editing a file on Windows rewrites every line and the diff
+# becomes unreadable. After changing anything here, run:
+#   git add --renormalize .
+#
+# Default: treat everything as text and store/check out with LF. Git still
+# auto-detects binary content and leaves it alone. Later rules override.
+*             text=auto eol=lf
+
+# Windows batch files must keep CRLF or cmd.exe can misparse them.
+*.bat         text eol=crlf
+
+# Binary files: never touched by the text filters.
 *.png binary
 *.jpg binary
 *.jpeg binary
