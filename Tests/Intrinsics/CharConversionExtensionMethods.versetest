@@ -1,0 +1,139 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+using { /Verse.org/Tests/VerseTestScriptCmd }
+
+# Extension method intrinsics for character conversion (Tim's approved API)
+# These are VVM-only
+# <converges> methods are called with (); <decides> methods are called with [].
+verse_vm_only{
+    # (Byte:char).ToCodeUnit() -> int tests
+    assert:
+        0o00.ToCodeUnit() = 0
+        'a'.ToCodeUnit() = 97
+        'z'.ToCodeUnit() = 122
+        'A'.ToCodeUnit() = 65
+        'Z'.ToCodeUnit() = 90
+        # Extended byte range (128-255)
+        0o80.ToCodeUnit() = 128       # First extended byte
+        0oFF.ToCodeUnit() = 255       # Maximum byte value
+
+    # (Character:char32).ToCodePoint() -> int tests
+    assert:
+        0u00000.ToCodePoint() = 0
+        0u00041.ToCodePoint() = 65
+        0u0007F.ToCodePoint() = 127
+        0u000FF.ToCodePoint() = 255
+        0u0270F.ToCodePoint() = 9999
+        # Surrogate boundaries (valid Unicode scalars)
+        0uD7FF.ToCodePoint() = 0xD7FF  # Last before surrogate range
+        0uE000.ToCodePoint() = 0xE000  # First after surrogate range
+        # High range Unicode
+        0u1F600.ToCodePoint() = 0x1F600   # Emoji
+        0u10FFFF.ToCodePoint() = 0x10FFFF # Maximum Unicode scalar
+
+    # (Value:int).ToChar[] -> char tests - valid conversions
+    assert:
+        0.ToChar[].ToCodeUnit() = 0
+        65.ToChar[].ToCodeUnit() = 65
+        # ASCII boundary
+        126.ToChar[].ToCodeUnit() = 126
+        127.ToChar[].ToCodeUnit() = 127
+        # Extended byte boundary
+        128.ToChar[].ToCodeUnit() = 128
+        129.ToChar[].ToCodeUnit() = 129
+        # Upper boundary
+        254.ToChar[].ToCodeUnit() = 254
+        255.ToChar[].ToCodeUnit() = 255
+
+    # (Value:int).ToChar[] -> char tests - invalid conversions (should fail)
+    assert:
+        not (-1).ToChar[]          # Negative
+        not (-100).ToChar[]        # Negative
+        not (256).ToChar[]         # Just above max (char is 0-255)
+        not (1000).ToChar[]        # Way out of range
+        not (0x10000).ToChar[]     # Very large value
+
+    # (CodePoint:int).ToChar32[] -> char32 tests - valid conversions
+    assert:
+        0.ToChar32[].ToCodePoint() = 0
+        65.ToChar32[].ToCodePoint() = 65
+        127.ToChar32[].ToCodePoint() = 127
+        (0xE9).ToChar32[].ToCodePoint() = 0xE9      # 'é'
+        (9999).ToChar32[].ToCodePoint() = 9999
+        # Surrogate boundaries - valid Unicode scalars
+        (0xD7FF).ToChar32[].ToCodePoint() = 0xD7FF  # Last before surrogates
+        (0xE000).ToChar32[].ToCodePoint() = 0xE000  # First after surrogates
+        # High range
+        (0x1F600).ToChar32[].ToCodePoint() = 0x1F600   # Emoji
+        (0x10FFFE).ToChar32[].ToCodePoint() = 0x10FFFE # Near maximum
+        (0x10FFFF).ToChar32[].ToCodePoint() = 0x10FFFF # Maximum Unicode scalar
+
+    # (CodePoint:int).ToChar32[] -> char32 tests - invalid conversions (should fail)
+    assert:
+        # Negative values
+        not (-1).ToChar32[]
+        not (-1000).ToChar32[]
+        # Surrogate range (0xD800-0xDFFF) - invalid Unicode scalars
+        not (0xD800).ToChar32[]    # First surrogate
+        not (0xD900).ToChar32[]    # Mid-range surrogate
+        not (0xDB00).ToChar32[]    # High surrogate
+        not (0xDC00).ToChar32[]    # Low surrogate
+        not (0xDFFF).ToChar32[]    # Last surrogate
+        # Above maximum Unicode
+        not (0x110000).ToChar32[]  # Just above max
+        not (0x200000).ToChar32[]  # Way out of range
+
+    # (Byte:char).ToAsciiChar32[] -> char32 tests - valid ASCII conversions
+    assert:
+        'A'.ToAsciiChar32[].ToCodePoint() = 65
+        'z'.ToAsciiChar32[].ToCodePoint() = 122
+        ' '.ToAsciiChar32[].ToCodePoint() = 32      # Space
+        0o00.ToAsciiChar32[].ToCodePoint() = 0      # Null
+        # ASCII boundary
+        0o7E.ToAsciiChar32[].ToCodePoint() = 126    # '~' tilde
+        0o7F.ToAsciiChar32[].ToCodePoint() = 127    # DEL control character
+
+    # (Byte:char).ToAsciiChar32[] -> char32 tests - invalid non-ASCII conversions (should fail)
+    # Rationale: char represents UTF-8 bytes; bytes 128-255 are multi-byte components
+    assert:
+        not 0o80.ToAsciiChar32[]      # 128 - first non-ASCII byte
+        not 0o81.ToAsciiChar32[]      # 129
+        not 0oC3.ToAsciiChar32[]      # Part of 'é' in UTF-8
+        not 0oE9.ToAsciiChar32[]      # Would be 'é' in Latin-1, but invalid standalone UTF-8
+        not 0oFF.ToAsciiChar32[]      # 255 - maximum byte
+
+    # (Character:char32).ToAsciiString() -> []char tests
+    # Note: Despite name "Ascii", this actually produces UTF-8 encoding for all Unicode characters
+    assert:
+        # ASCII characters (1 byte UTF-8)
+        0u00041.ToAsciiString().Length = 1
+        0u00041.ToAsciiString()[0].ToCodeUnit() = 65
+
+        # 2-byte UTF-8 sequence
+        0u00E9.ToAsciiString().Length = 2  # 'é' = 0xC3 0xA9
+        0u00E9.ToAsciiString()[0].ToCodeUnit() = 0xC3
+        0u00E9.ToAsciiString()[1].ToCodeUnit() = 0xA9
+
+        # 3-byte UTF-8 sequence
+        0u4E2D.ToAsciiString().Length = 3  # '中' (Chinese character)
+        0u4E2D.ToAsciiString()[0].ToCodeUnit() = 0xE4
+        0u4E2D.ToAsciiString()[1].ToCodeUnit() = 0xB8
+        0u4E2D.ToAsciiString()[2].ToCodeUnit() = 0xAD
+
+        # 4-byte UTF-8 sequence
+        0u1F600.ToAsciiString().Length = 4  # '😀' emoji
+        0u1F600.ToAsciiString()[0].ToCodeUnit() = 0xF0
+        0u1F600.ToAsciiString()[1].ToCodeUnit() = 0x9F
+        0u1F600.ToAsciiString()[2].ToCodeUnit() = 0x98
+        0u1F600.ToAsciiString()[3].ToCodeUnit() = 0x80
+}
+
+# These intrinsics should not exist in BPVM
+bp_vm_only{
+    assert_semantic_error(3506){ 'a'.ToCodeUnit() }
+    assert_semantic_error(3506){ 0u00041.ToCodePoint() }
+    assert_semantic_error(3506){ 65.ToChar[] }
+    assert_semantic_error(3506){ 65.ToChar32[] }
+    assert_semantic_error(3506){ 'A'.ToAsciiChar32[] }
+    assert_semantic_error(3506){ 0u00041.ToAsciiString() }
+}

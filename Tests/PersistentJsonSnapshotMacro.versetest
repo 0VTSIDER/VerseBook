@@ -6,44 +6,53 @@ using { /Verse.org/Tests/VerseTestScriptCmd }
 
 assert_persistence_snapshot
 {
-    vpackage(P0, /A):
-        snippet:
-            snapshot_test_object := class<persistable><final><computes>:
-                Flag:logic
-                Count:int
-                Label:string
-        snippet:
-            Equal(Left:snapshot_test_object, Right:snapshot_test_object)<decides>:void =
-                Left.Flag = Right.Flag
-                Left.Count = Right.Count
-                Left.Label = Right.Label
+    vpackage(P0, /A, ?Dependencies := ("Engine/VerseTestScriptCmd")):
+        vmodule(SnapshotFlat):
+            snippet:
+                using { /Verse.org/Tests/VerseTestScriptCmd }
+
+                snapshot_test_object := class<persistable><final><computes>:
+                    Flag:logic
+                    Count:int
+                    Label:string
+            snippet:
+                Equal(Left:snapshot_test_object, Right:snapshot_test_object)<decides>:void =
+                    Left.Flag = Right.Flag
+                    Left.Count = Right.Count
+                    Left.Label = Right.Label
 
     serialized:
-        expected := snapshot_test_object:
+        expected:snapshot_test_object = snapshot_test_object:
             Flag := true
             Count := 1
-            Label := "skeleton"
+            Label := "flat"
+
+    encodes:
+        "\{\"$package_name\":\"/P0/_Verse\",\"$class_name\":\"SnapshotFlat-snapshot_test_object\",\"x_Flag\":true,\"x_Count\":1,\"x_Label\":\"flat\"\}"
 
     deserialized(UploadedAtFNVersion := 4200):
-        "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"snapshot_test_object\",\"x_Flag\":true,\"x_Count\":1,\"x_Label\":\"skeleton\"\}"
+        "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"snapshot_test_object\",\"x_Flag\":true,\"x_Count\":1,\"x_Label\":\"flat\"\}"
 }
 
 assert_persistence_snapshot
 {
-    vpackage(P0, /A):
-        snippet:
-            multi_snapshot_test_object := class<persistable><final><computes>:
-                Flag:logic
-                Count:int
-                Label:string
-        snippet:
-            Equal(Left:multi_snapshot_test_object, Right:multi_snapshot_test_object)<decides>:void =
-                Left.Flag = Right.Flag
-                Left.Count = Right.Count
-                Left.Label = Right.Label
+    vpackage(P1, /B, ?Dependencies := ("Engine/VerseTestScriptCmd")):
+        vmodule(SnapshotMultiVersion):
+            snippet:
+                using { /Verse.org/Tests/VerseTestScriptCmd }
+
+                multi_snapshot_test_object := class<persistable><final><computes>:
+                    Flag:logic
+                    Count:int
+                    Label:string
+            snippet:
+                Equal(Left:multi_snapshot_test_object, Right:multi_snapshot_test_object)<decides>:void =
+                    Left.Flag = Right.Flag
+                    Left.Count = Right.Count
+                    Left.Label = Right.Label
 
     serialized:
-        expected := multi_snapshot_test_object:
+        expected:multi_snapshot_test_object = multi_snapshot_test_object:
             Flag := false
             Count := 42
             Label := "multi"
@@ -58,44 +67,91 @@ assert_persistence_snapshot
         "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"multi_snapshot_test_object\",\"x_Flag\":false,\"x_Count\":42,\"x_Label\":\"multi\"\}"
 }
 
+# No Equal anywhere in this block. A persistable class is not `comparable` (Script Error 3509), so
+# the re-encoded JSON compare is the whole check here. The blocks above add an Equal on top of it.
 assert_persistence_snapshot
 {
-    vpackage(P0, /A):
-        snippet:
-            union_snapshot_choice := union<persistable>:
-                Ketchup : int
-                Toppings : void
-            union_snapshot_test_object := class<persistable><final><computes>:
-                Topping:union_snapshot_choice
-        snippet:
-            Equal(Left:union_snapshot_test_object, Right:union_snapshot_test_object)<decides>:void =
-                Left.Topping = Right.Topping
+    vpackage(P4, /E, ?Dependencies := ("Engine/VerseTestScriptCmd")):
+        vmodule(SnapshotNoEqual):
+            snippet:
+                using { /Verse.org/Tests/VerseTestScriptCmd }
+
+                no_equal_inner := class<persistable><final><computes>:
+                    Name:string
+
+                no_equal_test_object := class<persistable><final><computes>:
+                    Flag:logic
+                    Count:int
+                    Label:string
+                    Inner:no_equal_inner
 
     serialized:
-        expected := union_snapshot_test_object:
+        expected:no_equal_test_object = no_equal_test_object:
+            Flag := true
+            Count := 7
+            Label := "no-equal"
+            Inner := no_equal_inner:
+                Name := "nested"
+
+    encodes:
+        "\{\"$package_name\":\"/P4/_Verse\",\"$class_name\":\"SnapshotNoEqual-no_equal_test_object\",\"x_Flag\":true,\"x_Count\":7,\"x_Label\":\"no-equal\",\"x_Inner\":\{\"$package_name\":\"/P4/_Verse\",\"$class_name\":\"SnapshotNoEqual-no_equal_inner\",\"x_Name\":\"nested\"\}\}"
+
+    deserialized(UploadedAtFNVersion := 4300):
+        "\{\"$package_name\":\"/P4/_Verse\",\"$class_name\":\"SnapshotNoEqual-no_equal_test_object\",\"x_Flag\":true,\"x_Count\":7,\"x_Label\":\"no-equal\",\"x_Inner\":\{\"$package_name\":\"/P4/_Verse\",\"$class_name\":\"SnapshotNoEqual-no_equal_inner\",\"x_Name\":\"nested\"\}\}"
+}
+
+<#
+    Disabled in this branch: decoding a union field needs SOL-9918 which exists only in Main (44.00)
+    as CL 57492864.
+
+verse_vm_only
+{
+assert_persistence_snapshot
+{
+    vpackage(P2, /C, ?Dependencies := ("Engine/VerseTestScriptCmd")):
+        vmodule(SnapshotUnion):
+            snippet:
+                using { /Verse.org/Tests/VerseTestScriptCmd }
+
+                union_snapshot_choice := union<persistable>:
+                    Ketchup : int
+                    Toppings : void
+                union_snapshot_test_object := class<persistable><final><computes>:
+                    Topping:union_snapshot_choice
+            snippet:
+                Equal(Left:union_snapshot_test_object, Right:union_snapshot_test_object)<decides><computes>:void =
+                    Left.Topping = Right.Topping
+
+    serialized:
+        expected:union_snapshot_test_object = union_snapshot_test_object:
             Topping := union_snapshot_choice.Ketchup(5)
 
     deserialized(UploadedAtFNVersion := 4200):
-        "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"union_snapshot_test_object\",\"x_Topping\":\{\"Ketchup\":5\}\}"
+        "\{\"$package_name\":\"/P2/_Verse\",\"$class_name\":\"SnapshotUnion-union_snapshot_test_object\",\"x_Topping\":\{\"tag\":\"SnapshotUnion-union_snapshot_choice::Ketchup\",\"payload\":5\}\}"
 }
 
 assert_persistence_snapshot
 {
-    vpackage(P0, /A):
-        snippet:
-            open_union_choice := union<open><persistable>:
-                Ketchup : int
-                Toppings : void
-            open_union_test_object := class<persistable><final><computes>:
-                Topping:open_union_choice
-        snippet:
-            Equal(Left:open_union_test_object, Right:open_union_test_object)<decides>:void =
-                Left.Topping = Right.Topping
+    vpackage(P3, /D, ?Dependencies := ("Engine/VerseTestScriptCmd")):
+        vmodule(SnapshotOpenUnion):
+            snippet:
+                using { /Verse.org/Tests/VerseTestScriptCmd }
+
+                open_union_choice := union<open><persistable>:
+                    Ketchup : int
+                    Toppings : void
+                open_union_test_object := class<persistable><final><computes>:
+                    Topping:open_union_choice
+            snippet:
+                Equal(Left:open_union_test_object, Right:open_union_test_object)<decides><computes>:void =
+                    Left.Topping = Right.Topping
 
     serialized:
-        expected := open_union_test_object:
+        expected:open_union_test_object = open_union_test_object:
             Topping := open_union_choice.Ketchup(5)
 
     deserialized(UploadedAtFNVersion := 4200):
-        "\{\"$package_name\":\"/SolIdeDataSources/_Verse\",\"$class_name\":\"open_union_test_object\",\"x_Topping\":\{\"Ketchup\":5\}\}"
+        "\{\"$package_name\":\"/P3/_Verse\",\"$class_name\":\"SnapshotOpenUnion-open_union_test_object\",\"x_Topping\":\{\"tag\":\"SnapshotOpenUnion-open_union_choice::Ketchup\",\"payload\":5\}\}"
 }
+}
+#>

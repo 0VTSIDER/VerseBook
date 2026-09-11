@@ -1,0 +1,132 @@
+# Copyright Epic Games, Inc. All Rights Reserved.
+
+# Regression for FORT-1146499: an asset-manifest package shares its Verse path with the content
+# package, so a definition it generates can land in the same scope as one the creator wrote. Before
+# 42.20 a file module was placed ahead of deferred snippet definitions in its scope, so the
+# creator's folder never conflicted with a generated name its package could not see back.
+
+# An asset named after one of the project's Verse source folders.
+assert_valid:
+  vpackage(Assets, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav<public> := class {}
+  vpackage(P1, /A, ?Scope:=InternalUser, ?Dependencies:=("Assets/Assets"), ?UploadedAtFNVersion:=4210):
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+
+# Published compatibility constraints must also retain legacy ambiguity ordering.
+assert_valid:
+  vpackage(PubAssets, /A, ?PackageType:=Assets, ?Role:=GeneralCompatConstraint, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav<public> := class {}
+  vpackage(PubContent, /A, ?PackageType:=Assets, ?Role:=GeneralCompatConstraint, ?Scope:=InternalUser, ?Dependencies:=("PubAssets/Assets"), ?UploadedAtFNVersion:=4210):
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+
+# Uploaded at the cutoff, the collision is reported.
+assert_semantic_error(3532):
+  vpackage(Assets, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4220):
+    snippet:
+      LikeFav<public> := class {}
+  vpackage(P1, /A, ?Scope:=InternalUser, ?Dependencies:=("Assets/Assets"), ?UploadedAtFNVersion:=4220):
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+
+# A folder of assets named after one of the project's definitions was always reported, at the
+# creator's definition, because the creator's package can see the generated module.
+assert_semantic_error(3532):
+  vpackage(Assets, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav := module:
+        Thing<public> := class {}
+  vpackage(P1, /A, ?Scope:=InternalUser, ?Dependencies:=("Assets/Assets"), ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav<public> := class {}
+
+# A collision entirely within the project's own code is reported whatever it was uploaded at.
+assert_semantic_error(3532):
+  vpackage(P0, /A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav<public> := class {}
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+
+# A module the creator contributes a part to is theirs even when the asset manifest also
+# contributes one, so a collision with their own definition is still reported.
+assert_semantic_error(3532):
+  vpackage(Assets, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav := module:
+        Thing<public> := class {}
+  vpackage(P1, /A, ?Scope:=InternalUser, ?Dependencies:=("Assets/Assets"), ?UploadedAtFNVersion:=4210):
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+    snippet:
+      LikeFav<public> := class {}
+
+# Reversing source order must still report the same-scope conflict in old content.
+assert_semantic_error(3532):
+  vpackage(P0, /A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+    snippet:
+      LikeFav<public> := class {}
+
+# Multiple conflicts were never suppressed by the ordinal comparison. Neither overload
+# package can see the file module, but both definitions must remain in its conflict list.
+assert_semantic_error(3532):
+  vpackage(Assets, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav<public>(Value:int):int = Value
+      LikeFav<public>(Value:float):float = Value
+  vpackage(P1, /A, ?Scope:=InternalUser, ?Dependencies:=("Assets/Assets"), ?UploadedAtFNVersion:=4210):
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+
+# A module macro treated as implicit was still created in snippet order. It must not
+# inherit the legacy file-module diagnostic suppression.
+assert_semantic_error(3532):
+  vpackage(Assets, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav<public> := class {}
+  vpackage(P1, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?Dependencies:=("Assets/Assets"), ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav := module:
+        Bar<public> := int
+
+# An explicit part does not undo a file module's original pre-pass placement.
+assert_valid:
+  vpackage(Assets, /A, ?PackageType:=Assets, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      LikeFav<public> := class {}
+  vpackage(P1, /A, ?Scope:=InternalUser, ?Dependencies:=("Assets/Assets"), ?UploadedAtFNVersion:=4210):
+    vmodule(LikeFav):
+      snippet:
+        Bar<public> := int
+    snippet:
+      LikeFav<public> := module:
+        Baz<public> := int
+
+# Legacy diagnostic ordering must not restore the old digest ordering bug.
+assert_digest_generated:
+  vpackage(P0, /A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=4210):
+    snippet:
+      ball_component<public> := int
+    vmodule(Sub):
+      snippet:
+        DespawnData<public> := struct:
+          Ball:ball_component
+  expected_digest(Package:=P0, ?Variant:=PublicAndEpicInternal):
+    # Verse path: /A
+    ball_component<public> := int
+    # Module import path: /A/Sub
+    Sub<public> := module:
+      DespawnData<public> := struct:
+        Ball:ball_component

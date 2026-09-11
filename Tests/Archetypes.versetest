@@ -217,4 +217,4 @@ assert:
 assert:
     O := class_a_interface_a{}
     O.GetInt(true) = -1
-    O.GetInt(false) = 1
+    O.GetInt(false) = 1

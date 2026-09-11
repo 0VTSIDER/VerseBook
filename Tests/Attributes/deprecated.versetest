@@ -236,8 +236,8 @@ assert_valid:
             @deprecated{Message := "Use NewX instead.", DiscontinuedAtFNVersion := 2000}
             X:?c=false
 
-# Suppression also covers the error case (above cutoff) when the caller is itself deprecated
-assert_valid:
+# Suppression stops at the cutoff: above it the caller being deprecated does not make the use compile
+assert_semantic_error(3695):
     vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
         snippet:
             @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
@@ -245,8 +245,18 @@ assert_valid:
             @deprecated{Message := "Use NewX instead.", DiscontinuedAtFNVersion := 2000}
             X:?c=false
 
-# Override suppression carries over
-assert_valid:
+# An enclosing deprecated module does not shield its members from the cutoff either
+assert_semantic_error(3695):
+    vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
+            c := class<computes>{}
+            @deprecated{Message := "Use NewModule instead."}
+            m := module:
+                F<public>():?c = false
+
+# A deprecated override does not shield the base's cutoff
+assert_semantic_error(3695):
     vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
         snippet:
             base_class := class:
@@ -555,9 +565,9 @@ assert_valid(?ExpectUseOfDeprecatedDefinition:=true, ?ExpectUseOfDiscontinuedDef
             @deprecated{Message := "Use G instead."}
             F(:A.class1):void = {}
 
-# At/above DiscontinuedAtFNVersion routes through the discontinued bucket
-assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
-    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+# The bucket follows ?CurrentFNVersion, not the package's pin
+assert_valid(?CurrentFNVersion:=2500, ?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
         snippet:
             @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
             c := class<computes>{}
@@ -565,7 +575,7 @@ assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDe
             X:?c=false
 
 # Below the cutoff the same definition is just deprecated
-assert_valid(?ExpectUseOfDeprecatedDefinition:=true, ?ExpectUseOfDiscontinuedDefinition:=false):
+assert_valid(?CurrentFNVersion:=1000, ?ExpectUseOfDeprecatedDefinition:=true, ?ExpectUseOfDiscontinuedDefinition:=false):
     vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
         snippet:
             @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
@@ -574,12 +584,21 @@ assert_valid(?ExpectUseOfDeprecatedDefinition:=true, ?ExpectUseOfDiscontinuedDef
             X:?c=false
 
 # Exactly at the cutoff already counts as discontinued (the comparison is >=)
-assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
-    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2000):
+assert_valid(?CurrentFNVersion:=2000, ?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
         snippet:
             @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
             c := class<computes>{}
             @deprecated{Message := "Use NewX instead.", DiscontinuedAtFNVersion := 2000}
+            X:?c=false
+
+# No DiscontinuedAtFNVersion means no cutoff to reach, however high the current release is.
+assert_valid(?CurrentFNVersion:=999999, ?ExpectUseOfDeprecatedDefinition:=true, ?ExpectUseOfDiscontinuedDefinition:=false):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use d instead."}
+            c := class<computes>{}
+            @deprecated{Message := "Use NewX instead."}
             X:?c=false
 
 # Non-user-scope packages are not tracked: a PublicAPI package referencing a
@@ -667,9 +686,9 @@ assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDe
                 C1.Bar()
 
 # Members of a @deprecated class at/above DiscontinuedAtFNVersion route to the
-# discontinued bucket, matching the inline-attribute case at line 569.
-assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
-    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+# discontinued bucket, matching the inline-attribute cases above.
+assert_valid(?CurrentFNVersion:=2500, ?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
         snippet:
             @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 2000}
             class1 := class:
@@ -679,15 +698,137 @@ assert_valid(?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDe
                 C1 := class1{}
                 C1.Foo()
 
-# Override of a method in a @deprecated base class. Three V2009 warnings fire, one per
-# distinct use site:
-#  1. `class(Base)` - the inheritance reference uses Base directly (Base is @deprecated).
-#  2. `Foo<override>()` - the override declaration sees the overridden Base.Foo as
-#     deprecated-by-propagation (Foo's enclosing scope is Base). SOL-9232 would suppress
-#     this if the override were itself marked @deprecated; it isn't, so it warns.
-#  3. `D.Foo()` - the call resolves to Derived.Foo, whose accessibility root is Base.Foo;
-#     GetDeprecatedSource on the root finds Base. The call site is a use of a deprecated
-#     definition regardless of which static override is being called.
+# Several @deprecated definitions can be nested, and the earliest DiscontinuedAtFNVersion decides the discontinued status.
+
+# The container's earlier cutoff governs its member, even though the member has a marker of its own.
+assert_valid(?CurrentFNVersion:=2500, ?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
+        snippet:
+            @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 2000}
+            class1 := class:
+                @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 3000}
+                Foo<public>():void = {}
+            @deprecated{Message := "Use G instead.", DiscontinuedAtFNVersion := 2000}
+            F():void =
+                C1 := class1{}
+                C1.Foo()
+
+# A member marker without a cutoff does not shield the member from its container's cutoff.
+assert_valid(?CurrentFNVersion:=2500, ?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
+        snippet:
+            @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 2000}
+            class1 := class:
+                @deprecated{Message := "Use Bar instead."}
+                Foo<public>():void = {}
+            @deprecated{Message := "Use G instead.", DiscontinuedAtFNVersion := 2000}
+            F():void =
+                C1 := class1{}
+                C1.Foo()
+
+# The member's earlier cutoff makes it discontinued while its container is still just deprecated
+assert_valid(?CurrentFNVersion:=2500, ?ExpectUseOfDeprecatedDefinition:=true, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
+        snippet:
+            @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 3000}
+            class1 := class:
+                @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 2000}
+                Foo<public>():void = {}
+            @deprecated{Message := "Use G instead.", DiscontinuedAtFNVersion := 2000}
+            F():void =
+                C1 := class1{}
+                C1.Foo()
+
+# Transitive: the outermost module's cutoff reaches a member two levels down that sets a later one.
+assert_valid(?CurrentFNVersion:=2500, ?ExpectUseOfDeprecatedDefinition:=false, ?ExpectUseOfDiscontinuedDefinition:=true):
+    vpackage(P, /Verse.org/A, ?Scope:=InternalUser, ?UploadedAtFNVersion:=1000):
+        snippet:
+            @deprecated{Message := "Use outer2 instead.", DiscontinuedAtFNVersion := 2000}
+            outer := module:
+                inner<public> := module:
+                    @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 3000}
+                    Foo<public>():void = {}
+            @deprecated{Message := "Use G instead."}
+            F():void = outer.inner.Foo()
+
+# The compile error follows the same rule: the container's earlier cutoff discontinues its member
+assert_semantic_error(3695, 3695):
+    vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 2000}
+            class1 := class:
+                @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 3000}
+                Foo<public>():void = {}
+            F():void =
+                C1 := class1{}
+                C1.Foo()
+
+# The same nesting from deprecated code: both errors still fire
+assert_semantic_error(3695, 3695):
+    vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 2000}
+            class1 := class:
+                @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 3000}
+                Foo<public>():void = {}
+            @deprecated{Message := "Use G instead."}
+            F():void =
+                C1 := class1{}
+                C1.Foo()
+
+# Only the member has passed its cutoff, so instantiating the container stays a suppressed warning
+assert_semantic_error(3695):
+    vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 3000}
+            class1 := class:
+                @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 2000}
+                Foo<public>():void = {}
+                Bar<public>():void = {}
+            @deprecated{Message := "Use G instead."}
+            F():void =
+                C1 := class1{}
+                C1.Bar()
+                C1.Foo()
+
+# Every cutoff in the chain is still ahead of the pin, so deprecated code stays suppressed
+assert_valid:
+    vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use class2 instead.", DiscontinuedAtFNVersion := 3000}
+            class1 := class:
+                @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 3500}
+                Foo<public>():void = {}
+            @deprecated{Message := "Use G instead."}
+            F():void =
+                C1 := class1{}
+                C1.Foo()
+
+# Only the used definition's cutoff counts, never the using definition's own
+assert_semantic_error(3695):
+    vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use d instead.", DiscontinuedAtFNVersion := 2000}
+            c := class<computes>{}
+            @deprecated{Message := "Use NewX instead.", DiscontinuedAtFNVersion := 3000}
+            X:?c=false
+
+# Nesting through modules behaves the same way, two levels down
+assert_semantic_error(3695, 3695, 3695):
+    vpackage(P0, /APath, ?Scope:=InternalUser, ?UploadedAtFNVersion:=2500):
+        snippet:
+            @deprecated{Message := "Use outer2 instead.", DiscontinuedAtFNVersion := 2000}
+            outer := module:
+                inner<public> := module:
+                    @deprecated{Message := "Use Bar instead.", DiscontinuedAtFNVersion := 3000}
+                    Foo<public>():void = {}
+            @deprecated{Message := "Use G instead."}
+            F():void = outer.inner.Foo()
+
+# Override of a method in a @deprecated base class. Three V2009 warnings fire, one per use site:
+#  1. `class(Base)` - the inheritance reference uses Base directly.
+#  2. `Foo<override>()` - the override declaration sees Base.Foo as deprecated by propagation.
+#  3. `D.Foo()` - the call's accessibility root is Base.Foo, so the call site is a use too.
 assert_semantic_error(2009, 2009, 2009):
     @deprecated{Message := "Use NewBase instead."}
     Base := class:
