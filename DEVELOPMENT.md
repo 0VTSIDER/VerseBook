@@ -96,3 +96,119 @@ one named in `fortniteMain/JanInfo/README.md`, which is out of date.
 
 - `bin/extract <markdown-file> -t <target-directory>` - Extract Verse snippets from markdown
 - `bin/extract_all` - Extract all snippets from all docs
+
+### Runtime API Summaries
+
+- `bin/verse_api` - Summarise the Verse runtime's intrinsic and native functions
+  from the fortniteMain checkout into Markdown or a browsable HTML page
+
+See "Summarising the runtime API" below.
+
+## Summarising the runtime API
+
+Two parts of the Verse runtime are not written in Verse and have no
+hand-written chapter in this book:
+
+- **Intrinsics** are synthesised by the compiler. No `.verse` file declares
+  them; they are built in `PopulateCoreAPI()` in
+  `Engine/Source/Runtime/VerseCompiler/Private/uLang/Semantics/SemanticProgram.cpp`
+  and tagged with the private `intrinsic` attribute. This is where the
+  operators, container indexing, `Abs`, `Ceil`, `weak_map` and friends live.
+- **Natives** are declared in `*.native.verse` files with the `<native>`
+  specifier and implemented in C++ behind a VNI-generated binding.
+  `<native_callable>` is the mirror image: a Verse body that C++ can call.
+
+`bin/verse_api` reads both out of the engine tree — reconstructing intrinsic
+signatures from the compiler source and parsing the `.native.verse`
+declarations together with their `@doc` comments — and writes a Markdown
+summary. The output is meant to be reviewed and then folded into the book by
+hand, so it lands in `build/` (gitignored) rather than in `docs/`:
+
+```bash
+bin/verse_api                       # build/verse_runtime_api.md
+bin/verse_api --format html         # build/verse_runtime_api.html
+```
+
+The Markdown is the form to fold into `docs/`; it uses only extensions already
+enabled in `mkdocs.yml` (`admonition`, `def_list`, `tables`).
+
+The HTML is a single self-contained file for reading in a browser — no network,
+no npm, no build step. It gives you:
+
+- **Syntax-coloured signatures.** Verse declarations are lexed when the file is
+  generated, using the token colours from the book's own TextMate themes in
+  `docs/Assets/VerseLight.json` and `VerseDark.json`, so a signature here is
+  coloured the way the book colours one.
+- **A live filter.** Type in the sidebar box, or press <kbd>/</kbd>, to narrow
+  to matching declarations; sections that end up empty hide themselves, in the
+  page and in the sidebar. <kbd>Esc</kbd> clears it.
+- **Light and dark themes.** Follows the system setting, with a toggle that
+  remembers your choice in `localStorage`.
+- **Badges** for the things that would otherwise be prose: how a declaration is
+  implemented, its access level, `@experimental`, and the Fortnite version it
+  became available in.
+- A sticky sidebar of contents that tracks the section you are reading, and
+  permalinks on every heading.
+
+### Overriding weak doc comments
+
+Some `@doc` comments in the engine are thin, or just restate the name of the
+function. `verse_api_overrides.md` in the repository root replaces them without
+touching the engine tree: a `##` heading naming a declaration, followed by the
+prose to use instead. Anything else in the file, including HTML comments, is
+ignored, and a section left empty keeps whatever the engine says.
+
+The loop is:
+
+```bash
+bin/verse_api --stubs        # create or top up verse_api_overrides.md
+$EDITOR verse_api_overrides.md
+bin/verse_api --format html  # regenerate and read the result
+```
+
+`--stubs` writes one heading per declaration in the output, with the engine's
+current text kept beside it as a comment so you can see what you are replacing.
+It never edits or removes a section that is already there, so it is safe to
+re-run after the engine grows a new function: it only appends the new ones.
+Pass the same `--module`/`--access` flags you generate with, if you have
+widened the scope.
+
+A heading names one declaration, with only as much detail as it takes to be
+unambiguous:
+
+```
+## Sqrt                                  by name
+## ToString(char)                        by name and parameter types
+## ToString(Character:char)              parameters copied from the signature
+## event.Await                           a member, by qualified name
+## String:ToString(char)                 narrowed to one file
+## /Verse.org/Verse:Sqrt                 narrowed to one module
+```
+
+`--stubs` already picks the shortest form that is unambiguous, so in practice
+you do not write these by hand. A heading that matches nothing, or more than
+one declaration, is reported on every run rather than quietly ignored — that is
+what catches an override going stale when the engine renames or re-signatures
+something. Use `--no-overrides` to see the engine's own text again, or
+`--overrides <file>` to keep a different set.
+
+### Other options
+
+It finds the engine through `--engine`, then `$FORTNITE_MAIN`, then
+`../fortniteMain`. By default it covers the core `/Verse.org/Verse` module and
+only the declarations that are actually part of the runtime surface, at
+`<public>` access. Useful variations:
+
+```bash
+bin/verse_api --module all --access all      # every module under the scan root
+bin/verse_api --root Engine/Plugins          # widen the search (slow)
+bin/verse_api --include-verse                # index the Verse-implemented API too
+bin/verse_api --no-overrides                 # show the engine's own doc comments
+bin/verse_api --json build/api.json          # machine-readable model
+bin/verse_api --verbose                      # list anything that did not parse
+```
+
+`--verbose` matters when the engine moves on: the extractor is a parser, not a
+compiler, so a restructured intrinsic table or an unfamiliar declaration shape
+shows up as a warning rather than as silently missing output. A clean run
+reports no warnings.

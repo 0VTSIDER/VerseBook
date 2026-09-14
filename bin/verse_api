@@ -1,0 +1,2656 @@
+#!/usr/bin/env node
+
+// Summarises the two halves of the Verse runtime surface that have no
+// hand-written documentation in this book:
+//
+//   intrinsics   Functions the compiler synthesises. No .verse source exists
+//                for them; they are built in C++ in PopulateCoreAPI() in
+//                VerseCompiler's SemanticProgram.cpp and tagged with the
+//                private `intrinsic` attribute. These are the operators
+//                (`+`, `<`, `?`, indexing, ...) plus a handful of named
+//                functions (`Abs`, `Ceil`, `weak_map`, `FitsInPlayerMap`, ...).
+//
+//   natives      Declarations written in *.native.verse and marked <native>
+//                (implemented in C++ behind a VNI-generated binding) or
+//                <native_callable> (implemented in Verse, callable from C++).
+//
+// Both are extracted from the fortniteMain checkout, so the output tracks
+// whatever the engine currently says rather than a snapshot someone typed up.
+// The result is a Markdown file meant to be reviewed and then folded into the
+// book by hand; it is written to build/ (gitignored) and is not part of docs/.
+//
+// Usage: bin/verse_api [options]        (see printUsage below)
+
+const fs = require('fs');
+const path = require('path');
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+function printUsage() {
+  console.log(`Usage: verse_api [options]
+
+Extracts Verse intrinsic and native function signatures plus their @doc
+comments from a fortniteMain checkout and writes a Markdown summary.
+
+Options:
+  --engine <dir>     fortniteMain checkout. Default: $FORTNITE_MAIN, else
+                     ../fortniteMain relative to this repository.
+  --root <dir>       Directory to scan for Verse modules, relative to the
+                     engine root. Repeatable. Default:
+                     Engine/Plugins/Verse/Verse
+  --module <path>    Verse module path to include, e.g. /Verse.org/Verse.
+                     Repeatable. Use "all" for every module found under the
+                     scan roots. Default: /Verse.org/Verse
+  --access <level>   Lowest access level to include: public (default),
+                     epic_internal, or all.
+  --include-verse    Also index the public declarations that are implemented
+                     in Verse rather than natively. Off by default: they are
+                     ordinary library code, not part of the runtime surface.
+  --no-intrinsics    Skip the compiler intrinsic table.
+  --no-natives       Skip the .native.verse scan.
+  --format <fmt>     md (default) for folding into docs/, or html for a
+                     standalone, syntax-coloured page to read in a browser.
+  -o, --out <file>   Output file. Default: build/verse_runtime_api.<format>
+  --overrides <file> Hand-written replacements for weak @doc comments.
+                     Default: verse_api_overrides.md, used when it exists.
+  --no-overrides     Ignore the overrides file and show the engine text.
+  --stubs [file]     Create or top up the overrides worksheet: a heading per
+                     declaration, with the engine's text beside it to edit
+                     against. Never changes sections that are already there.
+  --json <file>      Also write the extracted model as JSON.
+  --verbose          Report declarations and C++ constructs that did not parse.
+  -h, --help         Show this message.`);
+}
+
+function parseArgs(argv) {
+  const opts = {
+    engine: null,
+    roots: [],
+    modules: [],
+    access: 'public',
+    includeVerse: false,
+    intrinsics: true,
+    natives: true,
+    format: 'md',
+    out: null,
+    overrides: null,
+    useOverrides: true,
+    stubs: null,
+    json: null,
+    verbose: false,
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    const value = () => {
+      if (i + 1 >= argv.length) {
+        console.error(`Error: ${arg} requires a value`);
+        process.exit(1);
+      }
+      return argv[++i];
+    };
+
+    switch (arg) {
+      case '-h': case '--help':    printUsage(); process.exit(0); break;
+      case '--engine':             opts.engine = value(); break;
+      case '--root':               opts.roots.push(value()); break;
+      case '--module':             opts.modules.push(value()); break;
+      case '--access':             opts.access = value(); break;
+      case '--include-verse':      opts.includeVerse = true; break;
+      case '--no-intrinsics':      opts.intrinsics = false; break;
+      case '--no-natives':         opts.natives = false; break;
+      case '--format':             opts.format = value(); break;
+      case '-o': case '--out':     opts.out = value(); break;
+      case '--overrides':          opts.overrides = value(); break;
+      case '--no-overrides':       opts.useOverrides = false; break;
+      case '--stubs':
+        // The file is optional: bare --stubs means the default worksheet.
+        opts.stubs = (argv[i + 1] && !argv[i + 1].startsWith('-')) ? argv[++i] : DEFAULT_OVERRIDES;
+        break;
+      case '--json':               opts.json = value(); break;
+      case '--verbose':            opts.verbose = true; break;
+      default:
+        console.error(`Error: unknown option '${arg}'`);
+        printUsage();
+        process.exit(1);
+    }
+  }
+
+  if (!['public', 'epic_internal', 'all'].includes(opts.access)) {
+    console.error(`Error: --access must be public, epic_internal or all`);
+    process.exit(1);
+  }
+  if (!['md', 'html'].includes(opts.format)) {
+    console.error(`Error: --format must be md or html`);
+    process.exit(1);
+  }
+  // Everything Verse ships as plugins, which is the whole runtime surface.
+  if (opts.roots.length === 0) opts.roots = ['Engine/Plugins'];
+  if (opts.modules.length === 0) opts.modules = ['all'];
+  return opts;
+}
+
+const REPO_ROOT = path.resolve(__dirname, '..');
+
+function resolveEngineRoot(explicit) {
+  // An explicit --engine is taken at its word: falling back silently would hide
+  // a typo behind a checkout that happens to be somewhere else.
+  if (explicit) {
+    const root = path.resolve(explicit);
+    if (fs.existsSync(path.join(root, 'Engine'))) return root;
+    console.error(`Error: ${root} does not look like a fortniteMain checkout ` +
+                  `(no Engine directory).`);
+    process.exit(1);
+  }
+
+  const candidates = [];
+  if (process.env.FORTNITE_MAIN) candidates.push(process.env.FORTNITE_MAIN);
+  candidates.push(path.join(REPO_ROOT, '..', 'fortniteMain'));
+
+  for (const candidate of candidates) {
+    const root = path.resolve(candidate);
+    if (fs.existsSync(path.join(root, 'Engine'))) return root;
+  }
+  console.error(`Error: no fortniteMain checkout found. Tried:\n  ` +
+                candidates.map(c => path.resolve(c)).join('\n  ') +
+                `\nPass --engine <dir> or set $FORTNITE_MAIN.`);
+  process.exit(1);
+}
+
+const warnings = [];
+function warn(message) { warnings.push(message); }
+
+// ---------------------------------------------------------------------------
+// Shared text helpers
+// ---------------------------------------------------------------------------
+
+function readText(file) {
+  return fs.readFileSync(file, 'utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+}
+
+// Index just past the delimiter that closes the one opening at `start`.
+// Skips over "..." strings and '...' operator names.
+function matchBalanced(text, start) {
+  const close = { '(': ')', '[': ']', '{': '}', '<': '>' }[text[start]];
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      const quote = c;
+      for (i++; i < text.length; i++) {
+        if (text[i] === '\\') i++;
+        else if (text[i] === quote) break;
+      }
+      continue;
+    }
+    if (c === text[start]) depth++;
+    else if (c === close && --depth === 0) return i;
+  }
+  return -1;
+}
+
+// Splits `text` on commas that are not nested inside brackets or quotes.
+function splitTopLevel(text, separator = ',') {
+  const parts = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      const quote = c;
+      for (i++; i < text.length; i++) {
+        if (text[i] === '\\') i++;
+        else if (text[i] === quote) break;
+      }
+    } else if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth--;
+    else if (c === separator && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts.map(p => p.trim()).filter(p => p.length > 0);
+}
+
+// ===========================================================================
+// Part 1 - the .native.verse scan
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Module discovery
+//
+// A UBT module opts into Verse with SetupVerse("<root path>", ...) in its
+// *.Build.cs. Its Verse sources then live in <module dir>/Verse/, and each
+// subdirectory below that becomes one component of the Verse module path.
+// So Source/Verse/Verse/Verse/Math.native.verse, in a module whose root is
+// "/Verse.org", is part of the module /Verse.org/Verse.
+// ---------------------------------------------------------------------------
+
+function findFiles(dir, predicate, results = []) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      // Build output holds copies of the Verse sources; skip it.
+      if (entry.name === 'Intermediate' || entry.name === 'Binaries') continue;
+      findFiles(full, predicate, results);
+    } else if (entry.isFile() && predicate(entry.name, full)) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+function discoverModules(engineRoot, scanRoots) {
+  const modules = new Map(); // verse module path -> { path, dirs: Set }
+
+  for (const scanRoot of scanRoots) {
+    const absScanRoot = path.resolve(engineRoot, scanRoot);
+    const buildFiles = findFiles(absScanRoot, name => name.endsWith('.Build.cs'));
+
+    for (const buildFile of buildFiles) {
+      const setup = /SetupVerse\(\s*(?:"([^"]*)")?/.exec(readText(buildFile));
+      if (!setup) continue;
+      // SetupVerse() with no argument means the module has no Verse root path
+      // of its own (test/codegen helpers); nothing to document.
+      if (!setup[1]) continue;
+      const rootPath = setup[1].replace(/\/$/, '');
+      const verseDir = path.join(path.dirname(buildFile), 'Verse');
+      if (!fs.existsSync(verseDir)) continue;
+
+      for (const file of findFiles(verseDir, name => name.endsWith('.verse'))) {
+        const rel = path.relative(verseDir, path.dirname(file));
+        const suffix = rel === '' ? '' : '/' + rel.split(path.sep).join('/');
+        const modulePath = rootPath + suffix;
+        if (!modules.has(modulePath)) {
+          modules.set(modulePath, { path: modulePath, files: [] });
+        }
+        modules.get(modulePath).files.push(file);
+      }
+    }
+  }
+
+  for (const module of modules.values()) module.files.sort();
+  return modules;
+}
+
+// ---------------------------------------------------------------------------
+// Verse lexing
+//
+// Comments are stripped and physical lines are joined while the text is inside
+// a string or an unclosed "(", which is what makes multi-line @doc(" ... ")
+// attributes and wrapped parameter lists read as one declaration. An unclosed
+// "{" deliberately does not join: that is the brace-block form of a class body
+// and joining would swallow the whole class.
+// ---------------------------------------------------------------------------
+
+function scanPhysicalLine(line, state) {
+  let code = '';
+  let comment = null;
+
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+
+    if (state.blockComment > 0) {
+      if (c === '#' && line[i + 1] === '>') { state.blockComment--; i++; }
+      else if (c === '<' && line[i + 1] === '#') { state.blockComment++; i++; }
+      continue;
+    }
+
+    if (state.string) {
+      code += c;
+      if (c === '\\') { code += line[++i] ?? ''; }
+      else if (c === state.string) state.string = null;
+      continue;
+    }
+
+    if (c === '"' || c === "'") { state.string = c; code += c; continue; }
+    if (c === '<' && line[i + 1] === '#') { state.blockComment++; i++; continue; }
+    if (c === '#') { comment = line.slice(i + 1); break; }
+
+    if ('([{'.includes(c)) state.depth[c]++;
+    else if (c === ')') state.depth['(']--;
+    else if (c === ']') state.depth['[']--;
+    else if (c === '}') state.depth['{']--;
+    code += c;
+  }
+
+  if (state.string) code += '\n'; // a string continued across the line break
+  return { code, comment };
+}
+
+function expandLeadingTabs(line) {
+  const match = /^[\t ]*/.exec(line)[0];
+  return match.replace(/\t/g, '    ') + line.slice(match.length);
+}
+
+// Yields { line, indent, code, comment, isBlank } with multi-line declarations
+// already joined. `line` is the 1-based number of the first physical line.
+function readLogicalLines(text) {
+  const physical = text.split('\n').map(expandLeadingTabs);
+  const state = { string: null, blockComment: 0, depth: { '(': 0, '[': 0, '{': 0 } };
+  const logical = [];
+
+  let pending = null;      // logical line under construction
+  let skipIndent = null;   // indentation of an open <#> block comment
+
+  for (let n = 0; n < physical.length; n++) {
+    const raw = physical[n];
+    const indent = /^ */.exec(raw)[0].length;
+
+    // An indented <#> block comment runs until the indentation drops back.
+    if (skipIndent !== null) {
+      if (raw.trim() === '' || indent > skipIndent) continue;
+      skipIndent = null;
+    }
+
+    const { code, comment } = scanPhysicalLine(raw, state);
+
+    if (pending) {
+      pending.code += code;
+      if (comment !== null && pending.comment === null) pending.comment = comment;
+    } else {
+      pending = { line: n + 1, indent, code, comment };
+    }
+
+    const open = state.string !== null || state.depth['('] > 0;
+    if (open) continue;
+
+    if (pending.code.trim() === '<#>') { skipIndent = pending.indent; pending = null; continue; }
+
+    pending.code = pending.code.trim();
+    pending.isBlank = pending.code === '';
+    logical.push(pending);
+    pending = null;
+  }
+
+  if (pending) {
+    pending.code = pending.code.trim();
+    pending.isBlank = pending.code === '';
+    logical.push(pending);
+  }
+  return logical;
+}
+
+// ---------------------------------------------------------------------------
+// @doc strings
+//
+// A Verse string literal, plus one idiom: authors wrap long doc comments by
+// interpolating an expression that is nothing but whitespace, as in
+//   "first line\n{
+//    }second line"
+// The interpolation contributes no text, so "{ ... }" collapses to nothing.
+// ---------------------------------------------------------------------------
+
+function unescapeVerseString(literal) {
+  let out = '';
+  for (let i = 0; i < literal.length; i++) {
+    const c = literal[i];
+    if (c !== '\\') { out += c; continue; }
+    const escape = literal[++i];
+    switch (escape) {
+      case 'n':  out += '\n'; break;
+      case 't':  out += '    '; break;
+      case 'r':  break;
+      case '\\': out += '\\'; break;
+      case '"':  out += '"'; break;
+      case "'":  out += "'"; break;
+      case '{':  out += '{'; break;
+      case '}':  out += '}'; break;
+      default:   out += escape ?? ''; break;
+    }
+  }
+  return out.replace(/\{\s*\}/g, '');
+}
+
+// Reads the "..." literal that is the sole argument of @doc(...).
+function parseDocAttribute(code) {
+  const open = code.indexOf('(');
+  if (open === -1) return null;
+  const close = matchBalanced(code, open);
+  if (close === -1) return null;
+  const inner = code.slice(open + 1, close).trim();
+  if (!inner.startsWith('"') || !inner.endsWith('"')) return null;
+  return unescapeVerseString(inner.slice(1, -1));
+}
+
+// ---------------------------------------------------------------------------
+// Declaration parsing
+//
+// Every shape that appears in the runtime sources:
+//   Sqrt<native><public>(X:float)<reads>:float                    native function
+//   ToString<public>(String:string)<computes>:string = String     Verse function
+//   (Input:[]t where t:type).Slice<public>(A:int)<computes>:[]t=  extension method
+//   operator'+'<public>(Lhs:diagnostic, Rhs:diagnostic):diagnostic
+//   PiFloat<public>:float := 3.14159...                           constant
+//   var Show<public> : logic                                      data member
+//   event<native><public>(t:type) := class(signalable(t)):        type definition
+//   accessor<native><epic_internal> := enum{Dummy}                inline body
+//   Easing<public> := module:                                     nested module
+//   event<public>() := event(tuple())                             alias
+// ---------------------------------------------------------------------------
+
+const TYPE_KEYWORDS = ['class', 'struct', 'interface', 'enum', 'module'];
+const ACCESS_SPECIFIERS = ['public', 'epic_internal', 'internal', 'protected', 'private'];
+
+function parseDeclaration(code) {
+  let i = 0;
+  const skipSpace = () => { while (i < code.length && code[i] === ' ') i++; };
+
+  // `var` may carry its own specifiers, as in `var<private> Count<native>:int`,
+  // where the specifier constrains writing rather than the definition itself.
+  const isVar = /^var\s*[<\s]/.test(code);
+  const varSpecifiers = [];
+  if (isVar) {
+    i = 3;
+    for (;;) {
+      while (code[i] === ' ') i++;
+      if (code[i] !== '<') break;
+      const close = matchBalanced(code, i);
+      if (close === -1) break;
+      varSpecifiers.push(code.slice(i + 1, close).trim());
+      i = close + 1;
+    }
+    while (code[i] === ' ') i++;
+  }
+
+  let receiver = null;
+  let qualifier = null;
+  if (code[i] === '(') {
+    const close = matchBalanced(code, i);
+    if (close !== -1) {
+      const inner = code.slice(i + 1, close).trim();
+      if (inner.endsWith(':')) {
+        // A qualified name, `(log:)Print`, which disambiguates an overload by
+        // the scope that owns it.
+        qualifier = inner.slice(0, -1).trim();
+        i = close + 1;
+      } else if (code[close + 1] === '.') {
+        // An extension method's receiver: `(Input:[]t where t:type).Slice`.
+        receiver = inner;
+        i = close + 2;
+      }
+    }
+  }
+
+  const nameMatch = /^(operator'[^']*'|prefix'[^']*'|postfix'[^']*'|[A-Za-z_][A-Za-z0-9_]*)/.exec(code.slice(i));
+  if (!nameMatch) return null;
+  const name = nameMatch[1];
+  i += nameMatch[0].length;
+
+  const readSpecifierGroups = () => {
+    const groups = [];
+    for (;;) {
+      skipSpace();
+      if (code[i] !== '<') break;
+      const close = matchBalanced(code, i);
+      if (close === -1) break;
+      groups.push(code.slice(i + 1, close).trim());
+      i = close + 1;
+    }
+    return groups;
+  };
+
+  const specifiers = readSpecifierGroups();
+
+  let params = null;
+  skipSpace();
+  if (code[i] === '(') {
+    const close = matchBalanced(code, i);
+    if (close === -1) return null;
+    params = code.slice(i + 1, close);
+    i = close + 1;
+  }
+
+  const effects = readSpecifierGroups();
+  skipSpace();
+
+  // Type and alias definitions use ":=" with no result type in between.
+  if (code.startsWith(':=', i)) {
+    const rhs = code.slice(i + 2).trim();
+    const keyword = TYPE_KEYWORDS.find(k => new RegExp(`^${k}\\b`).test(rhs));
+    if (!keyword) {
+      return { kind: 'alias', name, receiver, specifiers, effects, params,
+               signature: code.replace(/[:=\s]+$/, ''), aliasOf: rhs };
+    }
+    let j = keyword.length;
+    const rest = rhs.slice(j);
+    let k = 0;
+    const typeSpecifiers = [];
+    for (;;) {
+      while (rest[k] === ' ') k++;
+      if (rest[k] !== '<') break;
+      const close = matchBalanced(rest, k);
+      if (close === -1) break;
+      typeSpecifiers.push(rest.slice(k + 1, close).trim());
+      k = close + 1;
+    }
+    while (rest[k] === ' ') k++;
+    let supers = null;
+    if (rest[k] === '(') {
+      const close = matchBalanced(rest, k);
+      if (close !== -1) { supers = rest.slice(k + 1, close); k = close + 1; }
+    }
+    while (rest[k] === ' ') k++;
+    const tail = rest.slice(k).trim();
+    const opensBlock = tail === ':';
+    const inlineBody = tail.startsWith('{') ? tail.slice(1, -1).trim() : null;
+
+    const head = code.slice(0, i).trimEnd();
+    const signature = `${head} := ${keyword}` +
+                    typeSpecifiers.map(s => `<${s}>`).join('') +
+                    (supers !== null ? `(${supers})` : '');
+    return { kind: keyword, name, receiver, specifiers, effects, params,
+             typeSpecifiers, supers, signature, opensBlock, inlineBody };
+  }
+
+  // Everything else carries a result type after ":".
+  if (code[i] !== ':') {
+    // A bare "Name<specifiers>" with no type is not something we can describe.
+    return null;
+  }
+  i++;
+
+  let depth = 0, bodyAt = -1;
+  for (let j = i; j < code.length; j++) {
+    const c = code[j];
+    if (c === '"' || c === "'") {
+      const quote = c;
+      for (j++; j < code.length; j++) {
+        if (code[j] === '\\') j++;
+        else if (code[j] === quote) break;
+      }
+      continue;
+    }
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth--;
+    else if (depth === 0) {
+      if (c === ':' && code[j + 1] === '=') { bodyAt = j; break; }
+      // "=" starts the body unless it is part of <=, >=, <> or =>.
+      if (c === '=' && !'<>=!'.includes(code[j - 1]) && code[j + 1] !== '=') { bodyAt = j; break; }
+    }
+  }
+
+  const resultType = (bodyAt === -1 ? code.slice(i) : code.slice(i, bodyAt)).trim();
+  const body = bodyAt === -1 ? null : code.slice(bodyAt).replace(/^:?=/, '').trim();
+  const signature = (bodyAt === -1 ? code : code.slice(0, bodyAt)).trimEnd();
+
+  const kind = params !== null ? 'function' : 'data';
+  return { kind, name, receiver, qualifier, specifiers, varSpecifiers, effects,
+           params, resultType, signature,
+           hasBody: bodyAt !== -1, bodyIsInline: !!body, isVar };
+}
+
+function accessOf(specifiers) {
+  return specifiers.find(s => ACCESS_SPECIFIERS.includes(s)) ||
+         (specifiers.some(s => s.startsWith('scoped')) ? 'scoped' : null);
+}
+
+function makeEnumerator(name, owner, modulePath, relFile, line, pending) {
+  return {
+    kind: 'enumerator',
+    name,
+    qualifiedName: `${owner.qualifiedName}.${name}`,
+    signature: name,
+    module: modulePath,
+    file: relFile,
+    line,
+    specifiers: [],
+    doc: pending?.doc ?? null,
+    attributes: pending?.attributes ?? [],
+    comments: pending?.comments ?? [],
+    members: [],
+    access: null,
+    isNative: false,
+    isNativeCallable: false,
+    owner,
+  };
+}
+
+function parseVerseFile(file, modulePath, engineRoot) {
+  const text = readText(file);
+  const relFile = path.relative(engineRoot, file).split(path.sep).join('/');
+  const decls = [];
+
+  // The innermost scope decides how to read a line: inside a class, struct,
+  // interface, enum or module the indented lines are declarations, but inside
+  // a function body they are statements and must be skipped wholesale.
+  const scopes = [{ indent: -1, declScope: true, owner: null, prefix: '' }];
+  let pending = { doc: null, attributes: [], comments: [] };
+  const clearPending = () => { pending = { doc: null, attributes: [], comments: [] }; };
+  // A type declaration that has not opened its body yet, in case the next line
+  // turns out to be an opening brace.
+  let braceOwner = null;
+
+  for (const logical of readLogicalLines(text)) {
+    if (logical.isBlank) {
+      if (logical.comment === null) clearPending();
+      else if (!/^#+$/.test(logical.comment.trim()) && logical.comment.trim() !== '') {
+        pending.comments.push(logical.comment.trim());
+      }
+      continue;
+    }
+
+    while (logical.indent <= scopes[scopes.length - 1].indent) scopes.pop();
+    const scope = scopes[scopes.length - 1];
+    if (!scope.declScope) continue;
+
+    const code = logical.code;
+    if (/^using\s*[{(]/.test(code)) { clearPending(); continue; }
+
+    // A body written with braces puts them on lines of their own:
+    //   thing := struct
+    //   {
+    //       Field<native>:int = 0
+    //   }
+    // The opening brace belongs to the type declared just above it.
+    if (code === '{') {
+      if (braceOwner) {
+        scopes.push({ indent: braceOwner.indent, declScope: true, owner: braceOwner.record,
+                      prefix: `${braceOwner.record.qualifiedName}.` });
+        braceOwner = null;
+      }
+      continue;
+    }
+    if (code === '}') { clearPending(); continue; }
+
+    if (code.startsWith('@')) {
+      const attrName = /^@([A-Za-z_][A-Za-z0-9_]*)/.exec(code);
+      if (attrName && attrName[1] === 'doc') {
+        const doc = parseDocAttribute(code);
+        if (doc === null) warn(`${relFile}:${logical.line}: unparsed @doc attribute`);
+        else pending.doc = doc;
+      } else {
+        pending.attributes.push(code);
+      }
+      continue;
+    }
+
+    // Inside an enum body each line is one or more enumerators, which carry no
+    // type and no value and so are not declarations in the usual shape.
+    if (scope.owner?.kind === 'enum') {
+      for (const enumerator of splitTopLevel(code.replace(/,\s*$/, ''))) {
+        scope.owner.members.push(
+          makeEnumerator(enumerator, scope.owner, modulePath, relFile, logical.line, pending));
+      }
+      clearPending();
+      continue;
+    }
+
+    const decl = parseDeclaration(code);
+    if (!decl) {
+      warn(`${relFile}:${logical.line}: unparsed declaration: ${code.split('\n')[0]}`);
+      clearPending();
+      continue;
+    }
+
+    // `block:` and friends introduce initialisation code, not declarations.
+    // Everything indented under them is statements, so skip the lot.
+    if (decl.kind === 'data' && decl.resultType === '') {
+      if (code.endsWith(':')) {
+        scopes.push({ indent: logical.indent, declScope: false, owner: null, prefix: '' });
+      }
+      clearPending();
+      continue;
+    }
+
+    const record = {
+      ...decl,
+      module: modulePath,
+      file: relFile,
+      line: logical.line,
+      qualifiedName: scope.prefix + decl.name,
+      doc: pending.doc,
+      attributes: pending.attributes,
+      comments: pending.comments,
+      access: accessOf(decl.specifiers),
+      isNative: decl.specifiers.includes('native'),
+      isNativeCallable: decl.specifiers.includes('native_callable'),
+      owner: scope.owner,
+      members: [],
+    };
+    clearPending();
+
+    if (record.owner) record.owner.members.push(record);
+    else decls.push(record);
+
+    if (TYPE_KEYWORDS.includes(decl.kind)) {
+      if (decl.kind === 'enum' && decl.inlineBody) {
+        for (const enumerator of splitTopLevel(decl.inlineBody)) {
+          record.members.push(
+            makeEnumerator(enumerator, record, modulePath, relFile, logical.line, null));
+        }
+      }
+      if (decl.opensBlock) {
+        scopes.push({ indent: logical.indent, declScope: true, owner: record,
+                      prefix: `${record.qualifiedName}.` });
+      } else if (decl.inlineBody === null) {
+        braceOwner = { record, indent: logical.indent };
+      }
+    } else if (decl.hasBody && !decl.bodyIsInline) {
+      // A function whose body is on the following, more indented lines.
+      scopes.push({ indent: logical.indent, declScope: false, owner: record, prefix: '' });
+    }
+  }
+
+  return decls;
+}
+
+// ---------------------------------------------------------------------------
+// Filtering
+// ---------------------------------------------------------------------------
+
+const ACCESS_RANK = { public: 3, epic_internal: 2, scoped: 2, protected: 2, internal: 1, private: 0 };
+
+function passesAccess(decl, level) {
+  if (level === 'all') return true;
+  // A member without an explicit specifier inherits its container's access.
+  if (decl.access === null) return true;
+  const need = level === 'public' ? 3 : 2;
+  return (ACCESS_RANK[decl.access] ?? 0) >= need;
+}
+
+// A declaration belongs in this summary if it is itself native, or if it is a
+// member of a native type: the members are what give the native type a shape.
+function isRuntimeSurface(decl) {
+  if (decl.isNative || decl.isNativeCallable) return true;
+  return !!decl.owner && (decl.owner.isNative || decl.owner.isNativeCallable);
+}
+
+// Declarations nest: a module holds classes, which hold their own members, so
+// the filter recurses. A type is kept when anything inside it is kept, even if
+// the type itself carries no <native> specifier.
+function filterDecl(decl, opts) {
+  if (!passesAccess(decl, opts.access)) return null;
+  const members = decl.members.map(m => filterDecl(m, opts)).filter(Boolean);
+  if (isRuntimeSurface(decl) || (TYPE_KEYWORDS.includes(decl.kind) && members.length > 0)) {
+    return { ...decl, members, native: true };
+  }
+  return opts.includeVerse ? { ...decl, members, native: false } : null;
+}
+
+function collectSurface(decls, opts) {
+  return decls.map(d => filterDecl(d, opts)).filter(Boolean);
+}
+
+// ===========================================================================
+// Part 2 - the compiler intrinsic table
+//
+// PopulateCoreAPI() in SemanticProgram.cpp builds every intrinsic. Three
+// shapes appear there:
+//
+//   _IntAddOp = AddBinaryOp(_intType, _IntrinsicSymbols._OpNameAdd);
+//   _RationalCeil = AddRationalOp(_IntrinsicSymbols._FuncNameCeil);
+//       - a helper whose parameter names, result type and effects are fixed
+//   _ArrayLength = CreateIntrinsicFunction(Name, Params, ReturnType, Effects);
+//       - the generic factory, everything spelled out in the call
+//   { ... _ArrayCallOp = ...CreateFunction(...); ... _Signature = SSignature(...) }
+//       - a block that builds a generic signature out of local type variables
+//
+// All three are read here. Names come from CIntrinsicSymbols::Initialize and
+// effect sets from the ConvertEffectClassesToEffectSet locals, so renames on
+// the engine side follow through instead of silently producing stale output.
+// ===========================================================================
+
+const SEMANTIC_PROGRAM_CPP =
+  'Engine/Source/Runtime/VerseCompiler/Private/uLang/Semantics/SemanticProgram.cpp';
+const VVM_INTRINSICS_CPP =
+  'Engine/Source/Runtime/CoreUObject/Private/VerseVM/VVMIntrinsics.cpp';
+
+// C++ type members -> the Verse spelling of that type.
+const PRIMITIVE_TYPES = {
+  _intType: 'int', _floatType: 'float', _logicType: 'logic', _charType: 'char',
+  _char8Type: 'char', _char32Type: 'char32', _rationalType: 'rational',
+  _comparableType: 'comparable', _persistableType: 'persistable', _anyType: 'any',
+  _voidType: 'void', _falseType: 'false', _trueType: 'true', _typeType: 'type',
+  _EmptyTupleType: 'tuple()', _stringAlias: 'string', _stringType: 'string',
+};
+
+// Extracts the body of a named C++ function.
+function extractFunctionBody(text, signature) {
+  const at = text.indexOf(signature);
+  if (at === -1) return null;
+  const open = text.indexOf('{', at);
+  if (open === -1) return null;
+  const close = matchBalanced(text, open);
+  if (close === -1) return null;
+  return text.slice(open + 1, close);
+}
+
+// Strips // and /* */ comments, returning the code and the comment that
+// preceded each line (used to pick up the hand-written Verse signatures).
+function stripCppComments(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map(line => line.replace(/\/\/.*$/, ''))
+    .join('\n');
+}
+
+function parseIntrinsicSymbols(text) {
+  const body = extractFunctionBody(text, 'void CIntrinsicSymbols::Initialize');
+  if (!body) { warn('could not locate CIntrinsicSymbols::Initialize'); return {}; }
+
+  const symbols = {};
+  // The operator names are spelled with an X-macro whose argument is the
+  // operator token itself, so OPERATOR_OP_NAME(()) is the call operator and a
+  // plain regex would stop at the first ")".
+  for (const form of ['OPERATOR', 'PREFIX', 'POSTFIX']) {
+    const pattern = new RegExp(`_(\\w+)\\s*=\\s*Symbols\\.AddChecked\\(${form}_OP_NAME\\(`, 'g');
+    for (const m of body.matchAll(pattern)) {
+      const open = body.lastIndexOf('(', m.index + m[0].length - 1);
+      const close = matchBalanced(body, open);
+      if (close === -1) continue;
+      symbols['_' + m[1]] = `${form.toLowerCase()}'${body.slice(open + 1, close).trim()}'`;
+    }
+  }
+  for (const m of body.matchAll(/_(\w+)\s*=\s*Symbols\.AddChecked\("(.*?)"\)/g)) {
+    symbols['_' + m[1]] = m[2];
+  }
+  return symbols;
+}
+
+function parseEffectSets(body) {
+  const sets = {};
+  const pattern = /SEffectSet\s+(\w+)\s*=\s*ConvertEffectClassesToEffectSet\(\s*\{([^}]*)\}/g;
+  for (const m of body.matchAll(pattern)) {
+    sets[m[1]] = m[2].split(',')
+      .map(s => s.trim().replace(/^_/, '').replace(/Class$/, ''))
+      .filter(Boolean);
+  }
+  return sets;
+}
+
+// The helpers in PopulateCoreAPI fix their own parameter names, result type and
+// effect sets. Mirrored here; the effect-set *contents* are still read from the
+// source, so only a change to a helper's shape needs a change in this table.
+function helperTemplates(effectSets) {
+  const fx = name => effectSets[name] || [];
+  return {
+    AddUnaryOp: (args, fallible) => ({
+      params: [{ name: 'Value', type: args[0] }], result: args[0],
+      effects: fallible ? fx('ConvergesDecidesEffectSet') : fx('ConvergesEffectSet'),
+    }),
+    AddBinaryOp: (args, fallible) => ({
+      params: [{ name: 'Lhs', type: args[0] }, { name: 'Rhs', type: args[0] }], result: args[0],
+      effects: fallible ? fx('ConvergesDecidesEffectSet') : fx('ConvergesEffectSet'),
+    }),
+    AddAsymmetricBinaryOp: (args, fallible) => ({
+      params: [{ name: 'Lhs', type: args[0] }, { name: 'Rhs', type: args[1] }], result: args[2],
+      effects: fallible ? fx('ConvergesDecidesEffectSet') : fx('ConvergesEffectSet'),
+    }),
+    AddAssignOp: (args, fallible) => ({
+      params: [{ name: 'Lhs', type: `ref(${args[0]})` }, { name: 'Rhs', type: args[0] }],
+      result: args[0],
+      effects: fallible ? fx('TransactsDecidesPredictsEffectSet') : fx('TransactsPredictsEffectSet'),
+    }),
+    AddIntDivide: () => ({
+      params: [{ name: 'Lhs', type: 'int' }, { name: 'Rhs', type: 'int' }], result: 'rational',
+      effects: fx('ConvergesDecidesEffectSet'),
+    }),
+    AddRationalOp: () => ({
+      params: [{ name: 'Value', type: 'rational' }], result: 'int',
+      effects: fx('ConvergesEffectSet'),
+    }),
+    ComparableOp: () => ({
+      params: [{ name: 'Lhs', type: 't' }, { name: 'Rhs', type: 'comparable' }], result: 't',
+      typeParams: [{ name: 't', bound: 'subtype(comparable)' }],
+      effects: fx('ConvergesDecidesEffectSet'),
+    }),
+  };
+}
+
+// Parameter-name locals: const CSymbol ValName = _Symbols->AddChecked("Value");
+function parseSymbolLocals(body) {
+  const locals = {};
+  for (const m of body.matchAll(/const CSymbol (\w+)\s*=\s*_Symbols->AddChecked\("(\w+)"\)/g)) {
+    locals[m[1]] = m[2];
+  }
+  return locals;
+}
+
+function makeTypeResolver(symbols, locals) {
+  const resolve = (expr) => {
+    if (expr === undefined || expr === null) return '?';
+    let e = expr.trim()
+      .replace(/^const\s+/, '')
+      .replace(/^[&*]+/, '')
+      .replace(/\.Get\(\)$/, '')
+      .replace(/->GetType\(\)$/, '')
+      .trim();
+
+    const call = /^GetOrCreate(\w+?)Type\(/.exec(e);
+    if (call) {
+      const close = matchBalanced(e, e.indexOf('('));
+      const args = splitTopLevel(e.slice(e.indexOf('(') + 1, close));
+      switch (call[1]) {
+        case 'Array':   return `[]${resolve(args[0])}`;
+        case 'Option':  return `?${resolve(args[0])}`;
+        case 'Map':     return `[${resolve(args[0])}]${resolve(args[1])}`;
+        case 'WeakMap': return `weak_map(${resolve(args[0])}, ${resolve(args[1])})`;
+        case 'Tuple': {
+          const inner = args.join(', ').replace(/^\{|\}$/g, '');
+          return `tuple(${splitTopLevel(inner).map(resolve).join(', ')})`;
+        }
+        case 'Reference': {
+          const negative = resolve(args[0]), positive = resolve(args[1]);
+          return negative === positive ? `ref(${positive})` : `ref(${negative}, ${positive})`;
+        }
+        case 'Type': {
+          const negative = resolve(args[0]), positive = resolve(args[1]);
+          if (negative === 'false') return `subtype(${positive})`;
+          return negative === positive ? `type(${positive})` : `type(${negative}, ${positive})`;
+        }
+        case 'ConstrainedFloat': return 'float';
+        case 'ConstrainedInt':   return 'int';
+        case 'Function':         return 'function';
+        default:
+          warn(`intrinsics: unhandled type constructor GetOrCreate${call[1]}Type`);
+          return `GetOrCreate${call[1]}Type(...)`;
+      }
+    }
+
+    if (PRIMITIVE_TYPES[e]) return PRIMITIVE_TYPES[e];
+    if (locals.types[e]) return locals.types[e];
+    if (locals.typeVars[e]) return locals.typeVars[e].name;
+    if (locals.explicitParams[e]) return locals.explicitParams[e].positive;
+    if (/^[a-z]$/.test(e)) return e;
+    warn(`intrinsics: unresolved type expression '${expr.trim()}'`);
+    return e;
+  };
+  return resolve;
+}
+
+// Collects the local type bindings a chunk of C++ introduces, so that a later
+// reference such as `&ArrayType` or `ComparableSubtypeType` can be resolved.
+function collectTypeLocals(text, locals, resolve) {
+  // TSRef<CTypeVariable> ElementType = Fn->CreateTypeVariable(Name, Bound, Bound);
+  for (const m of text.matchAll(/TSRef<CTypeVariable>\s+(\w+)\s*=\s*[\w.>-]+CreateTypeVariable\(/g)) {
+    const open = text.indexOf('(', m.index + m[0].length - 1);
+    const args = splitTopLevel(text.slice(open + 1, matchBalanced(text, open)));
+    const name = /_Symbols->AddChecked\("(\w+)"\)/.exec(args[0] ?? '');
+    if (!name) continue;
+    locals.typeVars[m[1]] = { name: name[1], bound: args[1] ?? '' };
+  }
+  // auto [Explicit, Positive, Negative] = CreateExplicitTypeParam(Fn, "Name", "t", "u", Bound);
+  for (const m of text.matchAll(
+      /auto\s*\[\s*(\w+),\s*(\w+),\s*(\w+)\s*\]\s*=\s*CreateExplicitTypeParam\(\s*\w+,\s*_Symbols->AddChecked\("(\w+)"\),\s*_Symbols->AddChecked\("(\w+)"\),\s*_Symbols->AddChecked\("(\w+)"\),\s*([\s\S]*?)\);/g)) {
+    locals.explicitParams[m[1]] = { explicit: m[4], positive: m[5], negative: m[6], bound: m[7] };
+    locals.typeVars[m[2]] = { name: m[5], bound: m[7] };
+    locals.typeVars[m[3]] = { name: m[6], bound: m[7] };
+  }
+  // C<Kind>Type& Local = GetOrCreate...(...);  The function type itself is the
+  // signature being built, not a type a parameter can have.
+  for (const m of text.matchAll(/C\w+&\s+(\w+)\s*=\s*(GetOrCreate(\w+)\([\s\S]*?\));/g)) {
+    if (m[3] === 'FunctionType') continue;
+    locals.types[m[1]] = resolve(m[2]);
+  }
+  // const CTypeType& Local = MapType;   (plain aliases between locals)
+  for (const m of text.matchAll(/C\w+&\s+(\w+)\s*=\s*(\w+);/g)) {
+    if (!locals.types[m[1]]) locals.types[m[1]] = resolve(m[2]);
+  }
+}
+
+// A block that builds one intrinsic out of local type variables.
+function parseIntrinsicBlock(block, symbols, symbolLocals, effectSets, baseLocals) {
+  const asFunction = /(_\w+)\s*=\s*(?:VerseModuleBuiltInPart\.)?CreateFunction\(/.exec(block);
+  const asData = /(_\w+)\s*=\s*VerseModuleBuiltInPart\.CreateDataDefinition\(/.exec(block);
+  const member = asFunction || asData;
+  if (!member) return null;
+  if (!block.includes('AddAttributeClass(_intrinsicClass)')) return null;
+  const isData = !asFunction;
+
+  // Only the named type locals carry over from function scope. Type variables
+  // are per-intrinsic, and several intrinsics reuse the name `t` for different
+  // bounds, so inheriting them would cross the wires.
+  const locals = { types: { ...baseLocals.types }, typeVars: {}, explicitParams: {} };
+  const resolve = makeTypeResolver(symbols, locals);
+  collectTypeLocals(block, locals, resolve);
+
+  // Resolve type-variable bounds now that the local tables are populated.
+  for (const typeVar of Object.values(locals.typeVars)) {
+    typeVar.boundText = resolve(typeVar.bound);
+  }
+  for (const param of Object.values(locals.explicitParams)) {
+    param.boundText = resolve(param.bound);
+  }
+
+  const fnType = /GetOrCreateFunctionType\(([\s\S]*?)\);/.exec(block);
+  let result = '?', effects = [], typeParamOrder = [];
+  if (fnType) {
+    const args = splitTopLevel(fnType[1]);
+    result = resolve(args[1]);
+    effects = effectSets[args[2]?.trim()] || [];
+    const generics = args[4]?.trim();
+    if (generics && generics.startsWith('{')) {
+      typeParamOrder = splitTopLevel(generics.slice(1, -1));
+    }
+  }
+
+  const signature = /_Signature\s*=\s*SSignature\(([\s\S]*?)\);/.exec(block);
+  const params = [];
+  if (signature) {
+    const args = splitTopLevel(signature[1]);
+    const list = args.slice(1).join(', ').replace(/^\{/, '').replace(/\}$/, '');
+    for (const entry of splitTopLevel(list)) {
+      const dataDef = /CreateDataDefinition\(([\s\S]*)\)$/.exec(entry);
+      if (dataDef) {
+        const dataArgs = splitTopLevel(dataDef[1]);
+        const nameExpr = dataArgs[0].trim();
+        const nameMatch = /_Symbols->AddChecked\("(\w+)"\)/.exec(nameExpr);
+        params.push({
+          name: nameMatch ? nameMatch[1] : (symbolLocals[nameExpr] || nameExpr),
+          type: resolve(dataArgs[1]),
+        });
+      } else if (locals.explicitParams[entry]) {
+        const param = locals.explicitParams[entry];
+        params.push({ name: param.positive, type: param.boundText, isTypeParam: true });
+      } else {
+        warn(`intrinsics: unhandled signature entry '${entry}'`);
+      }
+    }
+  }
+
+  // Only the type variables actually named in the signature need a where clause.
+  const typeParams = [];
+  const seen = new Set();
+  const text = params.map(p => `${p.name}:${p.type}`).join(', ') + ' ' + result;
+  for (const local of typeParamOrder) {
+    const typeVar = locals.typeVars[local.replace(/\.Get\(\)$/, '').trim()];
+    if (!typeVar || seen.has(typeVar.name)) continue;
+    // A type passed explicitly is already a parameter; it needs no constraint.
+    if (params.some(p => p.isTypeParam && p.name === typeVar.name)) continue;
+    if (!new RegExp(`\\b${typeVar.name}\\b`).test(text)) continue;
+    seen.add(typeVar.name);
+    typeParams.push({ name: typeVar.name, bound: typeVar.boundText });
+  }
+
+  const open = block.indexOf('(', member.index + member[0].length - 1);
+  const createArgs = splitTopLevel(block.slice(open + 1, matchBalanced(block, open)));
+
+  // A data definition carries its type directly; there is no function type.
+  if (isData) result = resolve(createArgs[1]);
+
+  return {
+    member: member[1],
+    name: resolveIntrinsicName(createArgs[0] ?? '', symbols),
+    params, result, effects, typeParams, isData,
+  };
+}
+
+function resolveIntrinsicName(expr, symbols) {
+  const e = expr.trim();
+  const viaSymbols = /_IntrinsicSymbols\.(_\w+)/.exec(e);
+  if (viaSymbols) return symbols[viaSymbols[1]] ?? viaSymbols[1];
+  const literal = /_Symbols->AddChecked\("(.*?)"\)/.exec(e);
+  if (literal) return literal[1];
+  warn(`intrinsics: unresolved name expression '${expr}'`);
+  return e;
+}
+
+function parseIntrinsics(engineRoot) {
+  const cppPath = path.join(engineRoot, SEMANTIC_PROGRAM_CPP);
+  if (!fs.existsSync(cppPath)) {
+    warn(`intrinsics: ${SEMANTIC_PROGRAM_CPP} not found; skipping intrinsic table`);
+    return [];
+  }
+  const raw = readText(cppPath);
+  const symbols = parseIntrinsicSymbols(raw);
+
+  const bodyRaw = extractFunctionBody(raw, 'void CSemanticProgram::PopulateCoreAPI()');
+  if (!bodyRaw) {
+    warn('intrinsics: could not locate CSemanticProgram::PopulateCoreAPI()');
+    return [];
+  }
+  // Preprocessor branches select between the two VMs; keep both bodies.
+  const body = stripCppComments(bodyRaw)
+    .split('\n').filter(line => !/^\s*#\s*(if|ifdef|ifndef|else|elif|endif)\b/.test(line)).join('\n');
+
+  const effectSets = parseEffectSets(body);
+  const symbolLocals = parseSymbolLocals(body);
+  const templates = helperTemplates(effectSets);
+  const intrinsics = [];
+
+  // Split the body into top-level statements and blocks.
+  let depth = 0, start = 0;
+  const units = [];
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c === '"' || c === "'") {
+      const quote = c;
+      for (i++; i < body.length; i++) {
+        if (body[i] === '\\') i++;
+        else if (body[i] === quote) break;
+      }
+      continue;
+    }
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) {
+      depth--;
+      if (depth === 0 && c === '}') { units.push(body.slice(start, i + 1)); start = i + 1; }
+    } else if (c === ';' && depth === 0) { units.push(body.slice(start, i + 1)); start = i + 1; }
+  }
+
+  // Some type locals are introduced at function scope and used inside the
+  // per-intrinsic blocks, so collect those first.
+  const bodyLocals = { types: {}, typeVars: {}, explicitParams: {} };
+  const bodyResolve = makeTypeResolver(symbols, bodyLocals);
+  collectTypeLocals(units.filter(u => !u.trim().startsWith('{')).join('\n'), bodyLocals, bodyResolve);
+
+  for (const unit of units) {
+    const trimmed = unit.trim();
+    // A block usually builds a generic signature by hand, but some just wrap a
+    // CreateIntrinsicFunction call so the extension-field kind can be set, and
+    // those fall through to the factory pattern below.
+    if (trimmed.startsWith('{')) {
+      const parsed = parseIntrinsicBlock(trimmed, symbols, symbolLocals, effectSets, bodyLocals);
+      if (parsed) { intrinsics.push(parsed); continue; }
+    }
+
+    const helper = /(_\w+)\s*=\s*(AddUnaryOp|AddBinaryOp|AddAsymmetricBinaryOp|AddAssignOp|AddIntDivide|AddRationalOp|ComparableOp)\s*\(([\s\S]*)\)\s*;/.exec(trimmed);
+    if (helper) {
+      const args = splitTopLevel(helper[3]);
+      const fallible = args[args.length - 1] === 'true';
+      const positional = fallible ? args.slice(0, -1) : args;
+      // The symbol argument is the last non-type argument.
+      const nameExpr = positional[positional.length - 1];
+      const typeArgs = positional.slice(0, -1)
+        .map(a => PRIMITIVE_TYPES[a.replace(/^[&*]/, '').trim()] ?? a.replace(/^[&*]/, '').trim());
+      const shape = templates[helper[2]](typeArgs, fallible);
+      intrinsics.push({
+        member: helper[1],
+        name: helper[2] === 'AddIntDivide' ? symbols['_OpNameDiv'] : resolveIntrinsicName(nameExpr, symbols),
+        typeParams: shape.typeParams || [],
+        ...shape,
+      });
+      continue;
+    }
+
+    const factory = /(_\w+)\s*=\s*CreateIntrinsicFunction\(([\s\S]*)\)\s*;/.exec(trimmed);
+    if (factory) {
+      const locals = { types: { ...bodyLocals.types }, typeVars: {}, explicitParams: {} };
+      const resolve = makeTypeResolver(symbols, locals);
+      collectTypeLocals(trimmed, locals, resolve);
+
+      const args = splitTopLevel(factory[2]);
+      const paramList = args[1].replace(/^\{/, '').replace(/\}$/, '');
+      const params = splitTopLevel(paramList).map(entry => {
+        const inner = splitTopLevel(entry.replace(/^\{/, '').replace(/\}$/, ''));
+        const nameExpr = inner[0].trim();
+        const nameMatch = /_Symbols->AddChecked\("(\w+)"\)/.exec(nameExpr);
+        return {
+          name: nameMatch ? nameMatch[1] : (symbolLocals[nameExpr] || nameExpr),
+          type: resolve(inner[1] || ''),
+        };
+      });
+      intrinsics.push({
+        member: factory[1],
+        name: resolveIntrinsicName(args[0], symbols),
+        params,
+        result: resolve(args[2] || ''),
+        effects: effectSets[(args[3] || '').trim()] || [],
+        typeParams: [],
+      });
+    }
+  }
+
+  // Access levels, availability and extension-field kinds are set in separate
+  // statements, sometimes outside the block that created the intrinsic.
+  const byMember = new Map(intrinsics.map(i => [i.member, i]));
+  for (const m of body.matchAll(/(_\w+)->SetAccessLevel\(\{\s*SAccessLevel::EKind::(\w+)/g)) {
+    const intrinsic = byMember.get(m[1]);
+    if (intrinsic) intrinsic.access = m[2].replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+  }
+  for (const m of body.matchAll(/(_\w+)->_ExtensionFieldAccessorKind\s*=\s*EExtensionFieldAccessorKind::(\w+)/g)) {
+    const intrinsic = byMember.get(m[1]);
+    if (intrinsic) intrinsic.extensionKind = m[2];
+  }
+  const constants = {};
+  for (const m of body.matchAll(/constexpr\s+\w+\s+(\w+)\s*=\s*(\d+)\s*;/g)) constants[m[1]] = m[2];
+  for (const m of body.matchAll(/AddAvailableAttribute\(\s*\*this,\s*(_\w+),[^,]*,\s*([\w\d]+)\s*\)/g)) {
+    const intrinsic = byMember.get(m[1]);
+    if (intrinsic) intrinsic.availableSince = constants[m[2]] || m[2];
+  }
+
+  // Cross-reference the intrinsics VerseVM implements as native procedures.
+  const vvmPath = path.join(engineRoot, VVM_INTRINSICS_CPP);
+  if (fs.existsSync(vvmPath)) {
+    const vvmNames = new Set();
+    for (const m of readText(vvmPath).matchAll(/MakeFunction\([^,]*,\s*\d+,\s*&\w+,\s*"\(([^)]*)\)([^"]*)"/g)) {
+      vvmNames.add(m[2]);
+    }
+    for (const intrinsic of intrinsics) {
+      if (vvmNames.has(intrinsic.name)) intrinsic.inVerseVM = true;
+    }
+  }
+
+  return intrinsics;
+}
+
+// ---------------------------------------------------------------------------
+// Intrinsic rendering
+// ---------------------------------------------------------------------------
+
+// Where the intrinsic's Verse-level spelling is not obvious from its name.
+// Editorial, keyed by the compiler's own member name.
+const INTRINSIC_SYNTAX = {
+  _ArrayCallOp: 'Array[Index]',
+  _ArrayRefCallOp0: 'Array[Index] as an assignment target',
+  _ArrayRefCallOp1: 'Array[Index] as an assignment target',
+  _MapRefCallOp: 'Map[Key] as an assignment target',
+  _WeakMapCallOp: 'Map[Key]',
+  _WeakMapRefCallOp0: 'Map[Key] as an assignment target',
+  _WeakMapRefCallOp1: 'Map[Key] as an assignment target',
+  _OptionQueryOp: 'Value?',
+  _LogicQueryOp: 'Value?',
+  _ArrayLength: 'Array.Length',
+  _MapLength: 'Map.Length',
+  _WeakMapOp: 'weak_map(key_type, value_type) as a type expression',
+};
+
+function intrinsicSignature(intrinsic) {
+  const effects = intrinsic.effects.map(e => `<${e}>`).join('');
+  const where = intrinsic.typeParams.length > 0
+    ? ` where ${intrinsic.typeParams.map(p => `${p.name}:${p.bound}`).join(', ')}`
+    : '';
+
+  if (intrinsic.isData) return `${intrinsic.name}:${intrinsic.result}`;
+
+  // operator'array.Length' and friends are extension fields on a type.
+  const extension = /^operator'(.+?)\.(.+?)'$/.exec(intrinsic.name);
+  if (extension) {
+    const [, receiverType, field] = extension;
+    if (intrinsic.extensionKind === 'ExtensionDataMember') {
+      return `(:${receiverType}).${field}${effects}:${intrinsic.result}`;
+    }
+    // An extension method takes its receiver first, then the call's argument
+    // tuple; drop that tuple when the method takes no arguments.
+    const [receiver, ...rest] = intrinsic.params;
+    const args = rest.filter(p => p.type !== 'tuple()');
+    const receiverText = receiver ? `${receiver.name}:${receiver.type}` : `:${receiverType}`;
+    return `(${receiverText}).${field}(${args.map(p => `${p.name}:${p.type}`).join(', ')})` +
+           `${effects}:${intrinsic.result}`;
+  }
+
+  const params = intrinsic.params.map(p => `${p.name}:${p.type}`).join(', ');
+  return `${intrinsic.name}(${params}${where})${effects}:${intrinsic.result}`;
+}
+
+// Match precedence: the first test that accepts an intrinsic claims it. The
+// character conversions come before `int` because `(Value:int).ToChar()`
+// dispatches on `int` but belongs with the other conversions.
+const INTRINSIC_CATEGORIES = [
+  ['Constants',             i => i.isData],
+  ['Comparison',            i => i.member.startsWith('_Comparable')],
+  ['`weak_map`',            i => /weak_map/.test(primaryType(i)) || /weak_map/.test(i.result ?? '')],
+  ['Arrays',                i => /^(\[\]|array$)/.test(primaryType(i))],
+  ['Maps',                  i => /^(\[[^\]]+\]|map$)/.test(primaryType(i))],
+  ['Optionals',             i => /^\?/.test(primaryType(i))],
+  ['`char` and `char32`',   i => /char/.test(primaryType(i)) || /char/.test(i.result ?? '')],
+  ['`int`',                 i => primaryType(i) === 'int'],
+  ['`float`',               i => primaryType(i) === 'float'],
+  ['`rational`',            i => primaryType(i) === 'rational' || i.result === 'rational'],
+  ['`logic`',               i => primaryType(i) === 'logic'],
+];
+
+// Reading order, which is not the same as match precedence.
+const CATEGORY_ORDER = [
+  'Comparison', '`int`', '`float`', '`rational`', '`logic`', '`char` and `char32`',
+  'Arrays', 'Maps', '`weak_map`', 'Optionals', 'Other', 'Constants',
+];
+
+// The type an intrinsic dispatches on. A reference parameter, as in `+=` or an
+// indexing assignment target, is classified by what it refers to; the negative
+// half of such a pair is `false` when the reference is write-only.
+function primaryType(intrinsic) {
+  const type = intrinsic.params?.[0]?.type ?? '';
+  // An extension data member such as operator'array.Length' takes no
+  // parameters; its receiver is spelled in the name.
+  if (type === '') return /^operator'(.+?)\./.exec(intrinsic.name)?.[1] ?? '';
+  if (!type.startsWith('ref(')) return type;
+  const args = splitTopLevel(type.slice(4, matchBalanced(type, 3)));
+  return args.find(a => a !== 'false') ?? type;
+}
+
+function categorise(intrinsics) {
+  const groups = new Map(INTRINSIC_CATEGORIES.map(([name]) => [name, []]));
+  groups.set('Other', []);
+  for (const intrinsic of intrinsics) {
+    const match = INTRINSIC_CATEGORIES.find(([, test]) => {
+      try { return test(intrinsic); } catch { return false; }
+    });
+    groups.get(match ? match[0] : 'Other').push(intrinsic);
+  }
+  return [...groups]
+    .filter(([, list]) => list.length > 0)
+    .sort((a, b) => CATEGORY_ORDER.indexOf(a[0]) - CATEGORY_ORDER.indexOf(b[0]));
+}
+
+// ===========================================================================
+// Documentation overrides
+//
+// Some @doc comments in the engine are thin or merely restate the name. A
+// Markdown file of overrides lets the book replace them without editing the
+// engine tree. Each override is a "## selector" heading followed by the prose
+// to use; anything else in the file, including HTML comments, is ignored.
+//
+// A selector names one declaration:
+//
+//   Sqrt                                  by name
+//   ToString(char)                        by name and parameter types
+//   ToString(Character:char)              parameters copied from the signature
+//   event.Await                           a member, by qualified name
+//   String:ToString(char)                 narrowed to one file
+//   /Verse.org/Verse:Sqrt                 narrowed to one module
+//
+// A selector that matches nothing, or more than one declaration, is reported
+// rather than quietly ignored: that is what catches an override going stale
+// when the engine renames or re-signatures something.
+// ===========================================================================
+
+const DEFAULT_OVERRIDES = 'verse_api_overrides.md';
+
+function parseOverrideFile(file) {
+  const overrides = [];
+  let current = null;
+
+  for (const line of readText(file).split('\n')) {
+    const heading = /^##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      current = { selector: heading[1], lines: [] };
+      overrides.push(current);
+      continue;
+    }
+    if (current) current.lines.push(line);
+  }
+
+  return overrides.map(entry => ({
+    selector: entry.selector,
+    // HTML comments carry the original engine text in a stub file, for
+    // reference while editing; they are not part of the replacement prose.
+    body: entry.lines.join('\n').replace(/<!--[\s\S]*?-->/g, '').trim(),
+  }));
+}
+
+// Splits a selector into its optional scope, the declaration name, and an
+// optional parameter list. The scope separator is the last colon that is not
+// inside quotes or brackets, so `operator'+'` and `[string]int` survive.
+function parseSelector(text) {
+  let rest = text.trim();
+  let params = null;
+
+  if (rest.endsWith(')')) {
+    let depth = 0;
+    for (let i = rest.length - 1; i >= 0; i--) {
+      if (rest[i] === ')') depth++;
+      else if (rest[i] === '(') {
+        depth--;
+        if (depth === 0) {
+          // Only a trailing group is a parameter list; `operator'+'` has none.
+          params = rest.slice(i + 1, -1);
+          rest = rest.slice(0, i).trim();
+          break;
+        }
+      }
+    }
+  }
+
+  let scope = null;
+  let depth = 0;
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const c = rest[i];
+    if (c === "'" || c === '"') {
+      const quote = c;
+      for (i--; i >= 0 && rest[i] !== quote; i--);
+      continue;
+    }
+    if (')]}'.includes(c)) depth++;
+    else if ('([{'.includes(c)) depth--;
+    else if (c === ':' && depth === 0) {
+      scope = rest.slice(0, i).trim();
+      rest = rest.slice(i + 1).trim();
+      break;
+    }
+  }
+
+  return { scope, name: rest, params: params === null ? null : normalizeParams(params) };
+}
+
+function normalizeParams(text) {
+  return splitTopLevel(text).map(p => p.replace(/\s+/g, '')).join(',');
+}
+
+// The parameter types of a declaration, for matching a selector that lists
+// them. A trailing `where` clause constrains type variables rather than naming
+// a parameter, so it is dropped first.
+function declParamTypes(decl) {
+  const source = decl.paramText !== undefined ? decl.paramText : decl.params;
+  if (source === null || source === undefined) return null;
+  const text = source.replace(/\s+where\s+[\s\S]*$/, '');
+  if (text.trim() === '') return '';
+  return splitTopLevel(text).map(param => {
+    let depth = 0;
+    for (let i = 0; i < param.length; i++) {
+      const c = param[i];
+      if ('([{'.includes(c)) depth++;
+      else if (')]}'.includes(c)) depth--;
+      else if (c === ':' && depth === 0) return param.slice(i + 1).replace(/\s+/g, '');
+    }
+    return param.replace(/\s+/g, '');
+  }).join(',');
+}
+
+function selectorMatches(selector, decl) {
+  if (selector.name !== decl.qualifiedName) return false;
+
+  if (selector.scope) {
+    // Either spelling of the file is accepted, so a worksheet written before
+    // headings dropped the .native.verse suffix keeps working.
+    const scopes = [displayFileName(decl.file), path.basename(decl.file), decl.module];
+    if (!scopes.includes(selector.scope)) return false;
+  }
+
+  if (selector.params !== null) {
+    // Either the bare types, or the parameters copied from the signature.
+    const source = decl.paramText !== undefined ? decl.paramText : decl.params;
+    const types = declParamTypes(decl);
+    const full = source === null || source === undefined ? null : normalizeParams(source);
+    if (selector.params !== types && selector.params !== full) return false;
+  }
+  return true;
+}
+
+// Intrinsics come out of the compiler rather than a .verse file, so they have
+// none of the fields a selector matches against. This gives them just enough
+// to be addressable: a name, a parameter list, and `intrinsic` as the scope
+// that narrows them when a name collides with a native of the same name.
+// `params` stays the structured array the signature renderer needs; the
+// selector machinery reads `paramText` instead.
+function intrinsicAsDeclaration(intrinsic) {
+  intrinsic.qualifiedName = intrinsic.name;
+  intrinsic.module = '/Verse.org';
+  intrinsic.file = 'intrinsic';
+  intrinsic.paramText = intrinsic.isData
+    ? null
+    : (intrinsic.params ?? []).map(p => `${p.name}:${p.type}`).join(', ');
+  return intrinsic;
+}
+
+// Every declaration in the model, flattened, in document order.
+function allDeclarations(model) {
+  const out = model.intrinsics.map(intrinsicAsDeclaration);
+  const walk = (decls) => {
+    for (const decl of decls) { out.push(decl); walk(decl.members || []); }
+  };
+  for (const module of model.modules) for (const file of module.files) walk(file.decls);
+  return out;
+}
+
+function applyOverrides(model, overrides) {
+  const declarations = allDeclarations(model);
+  let applied = 0;
+
+  for (const override of overrides) {
+    if (override.body === '') continue;   // an unfilled stub
+    const selector = parseSelector(override.selector);
+    const matches = declarations.filter(decl => selectorMatches(selector, decl));
+
+    // Reported straight away rather than through warn(): these are problems in
+    // a hand-maintained file, and a stale override is exactly what the reader
+    // needs to hear about, so they are not hidden behind --verbose.
+    if (matches.length === 0) {
+      console.error(`Warning: override "${override.selector}" matched no declaration ` +
+                    `in this output. It may be stale, or filtered out by --access/--module.`);
+      continue;
+    }
+    if (matches.length > 1) {
+      const hint = matches
+        .map(m => `${displayFileName(m.file)}:${m.qualifiedName}(${declParamTypes(m) ?? ''})`)
+        .join(', ');
+      console.error(`Warning: override "${override.selector}" is ambiguous and was ` +
+                    `skipped. Use one of: ${hint}`);
+      continue;
+    }
+    matches[0].docOverride = override.body;
+    applied++;
+  }
+  return applied;
+}
+
+// The shortest selector that picks out exactly this declaration: its name, or
+// the name plus parameter types, or those narrowed to one file.
+function uniqueSelector(decl, declarations) {
+  const candidates = [
+    decl.qualifiedName,
+    `${decl.qualifiedName}(${declParamTypes(decl) ?? ''})`,
+    `${displayFileName(decl.file)}:${decl.qualifiedName}(${declParamTypes(decl) ?? ''})`,
+  ];
+  for (const candidate of candidates) {
+    const selector = parseSelector(candidate);
+    if (declarations.filter(d => selectorMatches(selector, d)).length === 1) return candidate;
+  }
+  return candidates[candidates.length - 1];
+}
+
+// Writes, or tops up, the worksheet of overrides: one heading per declaration
+// in the current output, with the engine's own text kept alongside as a
+// comment. Existing sections are preserved exactly, so this is safe to re-run
+// after the engine grows a new function.
+function writeStubs(model, file) {
+  const declarations = allDeclarations(model);
+  const existing = fs.existsSync(file) ? parseOverrideFile(file) : null;
+  const known = new Set((existing ?? []).map(e => e.selector));
+
+  const additions = [];
+  for (const decl of declarations) {
+    const selector = uniqueSelector(decl, declarations);
+    if (known.has(selector)) continue;
+    const source = decl.doc ||
+      (decl.comments?.length > 0 ? decl.comments.join(' ') : null);
+    additions.push(
+      `## ${selector}\n\n` +
+      (source
+        ? `<!-- engine text:\n${source.replace(/--+>/g, '--&gt;')}\n-->\n`
+        : `<!-- no documentation in the engine source -->\n`));
+  }
+
+  // Widening the scope can turn a selector that used to be unique into an
+  // ambiguous one. Existing sections are never edited, so say which ones need
+  // attention rather than leaving a trap for whoever fills them in.
+  const stale = [];
+  for (const selector of known) {
+    const parsed = parseSelector(selector);
+    if (declarations.filter(d => selectorMatches(parsed, d)).length !== 1) stale.push(selector);
+  }
+
+  if (existing === null) {
+    fs.writeFileSync(file, OVERRIDES_HEADER + '\n' + additions.join('\n'), 'utf8');
+  } else if (additions.length > 0) {
+    const previous = readText(file).replace(/\s*$/, '');
+    fs.writeFileSync(file, `${previous}\n\n${additions.join('\n')}`, 'utf8');
+  }
+  return { added: additions.length, kept: known.size, stale };
+}
+
+const OVERRIDES_HEADER = `# Verse runtime documentation overrides
+
+Prose written here replaces the \`@doc\` comment that \`bin/verse_api\` reads out
+of the engine, for the declaration named in the heading above it. Leave a
+section's body empty to keep whatever the engine says.
+
+Only \`##\` headings and the prose under them are read. Everything else,
+including HTML comments, is ignored — which is why the engine's current text is
+kept beside each heading for reference.
+
+Run \`bin/verse_api --stubs\` again after the engine changes: it appends
+headings for anything new and never touches what is already here.
+`;
+
+// ---------------------------------------------------------------------------
+// Shared content
+//
+// Everything both emitters say about the extracted data lives here, so the
+// Markdown and the HTML cannot drift apart on anything but layout.
+// ---------------------------------------------------------------------------
+
+const DOC_TITLE = 'Verse Runtime: Intrinsics and Native Functions';
+
+const DOC_INTRO = [
+  'The Verse runtime surface has two parts that are not written in Verse.',
+  '*Intrinsics* are synthesised by the compiler: no `.verse` source declares',
+  'them, and most cannot be referenced as first-class values. *Native*',
+  'declarations are written in `.native.verse` files and marked `<native>`,',
+  'with the implementation supplied in C++ through a generated binding;',
+  '`<native_callable>` is the mirror image, a Verse body that C++ can call.',
+];
+
+const INTRINSICS_INTRO = [
+  'The compiler creates these in `PopulateCoreAPI()` and tags each with the',
+  'private `intrinsic` attribute. They live in the synthetic `$BuiltIn`',
+  'package rooted at `/Verse.org`, so they are in scope everywhere without',
+  'a `using`. Signatures below are reconstructed from the compiler source.',
+  '`ref(t)` denotes a reference, which has no surface syntax of its own; a',
+  '`ref(t, u)` pair carries distinct types for reading and writing.',
+];
+
+const APPENDIX_TITLE = 'Appendix: declarations implemented in Verse';
+
+const APPENDIX_INTRO = [
+  'These are part of the same modules but are ordinary Verse code, not',
+  'part of the native runtime surface. Listed for completeness.',
+];
+
+function provenanceLines(model) {
+  const now = new Date().toISOString().slice(0, 10);
+  return [
+    `Produced by \`bin/verse_api\` on ${now} from the engine checkout at`,
+    `\`${model.engineRoot.split(path.sep).join('/')}\`` +
+      (model.engineVersion ? ` (${model.engineVersion}).` : '.'),
+    'Regenerate rather than edit by hand.',
+  ];
+}
+
+const INTRINSIC_TABLE_HEADERS = ['Signature', 'Verse syntax', 'Notes'];
+
+function intrinsicRow(intrinsic) {
+  const notes = [];
+  if (intrinsic.access && intrinsic.access !== 'public') notes.push(`\`<${intrinsic.access}>\``);
+  if (intrinsic.availableSince) notes.push(`from FN ${intrinsic.availableSince}`);
+  if (intrinsic.inVerseVM) notes.push('native procedure in VerseVM');
+  const syntax = INTRINSIC_SYNTAX[intrinsic.member];
+  return ['`' + intrinsicSignature(intrinsic) + '`',
+          syntax ? '`' + syntax + '`' : '',
+          notes.join(', ')];
+}
+
+function moduleSummary(module) {
+  const declarations = module.files.reduce(
+    (n, f) => n + f.decls.filter(d => d.native).length, 0);
+  return `${declarations} native declaration${declarations === 1 ? '' : 's'} in ` +
+         `${module.files.length} file${module.files.length === 1 ? '' : 's'}.`;
+}
+
+const APPENDIX_TABLE_HEADERS = ['Declaration', 'Source'];
+
+function appendixRows(model) {
+  return model.modules
+    .flatMap(m => m.files.flatMap(f => f.decls.filter(d => !d.native)))
+    .map(decl => ['`' + decl.signature + '`',
+                  `\`${path.basename(decl.file)}:${decl.line}\``]);
+}
+
+// Engine sources are named Foo.native.verse. The suffix says nothing that the
+// surrounding document does not already say, and the full path is printed
+// underneath the heading anyway, so headings use the bare name.
+function displayFileName(filePath) {
+  return path.basename(filePath).replace(/\.native\.verse$|\.verse$/, '');
+}
+
+// How one file's declarations are organised: its native functions first, then
+// each native type as a section of its own carrying its members. Types nest, so
+// a class declared inside a module becomes its own section too, headed by the
+// qualified name to keep the nesting visible.
+function fileStructure(file) {
+  const isType = d => TYPE_KEYWORDS.includes(d.kind);
+  // Verse-implemented declarations, if asked for, are listed in the appendix
+  // rather than here: this is the native runtime surface.
+  const native = file.decls.filter(d => d.native);
+
+  const types = [];
+  const collect = (decls) => {
+    for (const decl of decls.filter(isType)) { types.push(decl); collect(decl.members); }
+  };
+  collect(native);
+
+  return {
+    functions: native.filter(d => !isType(d)),
+    types: types.map(type => ({
+      decl: type,
+      heading: type.signature.replace(type.name, type.qualifiedName),
+      members: type.members.filter(m => m.native && !isType(m)),
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Markdown rendering
+// ---------------------------------------------------------------------------
+
+function escapeTableCell(text) {
+  return text.replace(/\|/g, '\\|');
+}
+
+// A definition-list entry: the term, then the body indented under ":   ".
+function definition(term, bodyLines) {
+  const out = [term];
+  const body = bodyLines.filter(l => l !== null && l !== undefined);
+  if (body.length === 0) return out.join('\n') + '\n';
+  const flat = body.join('\n').split('\n');
+  out.push(':   ' + flat[0]);
+  for (const line of flat.slice(1)) out.push(line.trim() === '' ? '' : '    ' + line);
+  return out.join('\n') + '\n';
+}
+
+// The facts about a declaration that live in its specifiers and attributes
+// rather than in its doc comment. Described once here; Markdown renders them as
+// a prose line and HTML as badges, so the two cannot disagree.
+function declFacts(decl) {
+  const facts = [];
+  if (decl.isNative) {
+    facts.push({ kind: 'cpp', text: 'implemented in C++', label: 'C++' });
+  } else if (decl.isNativeCallable) {
+    facts.push({ kind: 'callable', text: 'implemented in Verse, callable from C++',
+                 label: 'Verse, callable from C++' });
+  } else if (decl.hasBody) {
+    facts.push({ kind: 'verse', text: 'implemented in Verse', label: 'Verse' });
+  }
+  if (decl.access && decl.access !== 'public') {
+    facts.push({ kind: 'access', text: `\`<${decl.access}>\``, label: `<${decl.access}>` });
+  }
+  for (const attribute of decl.attributes) {
+    const available = /^@available\{[^:]*:=\s*(\d+)/.exec(attribute);
+    if (available) {
+      facts.push({ kind: 'version', text: `available from Fortnite version ${available[1]}`,
+                   label: `FN ${available[1]}+` });
+      continue;
+    }
+    if (attribute === '@experimental') {
+      facts.push({ kind: 'experimental', text: 'experimental', label: 'experimental' });
+      continue;
+    }
+    if (/^@deprecated/.test(attribute)) {
+      facts.push({ kind: 'deprecated', text: 'deprecated', label: 'deprecated' });
+      continue;
+    }
+  }
+  return facts;
+}
+
+function declNotes(decl) {
+  return declFacts(decl).map(fact => fact.text);
+}
+
+// What there is to say about one declaration: its own doc comment, or the
+// plain comment above it as a fallback, plus the facts that live in specifiers
+// and attributes rather than in the comment.
+function declParts(decl) {
+  return {
+    // A hand-written override wins over anything the engine source says.
+    doc: decl.docOverride ||
+         decl.doc ||
+         (decl.comments?.length > 0 ? decl.comments.join(' ') : null),
+    notes: declNotes(decl),
+  };
+}
+
+// The same, flattened into Markdown paragraphs.
+function declBody(decl) {
+  const { doc, notes } = declParts(decl);
+  const body = [];
+  if (doc) body.push(doc);
+  if (notes.length > 0) {
+    if (doc) body.push('');
+    body.push(`*${notes.join('. ')}.*`);
+  }
+  return body;
+}
+
+function markdownTable(headers, rows) {
+  const lines = [`| ${headers.join(' | ')} |`, `|${headers.map(() => '---|').join('')}`];
+  for (const row of rows) lines.push(`| ${row.map(escapeTableCell).join(' | ')} |`);
+  return lines;
+}
+
+// Types become their own subsection so that their members can be a plain
+// definition list; Markdown has no reliable nesting for definition lists.
+function renderFile(file, lines) {
+  lines.push(`### \`${displayFileName(file.path)}\``);
+  lines.push('');
+  lines.push(`<small>\`${file.path}\`</small>`);
+  lines.push('');
+
+  const structure = fileStructure(file);
+
+  for (const decl of structure.functions) {
+    lines.push(definition('`' + decl.signature + '`', declBody(decl)));
+  }
+
+  for (const type of structure.types) {
+    lines.push(`#### \`${type.heading}\``);
+    lines.push('');
+    const body = declBody(type.decl);
+    if (body.length > 0) { lines.push(body.join('\n')); lines.push(''); }
+    for (const member of type.members) {
+      lines.push(definition('`' + member.signature + '`', declBody(member)));
+    }
+  }
+}
+
+function renderMarkdown(model, opts) {
+  const lines = [];
+
+  lines.push(`# ${DOC_TITLE}`);
+  lines.push('');
+  lines.push('!!! note "Generated file"');
+  lines.push('');
+  for (const line of provenanceLines(model)) lines.push('    ' + line);
+  lines.push('');
+  lines.push(DOC_INTRO.join('\n'));
+  lines.push('');
+
+  if (model.intrinsics.length > 0) {
+    lines.push('## Intrinsic functions');
+    lines.push('');
+    lines.push(INTRINSICS_INTRO.join('\n'));
+    lines.push('');
+
+    for (const [category, list] of categorise(model.intrinsics)) {
+      lines.push(`### ${category}`);
+      lines.push('');
+      // A documented intrinsic gets a full entry; the rest stay in the compact
+      // table, which is all there is to say about them.
+      const documented = list.filter(i => i.docOverride);
+      for (const intrinsic of documented) {
+        lines.push(definition('`' + intrinsicSignature(intrinsic) + '`',
+                              [intrinsic.docOverride]));
+      }
+      const rest = list.filter(i => !i.docOverride);
+      if (rest.length > 0) {
+        lines.push(...markdownTable(INTRINSIC_TABLE_HEADERS, rest.map(intrinsicRow)));
+        lines.push('');
+      }
+    }
+  }
+
+  for (const module of model.modules) {
+    lines.push(`## Module \`${module.path}\``);
+    lines.push('');
+    lines.push(moduleSummary(module));
+    lines.push('');
+    for (const file of module.files) renderFile(file, lines);
+  }
+
+  if (opts.includeVerse) {
+    const rows = appendixRows(model);
+    if (rows.length > 0) {
+      lines.push(`## ${APPENDIX_TITLE}`);
+      lines.push('');
+      lines.push(APPENDIX_INTRO.join('\n'));
+      lines.push('');
+      lines.push(...markdownTable(APPENDIX_TABLE_HEADERS, rows));
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n').replace(/\n{4,}/g, '\n\n\n') + '\n';
+}
+
+// ---------------------------------------------------------------------------
+// HTML rendering
+//
+// A standalone page to read in a browser: one file, no network, no packages.
+// Signatures are syntax-coloured at generation time using the same token
+// palette the book itself uses (docs/Assets/VerseLight.json and VerseDark.json),
+// so a signature here looks like a signature in the book.
+// ---------------------------------------------------------------------------
+
+// Verse token colours lifted from the book's own TextMate themes. The scope
+// each one comes from is named so the two can be compared when they change.
+// Note that types all share one colour rather than splitting builtins out with
+// storage.type: in this theme storage.type and storage.modifier are the same
+// blue, which would make `int` indistinguishable from `<converges>`.
+const VERSE_THEME = {
+  light: {
+    name:    '#6500b3',  // entity.name.function
+    keyword: '#569cd6',  // keyword
+    spec:    '#569cd6',  // storage.modifier
+    constant:'#569cd6',  // constant.language
+    type:    '#6F77A6',  // entity.name.tag
+    variable:'#004ab3',  // variable
+    punct:   '#70819a',  // punctuation.definition
+    number:  '#4e7b37',  // constant.numeric
+    string:  '#7a4f38',  // string
+    operator:'#3da1a1',  // keyword.operator
+  },
+  dark: {
+    name:    '#e5c2ff',
+    keyword: '#569cd6',
+    spec:    '#569cd6',
+    constant:'#569cd6',
+    type:    '#6F77A6',
+    variable:'#b9d6ff',
+    punct:   '#8499b7',
+    number:  '#c2ddb4',
+    string:  '#C09077',
+    operator:'#77AFAF',
+  },
+};
+
+const VERSE_KEYWORDS = new Set([
+  'class', 'struct', 'interface', 'enum', 'module', 'where', 'var', 'and', 'or', 'not',
+]);
+
+const VERSE_CONSTANTS = new Set(['true', 'false', 'Inf', 'NaN']);
+
+// Colours one Verse signature. Small on purpose: these are declarations, not
+// whole programs, so the grammar in play is names, specifiers, parameters,
+// types and punctuation.
+function highlightVerse(signature) {
+  const out = [];
+  const push = (cls, text) => out.push(`<span class="t-${cls}">${escapeHtml(text)}</span>`);
+  let i = 0;
+  let seenName = false;
+
+  while (i < signature.length) {
+    const rest = signature.slice(i);
+
+    const space = /^\s+/.exec(rest);
+    if (space) { out.push(escapeHtml(space[0])); i += space[0].length; continue; }
+
+    // An operator, prefix or postfix definition name: operator'+'
+    const opName = /^(operator|prefix|postfix)'[^']*'/.exec(rest);
+    if (opName) { push('name', opName[0]); seenName = true; i += opName[0].length; continue; }
+
+    // A specifier or effect. Only <lowercase_word> counts, so the comparison
+    // operators that can appear inside a constrained type are left alone.
+    const specifier = /^<[a-z_][a-z0-9_]*>/.exec(rest);
+    if (specifier) { push('spec', specifier[0]); i += specifier[0].length; continue; }
+
+    const string = /^"(?:[^"\\]|\\.)*"/.exec(rest);
+    if (string) { push('string', string[0]); i += string[0].length; continue; }
+
+    const number = /^\d+(?:\.\d+)?/.exec(rest);
+    if (number) { push('number', number[0]); i += number[0].length; continue; }
+
+    const identifier = /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest);
+    if (identifier) {
+      const word = identifier[0];
+      const after = signature.slice(i + word.length);
+      let cls;
+      if (VERSE_KEYWORDS.has(word)) cls = 'keyword';
+      else if (VERSE_CONSTANTS.has(word)) cls = 'constant';
+      // `Name:` introduces a parameter or a field.
+      else if (/^\s*:(?!=)/.test(after)) cls = 'variable';
+      // The declared name is the first identifier, or the one after `).`.
+      else if (!seenName) { cls = 'name'; seenName = true; }
+      else cls = 'type';
+      push(cls, word);
+      i += word.length;
+      continue;
+    }
+
+    // `).Name` is an extension method, so the name has not been seen yet.
+    if (rest.startsWith(').')) { push('punct', ').'); seenName = false; i += 2; continue; }
+
+    const operator = /^(:=|->|<=|>=|<>|[+\-*/=^])/.exec(rest);
+    if (operator) { push('operator', operator[0]); i += operator[0].length; continue; }
+
+    push('punct', signature[i]);
+    i += 1;
+  }
+  return out.join('');
+}
+
+function screenCss() {
+  const tokens = (theme) => Object.entries(VERSE_THEME[theme])
+    .map(([name, colour]) => `  --tok-${name}: ${colour};`).join('\n');
+
+  return `
+:root {
+  color-scheme: light dark;
+  --sidebar: 20rem;
+${tokens('light')}
+  --bg: #ffffff;
+  --bg-soft: #f7f7fa;
+  --bg-code: #f5f5f8;
+  --bg-sidebar: #fafafc;
+  --fg: #1b1b20;
+  --fg-dim: #61616c;
+  --border: #e4e4ea;
+  --border-strong: #cfcfd8;
+  --accent: #d2601a;
+  --accent-soft: #fdf1e8;
+  --link: #0b5fbe;
+}
+html[data-theme="dark"] {
+${tokens('dark')}
+  --bg: #17171b;
+  --bg-soft: #1e1e24;
+  --bg-code: #21212a;
+  --bg-sidebar: #131317;
+  --fg: #dcdce2;
+  --fg-dim: #9a9aa6;
+  --border: #2d2d36;
+  --border-strong: #3d3d49;
+  --accent: #f0873f;
+  --accent-soft: #2a1f17;
+  --link: #6fb3ff;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.6 "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+code, .sig, kbd {
+  font-family: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+}
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.layout { display: flex; align-items: flex-start; }
+
+/* Sidebar ------------------------------------------------------------- */
+.sidebar {
+  position: sticky;
+  top: 0;
+  flex: 0 0 var(--sidebar);
+  height: 100vh;
+  overflow-y: auto;
+  padding: 1.4rem 1rem 3rem 1.4rem;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+}
+.sidebar h1 { font-size: 1rem; line-height: 1.35; margin: 0 0 0.2rem; }
+.sidebar .tagline { color: var(--fg-dim); font-size: 0.76rem; margin: 0 0 1rem; }
+.controls { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
+#filter {
+  flex: 1; min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font: inherit; font-size: 0.82rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+#filter:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#theme {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.95rem; line-height: 1;
+  cursor: pointer;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+#theme:hover { border-color: var(--accent); }
+#count { color: var(--fg-dim); font-size: 0.74rem; margin: -0.6rem 0 0.9rem; }
+
+.sidebar nav ul { list-style: none; margin: 0; padding: 0; }
+.sidebar nav a {
+  display: block;
+  padding: 0.16rem 0.5rem;
+  border-left: 2px solid transparent;
+  color: var(--fg-dim);
+  font-size: 0.8rem;
+  border-radius: 0 4px 4px 0;
+}
+.sidebar nav a:hover { background: var(--bg-soft); color: var(--fg); text-decoration: none; }
+.sidebar nav a.l2 { color: var(--fg); font-weight: 600; margin-top: 0.5rem; }
+.sidebar nav a.l3 { padding-left: 1.1rem; }
+.sidebar nav a.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Content ------------------------------------------------------------- */
+.content { flex: 1 1 auto; min-width: 0; max-width: 62rem; padding: 2rem 2.4rem 6rem; }
+
+h2 {
+  font-size: 1.5rem;
+  margin: 3.2rem 0 0.9rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--border-strong);
+}
+h2:first-of-type { margin-top: 0; }
+h3 {
+  font-size: 1.06rem;
+  margin: 2.4rem 0 0.7rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+h4 { font-size: 0.92rem; margin: 1.9rem 0 0.5rem; font-weight: 600; }
+h2 .anchor, h3 .anchor, h4 .anchor {
+  margin-left: 0.4rem;
+  color: var(--border-strong);
+  font-weight: 400;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+h2:hover .anchor, h3:hover .anchor, h4:hover .anchor { opacity: 1; }
+p { margin: 0 0 0.7rem; }
+.intro { color: var(--fg-dim); max-width: 48rem; }
+.filepath { color: var(--fg-dim); font-size: 0.76rem; margin: -0.4rem 0 1rem; }
+
+/* Declarations -------------------------------------------------------- */
+dl.api { margin: 0; }
+dl.api .entry {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+dl.api .entry:hover { background: var(--bg-soft); border-color: var(--border); }
+dl.api dt { margin: 0; }
+dl.api dd { margin: 0.4rem 0 0 0.1rem; color: var(--fg); }
+dl.api dd p { margin: 0 0 0.35rem; }
+dl.api dd ul { margin: 0.25rem 0 0.5rem; padding-left: 1.3rem; }
+
+.sig {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+h4 .sig { font-size: 0.86rem; font-weight: 600; }
+
+/* A native type and its members read as one unit. */
+section.type {
+  margin: 1.8rem 0;
+  padding: 0 0 0.2rem 0.9rem;
+  border-left: 3px solid var(--accent);
+}
+section.type > h4 { margin-top: 0; }
+section.type > p { max-width: 46rem; }
+
+.t-name     { color: var(--tok-name); font-weight: 600; }
+.t-keyword  { color: var(--tok-keyword); }
+.t-spec     { color: var(--tok-spec); }
+.t-constant { color: var(--tok-constant); }
+.t-type     { color: var(--tok-type); }
+.t-variable { color: var(--tok-variable); }
+.t-punct    { color: var(--tok-punct); }
+.t-number   { color: var(--tok-number); }
+.t-string   { color: var(--tok-string); }
+.t-operator { color: var(--tok-operator); }
+
+/* Badges -------------------------------------------------------------- */
+.badges { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.4rem 0 0; }
+.badge {
+  padding: 0.05rem 0.42rem;
+  font-size: 0.68rem;
+  font-family: "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
+  border: 1px solid;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.badge.cpp         { color: #1a6fb5; border-color: #9dc7e8; background: #eef6fc; }
+.badge.callable    { color: #1c7a6b; border-color: #9ad5c9; background: #ecf8f5; }
+.badge.verse       { color: #6a3fa0; border-color: #c6afe0; background: #f5eefc; }
+.badge.access      { color: #5c5c68; border-color: #cdcdd6; background: #f3f3f6;
+                     font-family: "Cascadia Mono", Consolas, monospace; }
+.badge.version     { color: #4a7a2c; border-color: #b3d494; background: #f1f8ea; }
+.badge.experimental{ color: #94631a; border-color: #e2c68c; background: #fdf6e7; }
+.badge.deprecated  { color: #a83232; border-color: #e8a4a4; background: #fdeeee; }
+html[data-theme="dark"] .badge.cpp         { color: #7db8e8; border-color: #2b4a63; background: #16242f; }
+html[data-theme="dark"] .badge.callable    { color: #79cfc0; border-color: #244a44; background: #13251f; }
+html[data-theme="dark"] .badge.verse       { color: #c3a5e6; border-color: #3d2f52; background: #1e1728; }
+html[data-theme="dark"] .badge.access      { color: #a0a0ad; border-color: #3a3a45; background: #20202a; }
+html[data-theme="dark"] .badge.version     { color: #a8cf85; border-color: #35492a; background: #1a2317; }
+html[data-theme="dark"] .badge.experimental{ color: #dcb46a; border-color: #4e3f22; background: #262015; }
+html[data-theme="dark"] .badge.deprecated  { color: #e59191; border-color: #522e2e; background: #2a1a1a; }
+
+.undocumented { color: var(--fg-dim); font-style: italic; font-size: 0.85rem; }
+
+/* Tables -------------------------------------------------------------- */
+table { width: 100%; margin: 0 0 1.4rem; border-collapse: collapse; font-size: 0.8rem; }
+th {
+  padding: 0.4rem 0.7rem 0.4rem 0;
+  text-align: left;
+  border-bottom: 2px solid var(--border-strong);
+  font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--fg-dim);
+}
+td { padding: 0.4rem 0.7rem 0.4rem 0; vertical-align: top;
+     border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+tbody tr:hover { background: var(--bg-soft); }
+td.syntax code { color: var(--accent); }
+td.notes { color: var(--fg-dim); font-size: 0.74rem; }
+td.notes code { color: var(--fg-dim); }
+
+.note {
+  margin: 0 0 1.6rem;
+  padding: 0.7rem 1rem;
+  font-size: 0.82rem;
+  color: var(--fg-dim);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+.note b { color: var(--fg); }
+.empty { color: var(--fg-dim); font-style: italic; }
+
+@media (max-width: 60rem) {
+  .layout { flex-direction: column; }
+  .sidebar { position: static; flex: none; width: 100%; height: auto;
+             border-right: 0; border-bottom: 1px solid var(--border); }
+  .content { padding: 1.4rem 1.2rem 4rem; }
+}
+`.trim();
+}
+
+// The page is static apart from three conveniences: a live filter, a theme
+// toggle that remembers itself, and highlighting of the section being read.
+const SCREEN_JS = `
+const filter = document.getElementById('filter');
+const count = document.getElementById('count');
+const entries = [...document.querySelectorAll('[data-search]')];
+const groups = [...document.querySelectorAll('section')];
+const total = entries.length;
+
+function applyFilter() {
+  const query = filter.value.trim().toLowerCase();
+  let shown = 0;
+  for (const entry of entries) {
+    const match = !query || entry.dataset.search.includes(query);
+    entry.hidden = !match;
+    if (match) shown++;
+  }
+  // Hide a section once everything inside it is filtered away.
+  for (const group of groups.slice().reverse()) {
+    group.hidden = group.querySelectorAll('[data-search]:not([hidden])').length === 0;
+  }
+  count.textContent = query
+    ? shown + ' of ' + total + ' declarations'
+    : total + ' declarations';
+  for (const link of document.querySelectorAll('nav a')) {
+    const section = document.getElementById(link.hash.slice(1))?.closest('section');
+    link.hidden = !!(section && section.hidden);
+  }
+}
+filter.addEventListener('input', applyFilter);
+applyFilter();
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === '/' && document.activeElement !== filter) {
+    event.preventDefault();
+    filter.focus();
+  } else if (event.key === 'Escape' && document.activeElement === filter) {
+    filter.value = '';
+    applyFilter();
+    filter.blur();
+  }
+});
+
+const toggle = document.getElementById('theme');
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  toggle.textContent = theme === 'dark' ? '\\u2600' : '\\u263D';
+  toggle.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+}
+setTheme(localStorage.getItem('verse-api-theme') || (systemDark.matches ? 'dark' : 'light'));
+toggle.addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('verse-api-theme', next);
+  setTheme(next);
+});
+
+const links = new Map([...document.querySelectorAll('nav a')].map(a => [a.hash.slice(1), a]));
+const observer = new IntersectionObserver((records) => {
+  for (const record of records) {
+    if (!record.isIntersecting) continue;
+    for (const link of links.values()) link.classList.remove('active');
+    links.get(record.target.id)?.classList.add('active');
+  }
+}, { rootMargin: '0px 0px -80% 0px' });
+for (const id of links.keys()) {
+  const heading = document.getElementById(id);
+  if (heading) observer.observe(heading);
+}
+`.trim();
+
+function escapeHtml(text) {
+  return text.replace(/[&<>"]/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+}
+
+// Inline Markdown, limited to what this document actually contains: `code`
+// spans and *emphasis*. Code spans are separated out first so that an operator
+// name such as `operator'*'` cannot be mistaken for the start of an emphasis
+// run. Odd-numbered segments are the ones between backticks.
+function inlineHtml(text) {
+  return escapeHtml(text).split('`')
+    .map((part, i) => i % 2 === 1
+      ? `<code>${part}</code>`
+      : part.replace(/\*([^*\s][^*]*?)\*/g, '<em>$1</em>'))
+    .join('');
+}
+
+// One paragraph of documentation. Lines starting with "*" form a bullet list,
+// as several doc comments enumerate cases that way; the rest are hard-wrapped
+// pieces of one flow of prose.
+function proseHtml(paragraph) {
+  const out = [];
+  let prose = [];
+  let bullets = [];
+  const flushProse = () => {
+    if (prose.length > 0) { out.push(`<p>${prose.join(' ')}</p>`); prose = []; }
+  };
+  const flushBullets = () => {
+    if (bullets.length > 0) { out.push(`<ul>${bullets.join('')}</ul>`); bullets = []; }
+  };
+
+  for (const line of paragraph.split('\n')) {
+    const bullet = /^\s*\*\s+(.*)$/.exec(line);
+    if (bullet) { flushProse(); bullets.push(`<li>${inlineHtml(bullet[1])}</li>`); continue; }
+    if (line.trim() === '') continue;
+    flushBullets();
+    prose.push(inlineHtml(line));
+  }
+  flushBullets();
+  flushProse();
+  return out.join('');
+}
+
+function badgesHtml(decl) {
+  const facts = declFacts(decl);
+  if (facts.length === 0) return '';
+  return `<div class="badges">` +
+    facts.map(f => `<span class="badge ${f.kind}">${escapeHtml(f.label)}</span>`).join('') +
+    `</div>`;
+}
+
+function sigHtml(signature) {
+  return `<code class="sig">${highlightVerse(signature)}</code>`;
+}
+
+// Filtering matches on the signature, which is what a reader types when
+// looking for a particular declaration.
+function searchKey(text) {
+  return escapeHtml(text.toLowerCase());
+}
+
+function entryHtml(decl) {
+  const { doc } = declParts(decl);
+  const body = (doc ? proseHtml(doc) : '<span class="undocumented">No documentation.</span>') +
+               badgesHtml(decl);
+  return `<div class="entry" data-search="${searchKey(decl.signature)}">` +
+         `<dt>${sigHtml(decl.signature)}</dt><dd>${body}</dd></div>`;
+}
+
+function tableHtml(headers, rows, classes) {
+  const head = headers.map(h => `<th>${inlineHtml(h)}</th>`).join('');
+  const body = rows.map(row => {
+    // The first column of every table here is a Verse signature, wrapped in
+    // Markdown backticks by the shared row builders.
+    const signature = row[0].replace(/^`|`$/g, '');
+    const cells = row.map((cell, i) => {
+      const cls = classes[i] ? ` class="${classes[i]}"` : '';
+      return `<td${cls}>${i === 0 ? sigHtml(signature) : inlineHtml(cell)}</td>`;
+    }).join('');
+    return `<tr data-search="${searchKey(signature)}">${cells}</tr>`;
+  }).join('');
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function slugger() {
+  const seen = new Map();
+  return (text) => {
+    const base = text.replace(/`/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
+    const count = (seen.get(base) ?? 0) + 1;
+    seen.set(base, count);
+    return count === 1 ? base : `${base}-${count}`;
+  };
+}
+
+function renderHtml(model, opts) {
+  const slug = slugger();
+  const toc = [];
+  const body = [];
+
+  // Headings go into the sidebar down to level 3; level 4 is one entry per
+  // native type, which would swamp it. Only a type declaration is Verse code
+  // worth colouring; a category name such as `int` or a file name is not.
+  const heading = (level, text, { verse = false, cls = '' } = {}) => {
+    const id = slug(text);
+    if (level === 2 || level === 3) toc.push({ level, text, id });
+    const inner = verse ? sigHtml(text) : inlineHtml(text);
+    const attr = cls ? ` class="${cls}"` : '';
+    body.push(`<h${level} id="${id}"${attr}>${inner}` +
+              `<a class="anchor" href="#${id}" aria-label="permalink">#</a></h${level}>`);
+  };
+
+  if (model.intrinsics.length > 0) {
+    body.push('<section>');
+    heading(2, 'Intrinsic functions');
+    body.push(`<p class="intro">${INTRINSICS_INTRO.map(inlineHtml).join(' ')}</p>`);
+    for (const [category, list] of categorise(model.intrinsics)) {
+      body.push('<section>');
+      heading(3, category);
+      // A documented intrinsic gets a full entry; the rest stay in the compact
+      // table, which is all there is to say about them.
+      const documented = list.filter(i => i.docOverride);
+      if (documented.length > 0) {
+        body.push('<dl class="api">' + documented.map(intrinsic => {
+          const signature = intrinsicSignature(intrinsic);
+          const syntax = INTRINSIC_SYNTAX[intrinsic.member];
+          return `<div class="entry" data-search="${searchKey(signature)}">` +
+                 `<dt>${sigHtml(signature)}</dt><dd>${proseHtml(intrinsic.docOverride)}` +
+                 (syntax ? `<p class="notes">Written as <code>${escapeHtml(syntax)}</code>.</p>` : '') +
+                 `</dd></div>`;
+        }).join('') + '</dl>');
+      }
+      const rest = list.filter(i => !i.docOverride);
+      if (rest.length > 0) {
+        body.push(tableHtml(INTRINSIC_TABLE_HEADERS, rest.map(intrinsicRow),
+                            ['', 'syntax', 'notes']));
+      }
+      body.push('</section>');
+    }
+    body.push('</section>');
+  }
+
+  for (const module of model.modules) {
+    body.push('<section>');
+    heading(2, `Module \`${module.path}\``);
+    body.push(`<p class="intro">${inlineHtml(moduleSummary(module))}</p>`);
+
+    for (const file of module.files) {
+      body.push('<section>');
+      heading(3, `\`${displayFileName(file.path)}\``);
+      body.push(`<p class="filepath">${escapeHtml(file.path)}</p>`);
+
+      const structure = fileStructure(file);
+      if (structure.functions.length > 0) {
+        body.push('<dl class="api">' + structure.functions.map(entryHtml).join('') + '</dl>');
+      }
+      for (const type of structure.types) {
+        body.push('<section class="type">');
+        heading(4, type.heading, { verse: true });
+        const { doc } = declParts(type.decl);
+        if (doc) body.push(proseHtml(doc));
+        body.push(`<div data-search="${searchKey(type.heading)}">${badgesHtml(type.decl)}</div>`);
+        if (type.members.length > 0) {
+          body.push('<dl class="api">' + type.members.map(entryHtml).join('') + '</dl>');
+        }
+        body.push('</section>');
+      }
+      body.push('</section>');
+    }
+    body.push('</section>');
+  }
+
+  if (opts.includeVerse) {
+    const rows = appendixRows(model);
+    if (rows.length > 0) {
+      body.push('<section>');
+      heading(2, APPENDIX_TITLE);
+      body.push(`<p class="intro">${APPENDIX_INTRO.map(inlineHtml).join(' ')}</p>`);
+      body.push(tableHtml(APPENDIX_TABLE_HEADERS, rows, ['', 'notes']));
+      body.push('</section>');
+    }
+  }
+
+  const nav = toc
+    .map(e => {
+      const label = e.text.replace(/`/g, '');
+      return `<li><a class="l${e.level}" href="#${e.id}">${escapeHtml(label)}</a></li>`;
+    })
+    .join('');
+
+  return `<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(DOC_TITLE)}</title>
+<style>
+${screenCss()}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+  <h1>${escapeHtml(DOC_TITLE)}</h1>
+  <p class="tagline">${escapeHtml(model.engineVersion || 'fortniteMain')}</p>
+  <div class="controls">
+    <input id="filter" type="search" placeholder="Filter declarations  (press /)"
+           autocomplete="off" spellcheck="false">
+    <button id="theme" type="button" title="Switch theme">&#9789;</button>
+  </div>
+  <p id="count"></p>
+  <nav><ul>${nav}</ul></nav>
+</aside>
+<main class="content">
+  <div class="note"><b>Generated file.</b>
+  ${provenanceLines(model).map(inlineHtml).join(' ')}</div>
+  <p class="intro">${DOC_INTRO.map(inlineHtml).join(' ')}</p>
+${body.join('\n')}
+</main>
+</div>
+<script>
+${SCREEN_JS}
+</script>
+</body>
+</html>
+`;
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
+
+// A Verse module path looks like a Unix path, so Git Bash rewrites it on the
+// way in: `--module /Verse.org/Verse` arrives as `C:/Program Files/Git/Verse.org/Verse`.
+// Match what was asked for against what was found instead of trusting the text.
+function resolveModuleArg(value, discovered) {
+  if (discovered.has(value)) return value;
+  const normalized = value.replace(/\\/g, '/');
+  const match = [...discovered.keys()]
+    .filter(known => normalized.endsWith(known) || normalized.endsWith(known.slice(1)))
+    .sort((a, b) => b.length - a.length)[0];
+  return match ?? value;
+}
+
+function engineVersion(engineRoot) {
+  try {
+    const version = JSON.parse(fs.readFileSync(path.join(engineRoot, 'Engine/Build/Build.version'), 'utf8'));
+    const parts = [];
+    if (version.MajorVersion !== undefined) {
+      parts.push(`UE ${version.MajorVersion}.${version.MinorVersion}.${version.PatchVersion}`);
+    }
+    if (version.Changelist) parts.push(`CL ${version.Changelist}`);
+    return parts.join(', ');
+  } catch {
+    return null;
+  }
+}
+
+function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  const engineRoot = resolveEngineRoot(opts.engine);
+  console.log(`Engine root: ${engineRoot}`);
+
+  const model = {
+    engineRoot,
+    engineVersion: engineVersion(engineRoot),
+    intrinsics: [],
+    modules: [],
+  };
+
+  if (opts.intrinsics) {
+    model.intrinsics = parseIntrinsics(engineRoot);
+    console.log(`Intrinsics: ${model.intrinsics.length}`);
+  }
+
+  if (opts.natives) {
+    const discovered = discoverModules(engineRoot, opts.roots);
+    const wanted = opts.modules.includes('all')
+      ? [...discovered.keys()].sort()
+      : opts.modules.map(m => resolveModuleArg(m, discovered));
+
+    for (const modulePath of wanted) {
+      const module = discovered.get(modulePath);
+      if (!module) {
+        console.error(`Warning: module ${modulePath} not found under the scan roots. ` +
+                      `Found: ${[...discovered.keys()].sort().join(', ') || 'none'}`);
+        continue;
+      }
+      const files = [];
+      for (const file of module.files) {
+        const decls = collectSurface(parseVerseFile(file, modulePath, engineRoot), opts);
+        if (decls.length === 0) continue;
+        files.push({ path: path.relative(engineRoot, file).split(path.sep).join('/'), decls });
+      }
+      // A module can come out empty once access filtering has run, most often
+      // a test suite whose contents are all internal. Leave it out entirely
+      // rather than printing a heading with nothing under it.
+      if (files.length === 0) continue;
+      model.modules.push({ path: modulePath, files });
+      const count = files.reduce((n, f) => n + f.decls.length, 0);
+      console.log(`${modulePath}: ${count} declarations in ${files.length} files`);
+    }
+  }
+
+  const report = file =>
+    console.log(`Wrote ${path.relative(REPO_ROOT, file).split(path.sep).join('/')}`);
+
+  // Topping up the worksheet is a job of its own: it describes the output
+  // rather than producing it, so nothing else runs.
+  if (opts.stubs) {
+    const stubPath = path.resolve(REPO_ROOT, opts.stubs);
+    const { added, kept, stale } = writeStubs(model, stubPath);
+    const name = path.relative(REPO_ROOT, stubPath).split(path.sep).join('/');
+    console.log(added > 0
+      ? `${kept > 0 ? `Added ${added} new section(s) to` : `Wrote ${added} section(s) to`} ${name}`
+      : `${name} already covers all ${kept} declarations; nothing added`);
+    if (stale.length > 0) {
+      console.error(`Warning: ${stale.length} existing section(s) no longer name exactly one ` +
+                    `declaration and were left untouched: ${stale.join(', ')}`);
+    }
+    return;
+  }
+
+  const overridePath = path.resolve(REPO_ROOT, opts.overrides || DEFAULT_OVERRIDES);
+  if (opts.useOverrides && fs.existsSync(overridePath)) {
+    const applied = applyOverrides(model, parseOverrideFile(overridePath));
+    console.log(`Overrides: ${applied} applied from ` +
+                `${path.relative(REPO_ROOT, overridePath).split(path.sep).join('/')}`);
+  } else if (opts.overrides && opts.useOverrides) {
+    console.error(`Error: overrides file not found: ${overridePath}`);
+    process.exit(1);
+  }
+
+  const outPath = path.resolve(REPO_ROOT, opts.out || `build/verse_runtime_api.${opts.format}`);
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+
+  const render = opts.format === 'html' ? renderHtml : renderMarkdown;
+  fs.writeFileSync(outPath, render(model, opts), 'utf8');
+  report(outPath);
+
+  if (opts.json) {
+    const jsonPath = path.resolve(REPO_ROOT, opts.json);
+    fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
+    fs.writeFileSync(jsonPath, JSON.stringify(model, replacer, 2), 'utf8');
+    console.log(`Wrote ${path.relative(REPO_ROOT, jsonPath).split(path.sep).join('/')}`);
+  }
+
+  if (warnings.length > 0) {
+    console.log(`\n${warnings.length} thing(s) in the engine source did not parse` +
+                (opts.verbose ? ':' : '; rerun with --verbose to list them.'));
+    if (opts.verbose) for (const warning of warnings) console.log(`  ${warning}`);
+  }
+}
+
+// `owner` back-references would make the model cyclic.
+function replacer(key, value) {
+  return key === 'owner' ? undefined : value;
+}
+
+main();

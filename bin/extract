@@ -207,6 +207,20 @@ function extractSnippetNumber(lines, verseBlockStart) {
   return null;
 }
 
+// True when `lines[end]` is the closing `-->` of a multi-line marker whose
+// opening line is `<!-- NN FAILURE`. Scans back at most 40 lines so a stray
+// `-->` cannot make this walk the whole file.
+function isMultilineFailureEnd(lines, end) {
+  if (lines[end].trim() !== '-->') return false;
+  for (let i = end - 1; i >= 0 && i > end - 40; i--) {
+    const trimmed = lines[i].trim();
+    if (/^<!--\s*\d+\s+FAILURE/.test(trimmed)) return true;
+    // Any other marker opening means this `-->` belongs to something else.
+    if (trimmed.startsWith('<!--')) return false;
+  }
+  return false;
+}
+
 function shouldSkipSnippet(lines, verseBlockStart) {
   // Look backwards from verseBlockStart to check for <!--NoCompile--> or FAILURE
   let i = verseBlockStart - 1;
@@ -220,6 +234,13 @@ function shouldSkipSnippet(lines, verseBlockStart) {
   if (i >= 0) {
     const trimmed = lines[i].trim();
     if (/^<!--\s*\d+\s+FAILURE.*\s*-->$/.test(trimmed)) {
+      return true;
+    }
+    // `bin/test_and_annotate` records the compiler output inside the marker,
+    // which spreads it over several lines and leaves a bare `-->` here. Without
+    // this case such a block still gets skipped, but by falling through to the
+    // "no id" path below, so it is never counted as a known failure.
+    if (isMultilineFailureEnd(lines, i)) {
       return true;
     }
   }
@@ -290,6 +311,7 @@ function separateTypeDefinitions(snippetLines) {
 
 function extractVerseSnippets(markdownContent, sourceName) {
   const snippets = [];
+  const skipped = [];
   const lines = markdownContent.split('\n');
   let inVerseBlock = false;
   let currentSnippet = [];
@@ -308,14 +330,19 @@ function extractVerseSnippets(markdownContent, sourceName) {
 
       // Skip this snippet if it has <!--NoCompile--> marker
       if (shouldSkipSnippet(lines, verseBlockStart)) {
+        skipped.push({ line: verseBlockStart + 1, reason: 'marked NoCompile or FAILURE' });
         continue;
       }
 
       // Extract the snippet number from the comment
       const snippetNumber = extractSnippetNumber(lines, verseBlockStart);
 
-      // Skip snippets without explicit number
+      // Skip snippets without explicit number. This is the silent-rot case: an
+      // id that is missing, or spelled in a way the pattern above rejects (a
+      // letter suffix such as `46b`), drops the block from the test suite while
+      // it still renders as an example, so report it rather than just skipping.
       if (!snippetNumber) {
+        skipped.push({ line: verseBlockStart + 1, reason: 'no usable <!-- NN --> id' });
         continue;
       }
 
@@ -411,6 +438,7 @@ function extractVerseSnippets(markdownContent, sourceName) {
     }
   }
 
+  snippets.skipped = skipped;
   return snippets;
 }
 
@@ -457,6 +485,18 @@ function main() {
   });
 
   console.log(`\nExtracted ${snippets.length} snippet(s) from ${markdownFile}`);
+
+  // An untested block still renders as an example, so a reader trusts it either
+  // way. Name the ones that never reach the compiler instead of dropping them.
+  const unnumbered = (snippets.skipped || []).filter(s => s.reason !== 'marked NoCompile or FAILURE');
+  const marked = (snippets.skipped || []).length - unnumbered.length;
+  if (marked > 0) {
+    console.log(`Skipped ${marked} block(s) marked NoCompile or FAILURE`);
+  }
+  if (unnumbered.length > 0) {
+    console.log(`WARNING: ${unnumbered.length} block(s) silently untested - no usable <!-- NN --> id:`);
+    unnumbered.forEach(s => console.log(`  ${markdownFile}:${s.line}`));
+  }
 }
 
 main();
