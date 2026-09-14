@@ -14,18 +14,25 @@ The scripts in `bin/` require the Verse VMs from the fortniteMain repository. As
 of the UE6 reorganization, both VMs live in `Engine/Binaries/Win64/`.
 
 The scripts resolve each VM in this order: an explicit environment override, the
-`$PATH`, then `$VERSE_BIN`. `$VERSE_BIN` defaults to:
+`$PATH`, then `$VERSE_BIN`. `$VERSE_BIN` defaults to whichever spelling of the
+path the current shell can see:
 
 ```
-/mnt/d/fortniteMain/Engine/Binaries/Win64
+WSL                    /mnt/d/fortniteMain/Engine/Binaries/Win64
+Git Bash / cmd / pwsh  D:/fortniteMain/Engine/Binaries/Win64
 ```
 
 Set `VERSE_BIN` if your checkout lives elsewhere, rather than editing the
-scripts:
+scripts. Either spelling works from Git Bash; use the `/mnt/d` form under WSL:
 
 ```bash
-export VERSE_BIN=/mnt/d/fortniteMain/Engine/Binaries/Win64
+export VERSE_BIN=/mnt/d/fortniteMain/Engine/Binaries/Win64   # WSL
+export VERSE_BIN=D:/fortniteMain/Engine/Binaries/Win64       # Git Bash
 ```
+
+`bin/vtest` runs from WSL, Git Bash, cmd and PowerShell. The VMs are Windows
+executables that need a native Windows path, so the script converts whatever it
+is given with `wslpath` under WSL and `cygpath` under Git Bash.
 
 ### TestScript VM (for `.versetest` files)
 
@@ -56,9 +63,10 @@ $VERSE_BIN/VerseCLRVM.exe
 Override with `$VERSE_CLR_VM`. **Source Project**:
 `Engine/Source/Programs/VerseCLR`.
 
-This VM is only used by `bin/vtest` for `.verse` files and by `bin/compile`. The
-book's test suite is entirely `.versetest`, so the CLR VM is not needed to run
-the tests, and it is not built by default.
+`bin/vtest` reaches for this VM only when handed a `.verse` file. The book has
+none — `bin/extract` emits `.versetest` exclusively — so in practice the CLR VM
+is never invoked, is not built by default, and you do not need it to run the
+tests.
 
 ## Refreshing `Tests/`
 
@@ -88,7 +96,3 @@ one named in `fortniteMain/JanInfo/README.md`, which is out of date.
 
 - `bin/extract <markdown-file> -t <target-directory>` - Extract Verse snippets from markdown
 - `bin/extract_all` - Extract all snippets from all docs
-
-### Compilation
-
-- `bin/compile <directory>` - Compile all .verse files in a directory

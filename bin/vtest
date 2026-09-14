@@ -5,10 +5,55 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 
 
+// The VMs are Windows executables and always want a native Windows path, but
+// this script is run from three different shells:
+//
+//   WSL        node is Linux;   paths are /mnt/d/...  -> convert with wslpath
+//   Git Bash   node is Windows; paths are D:\...      -> already native, but a
+//                               path typed as /d/...  -> convert with cygpath
+//   cmd/pwsh   node is Windows; paths are D:\...      -> already native
+//
+// Detect the environment once, then route every path through toWindowsPath().
+const isWSL = process.platform === 'linux' &&
+      (!!process.env.WSL_DISTRO_NAME || hasMicrosoftKernel());
+
+function hasMicrosoftKernel() {
+  try {
+    return /microsoft/i.test(fs.readFileSync('/proc/version', 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+// wslpath exists only under WSL, cygpath only under MSYS/Cygwin. Either may be
+// missing, in which case drive-qualified paths still work and others do not.
+const pathTranslator = isWSL
+      ? (findOnPath("wslpath") || "/usr/bin/wslpath")
+      : findOnPath("cygpath");
+
+function toWindowsPath(p) {
+  // Already drive-qualified (D:\... or D:/...), so there is nothing to convert.
+  if (/^[A-Za-z]:/.test(p)) return p;
+  if (!pathTranslator) return p;
+
+  const result = spawnSync(pathTranslator, ['-w', p], { encoding: 'utf8' });
+  if (result.status !== 0 || !result.stdout) {
+    console.error(`Error: cannot convert '${p}' to the Windows path the Verse ` +
+                  `VMs require (tried ${pathTranslator}).`);
+    process.exit(1);
+  }
+  return result.stdout.trim();
+}
+
 // Directory holding the Verse VMs from the fortniteMain repository. Override
 // with $VERSE_BIN when the engine lives somewhere else.
-const verseBin = process.env.VERSE_BIN ||
-      "/mnt/d/fortniteMain/Engine/Binaries/Win64";
+const verseBinRaw = process.env.VERSE_BIN ||
+      (isWSL ? "/mnt/d/fortniteMain/Engine/Binaries/Win64"
+             : "D:/fortniteMain/Engine/Binaries/Win64");
+
+// fs has to be able to see this directory: under WSL that means the Linux path,
+// everywhere else the Windows one, so an MSYS-style $VERSE_BIN needs converting.
+const verseBin = isWSL ? verseBinRaw : toWindowsPath(verseBinRaw);
 
 // Available Verse VMs. For each we try, in order: an explicit env override, the
 // $PATH, then $VERSE_BIN. Development builds produce an unsuffixed executable
@@ -22,8 +67,6 @@ const clrVM = findVM("VERSE_CLR_VM",
                      ["VerseCLRVM.exe",
                       "VerseCLRVM-Win64-Shipping.exe"]
                     );
-
-const wslPath = findOnPath("wslpath") || "/usr/bin/wslpath";
 
 function findOnPath(executable) {
   // Use `which` on Unix or `where` on Windows
@@ -214,10 +257,9 @@ function isSuccess(output) {
 function runTest(filePath) {
   return new Promise((resolve) => {
     const isTest = filePath.endsWith('.versetest');
-    // Both VMs require absolute windows paths when running under WSL.
-    // VerseTestScriptCmdVM will silently do nothing and succeed with a Linux path.
-    // VerseCLRVM will fail with "Error getting text contents" with a Linux path.
-    // This call to wslpath converts a linux path to a windows path.
+    // Both VMs require absolute Windows paths. Given a Linux one,
+    // VerseTestScriptCmdVM silently does nothing and reports success, while
+    // VerseCLRVM fails with "Error getting text contents" -- so convert first.
     const canonicalPath = fs.realpathSync(filePath);
 
     let targetPath = canonicalPath;
@@ -235,7 +277,7 @@ function runTest(filePath) {
       targetPath = tempFile;
     }
 
-    const windowsPath = spawnSync(wslPath, ['-w', targetPath], {encoding: 'utf8'}).stdout.trim();
+    const windowsPath = toWindowsPath(targetPath);
     const compilerPath = isTest ? testScriptVM : clrVM;
     const args = compilerPath === testScriptVM ? [windowsPath] : ['--open=' + windowsPath];
 
