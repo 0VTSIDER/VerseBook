@@ -53,6 +53,8 @@ Thumbs.db
 Desktop.ini
 
 # Project specific
+# Scratch snippet-extraction targets, e.g. bin/extract docs/00_overview.md -t .c00
+.c[0-9][0-9]/
 *.log
 .cache/
 .pytest_cache/

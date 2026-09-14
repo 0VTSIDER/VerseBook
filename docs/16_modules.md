@@ -385,6 +385,7 @@ The basic syntax is straightforward - the keyword `using` followed by
 the module path in curly braces:
 
 <!--NoCompile-->
+<!-- 10 -->
 ```verse
 using { /Verse.org/Random }
 using { /Fortnite.com/Devices }
@@ -563,7 +564,7 @@ assert:
     Describe() = 3
 <#
 -->
-<!-- 916 -->
+<!-- 15 -->
 ```verse
 settings := class:
     Volume:int = 3
@@ -592,7 +593,7 @@ assert:
     CoroUtils.GetEventLogString() = "3"
 <#
 -->
-<!-- 917 -->
+<!-- 16 -->
 ```verse
 CaptureLocalUsing()<suspends>:void =
     Data := data{Value := 3}
@@ -611,7 +612,7 @@ members directly into scope, `import` lets you access them through
 the alias with dot notation:
 
 <!--NoCompile-->
-<!-- 14b -->
+<!-- 17 -->
 ```verse
 # using: members available directly
 using { /MyProject/Utilities }
@@ -626,7 +627,7 @@ This is useful when you want to avoid name collisions, or when you
 need to make the origin of a definition explicit in your code:
 
 <!--NoCompile-->
-<!-- 14c -->
+<!-- 18 -->
 ```verse
 Physics := import(/MyProject/Systems/Physics)
 Graphics := import(/MyProject/Systems/Graphics)
@@ -641,7 +642,7 @@ within the same module. An `import` can also be combined with `using`
 to both alias a module and bring its members into scope:
 
 <!--NoCompile-->
-<!-- 14d -->
+<!-- 19 -->
 ```verse
 Graphics := import(/MyProject/Systems/Graphics)
 using { Graphics }  # now Graphics members are also directly available
@@ -669,7 +670,7 @@ armor_component := class:
 }
 <#
 -->
-<!-- 15 -->
+<!-- 20 -->
 ```verse
 # File: player_module/health.verse
 health_component := class:
@@ -687,7 +688,7 @@ armor_component := class:
 When two imported modules define members with the same name, you need to disambiguate:
 
 <!--NoCompile-->
-<!-- 16 -->
+<!-- 21 -->
 ```verse
 using { /GameA/Combat }
 using { /GameB/Combat }
@@ -738,7 +739,7 @@ InventoryModule.item
 -->
 
 <!--NoCompile-->
-<!-- 17 -->
+<!-- 22 -->
 ```verse
 # Qualified access syntax: (qualifier:)identifier
 
@@ -778,7 +779,7 @@ Use `weak_map(session, t)` for variables that persist for the duration of a game
 session := class<unique>{}
 GetSession()<transacts>:session = session{}
 -->
-<!-- 20 -->
+<!-- 23 -->
 ```verse
 var GlobalCounter:weak_map(session, int) = map{}
 
@@ -802,7 +803,7 @@ SavePlayerProgress(Player:player, NewData:player_data)<decides>:void =
     set PlayerSaveData[Player] = NewData
 <#
 -->
-<!-- 21 -->
+<!-- 24 -->
 ```verse
 var PlayerSaveData:weak_map(player, player_data) = map{}
 
@@ -826,7 +827,7 @@ compatibility.
 The following example of shows how evolution works:
 
 <!--NoCompile-->
-<!-- 22 -->
+<!-- 25 -->
 ```verse
 # Initial publication
 Thing<public>:rational = 1/3
@@ -866,7 +867,7 @@ MyModule := module:
 }
 <#
 -->
-<!-- 23 -->
+<!-- 26 -->
 ```verse
 # External module adds ShadowX after your code published
 ExternalModule<public> := module:
@@ -898,7 +899,7 @@ ProcessValue((local:)Value:int):int =
 }
 <#
 -->
-<!-- 24 -->
+<!-- 27 -->
 ```verse
 ProcessValue((local:)Value:int):int =
     (local:)Value + 1
@@ -915,7 +916,7 @@ Compute():int =
 }
 <#
 -->
-<!-- 25 -->
+<!-- 28 -->
 ```verse
 Compute():int =
     (local:)Result:int = 42
@@ -935,7 +936,7 @@ SumValues():int =
 }
 <#
 -->
-<!-- 26 -->
+<!-- 29 -->
 ```verse
 SumValues():int =
     var Total:int = 0
@@ -950,7 +951,7 @@ SumValues():int =
 <!--versetest
 GetValue<public>()<computes><decides>:float = 10.0
 -->
-<!-- 27 -->
+<!-- 30 -->
 ```verse
 CheckValue():float =
     if (X := GetValue[], (local:)X > 5.0):
@@ -970,7 +971,7 @@ ComputeInBlock():int =
 }
 <#
 -->
-<!-- 28 -->
+<!-- 31 -->
 ```verse
 ComputeInBlock():int =
     block:
@@ -982,7 +983,7 @@ ComputeInBlock():int =
 **Class blocks:**
 
 <!--NoCompile-->
-<!-- 29 -->
+<!-- 32 -->
 ```verse
 my_class := class:
     var Value<public>:int = 0
@@ -999,6 +1000,7 @@ The `(local:)` qualifier **cannot** be used in these contexts:
 Currently, you **cannot** redefine a `(local:)` qualified identifier in nested blocks:
 
 <!--NoCompile-->
+<!-- 33 -->
 ```verse
 # Error: cannot redefine local identifier
 F((local:)X:int):int =
@@ -1041,6 +1043,7 @@ Verse uses several patterns to qualify identifiers based on their scope:
 are qualified with the package path:
 
 <!--NoCompile-->
+<!-- 34 -->
 ```verse
 # What you write:
 Function(X:int):int = X
@@ -1057,6 +1060,7 @@ built-in type `int` is qualified with its standard library path
 **Local scope qualification**: Function parameters and local variables are marked with `(local:)`:
 
 <!--NoCompile-->
+<!-- 35 -->
 ```verse
 # What you write:
 ProcessValue(Input:int, Multiplier:int):int =
@@ -1070,6 +1074,7 @@ ProcessValue(Input:int, Multiplier:int):int =
 **Nested scope qualification**: Members within classes, interfaces, or modules get qualified with their container's path:
 
 <!--NoCompile-->
+<!-- 36 -->
 ```verse
 # What you write:
 player_class := class:
@@ -1091,6 +1096,7 @@ Notice how `Health` and `TakeDamage` are qualified with `/YourPackage/player_cla
 **Module member qualification**: Definitions within modules are qualified with the module path:
 
 <!--NoCompile-->
+<!-- 37 -->
 ```verse
 # What you write:
 Config := module:
@@ -1111,6 +1117,7 @@ paths. This makes it explicit where these types come from and
 maintains consistency with user-defined types:
 
 <!--NoCompile-->
+<!-- 38 -->
 ```verse
 # Common built-in types and their full qualifications:
 int       → (/Verse.org/Verse:)int
@@ -1127,6 +1134,7 @@ When you write `X:int`, the compiler expands it to `X:(/Verse.org/Verse:)int`, m
 Here's a more realistic example showing how qualification would work across multiple scopes:
 
 <!--NoCompile-->
+<!-- 39 -->
 ```verse
 # What you write:
 GameSystem := module:
@@ -1159,6 +1167,7 @@ Notice how:
 **Important Note on Shadowing**: Automatic qualification will only apply to published code, not your source code. Verse currently enforces strict anti-shadowing rules to prevent confusion and maintain code clarity. For example, this code does **not** compile:
 
 <!--NoCompile-->
+<!-- 40 -->
 ```verse
 # This does NOT compile - shadowing is not allowed
 Thing := module:
@@ -1173,6 +1182,7 @@ Even with automatic qualification, nested definitions cannot shadow outer defini
 When you import modules with `using`, the compiler still qualifies all identifiers, but it can resolve unqualified names to the imported modules:
 
 <!-- NoCompile-->
+<!-- 41 -->
 ```verse
 # What you write:
 using { /Verse.org/Random }
@@ -1200,6 +1210,7 @@ ambiguous or unresolved identifiers, understanding qualification helps
 you see why:
 
 <!--NoCompile-->
+<!-- 42 -->
 ```verse
 using { /ModuleA }
 using { /ModuleB }
@@ -1213,6 +1224,7 @@ The error occurs because the compiler cannot automatically qualify `Calculate` -
 **Shadowing conflicts**: When a local variable has the same name as a module member:
 
 <!--NoCompile-->
+<!-- 43 -->
 ```verse
 MyModule := module:
     Value:int = 100
@@ -1246,7 +1258,7 @@ explicitly qualify them using the qualified access syntax
 `(qualifier:)identifier`. This is useful when you want to override
 automatic resolution or make your intent explicit:
 
-<!-- 45 FAILURE
+<!-- 44 FAILURE
   Line 11: Verse compiler error V3509: The assignment's left hand expression type `int` cannot be assigned to
 -->
 ```verse
@@ -1301,7 +1313,7 @@ ProcessEntity(E:entity):void =
 }
 <#
 -->
-<!-- 46 -->
+<!-- 45 -->
 ```verse
 entity := class:
     Name:string = "Entity"
@@ -1335,7 +1347,7 @@ player := class:
     var Name:string = ""
     var Score:int = 0
 -->
-<!-- 47 -->
+<!-- 46 -->
 ```verse
 CreateAndProcess():void =
     Player := player{Name := "Alice", Score := 100}
@@ -1361,7 +1373,7 @@ data_record := class:
     Value:int = 0
     UpdateField<public>(V:int):void = {}
 -->
-<!-- 48 -->
+<!-- 47 -->
 ```verse
 ProcessData():void =
     block:
@@ -1378,7 +1390,7 @@ data_record := class:
     Value:int = 0
     UpdateField<public>(V:int):void = {}
 -->
-<!-- 49 -->
+<!-- 48 -->
 ```verse
 ProcessData():void =
     Data := data_record{}
@@ -1394,7 +1406,7 @@ data_record := class:
     Value:int = 0
     UpdateField<public>(V:int):void = {}
 -->
-<!-- 50 -->
+<!-- 49 -->
 ```verse
 ProcessData():void =
     Data := data_record{}
@@ -1410,6 +1422,7 @@ ProcessData():void =
 Member inference only works **after** the `using` expression is encountered:
 
 <!--NoCompile-->
+<!-- 50 -->
 ```verse
 # ERROR: Cannot infer before using
 ProcessData(Data:data_record):void =
@@ -1468,7 +1481,7 @@ assert_semantic_error(3588):
         X := Health
 <#
 -->
-<!-- 52 -->
+<!-- 51 -->
 ```verse
 player_stats := class:
     Health:int = 100
@@ -1521,7 +1534,7 @@ UpdateSettings(Settings:config):void =
 }
 <#
 -->
-<!-- 53 -->
+<!-- 52 -->
 ```verse
 config := class:
     var Volume:float = 1.0
@@ -1549,7 +1562,7 @@ When working with modules, you may encounter various issues. Understanding these
 1. **Incorrect path**: Double-check the module path in your `using` statement. Remember that paths are case-sensitive.
 
 <!--NoCompile-->
-<!-- 54 -->
+<!-- 53 -->
 ```verse
 # Wrong: different case
 using { /verse.org/random }  # Error: module not found
@@ -1561,7 +1574,7 @@ using { /Verse.org/Random }  # Works
 2. **Missing parent module import**: When importing nested modules, ensure the parent is imported first.
 
 <!--NoCompile-->
-<!-- 55 -->
+<!-- 54 -->
 ```verse
 # Wrong: child before parent
 using { Inventory }  # Error if Inventory is nested
@@ -1582,7 +1595,7 @@ using { Inventory }
 1. **Missing access specifier**: Members without the `<public>` specifier are internal by default.
 
 <!--NoCompile-->
-<!-- 56 -->
+<!-- 55 -->
 ```verse
 # In ModuleA
 SecretValue:int = 42  # Internal by default
@@ -1597,7 +1610,7 @@ Y := ModuleA.PublicValue  # Works
 2. **Protected or private members**: These are not accessible outside their defining scope.
 
 <!--NoCompile-->
-<!-- 57 -->
+<!-- 56 -->
 ```verse
 # In a class
 class_a := class:
@@ -1628,6 +1641,7 @@ Y := Obj.PublicField   # Works
 **Solution**: Use fully qualified names to disambiguate:
 
 <!--NoCompile-->
+<!-- 57 -->
 ```verse
 using { /GameA/Combat }
 using { /GameB/Combat }
@@ -1666,7 +1680,7 @@ ModuleX := module:
 }
 <#
 -->
-<!-- 59 -->
+<!-- 58 -->
 ```verse
 ModuleX := module:
     Value:int = 10

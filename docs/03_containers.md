@@ -183,7 +183,7 @@ After this code runs, iterating through `Array2` prints `10, 77, 12, 20, 21, 22,
 Tuples can be used directly with the `+` and `+=` operators on arrays, and will be automatically converted to arrays. This provides a concise way to add multiple elements without wrapping them in `array{...}`:
 
 <!--versetest-->
-<!-- 77 -->
+<!-- 14 -->
 ```verse
 var Values:[]int = array{1, 2, 3}
 
@@ -201,7 +201,7 @@ This tuple-to-array conversion with operators is distinct from tuple expansion i
 Arrays can also be nested to form multi-dimensional structures, similar to rows and columns of a table. For example, the following creates a two-dimensional 4×3 array of integers:
 
 <!--versetest-->
-<!-- 14 -->
+<!-- 15 -->
 ```verse
 var Counter : int = 0
 Example : [][]int =
@@ -222,7 +222,7 @@ Row 3: 10 11 12
 and is accessed with two indices: `Example[0][0]` is `1`, `Example[0][1]` is `2`, and `Example[1][0]` is `4`. You can loop through all rows and columns with nested iteration. Arrays in Verse are not restricted to rectangular shapes: each row can have a different length, producing a jagged structure. For example,
 
 <!--versetest-->
-<!-- 15 -->
+<!-- 16 -->
 ```verse
 Example : [][]int =
     for (Row := 0..3):
@@ -251,7 +251,7 @@ game_board := class:
 assert:
 <# 
 -->
-<!-- 16 -->
+<!-- 17 -->
 ```verse
 # Game board with tile grid
 tile_class := class:
@@ -287,7 +287,7 @@ if (CenterTile := Board.GetTile[5, 5]):
 When you create an empty array with `array{}`, Verse infers the element type from the variable's type annotation:
 
 <!--versetest-->
-<!-- 17 -->
+<!-- 18 -->
 ```verse
 IntArray : []int = array{}       # Empty array of integers
 FloatArray : []float = array{}   # Empty array of floats
@@ -302,7 +302,7 @@ class1 := class {}
 class2 := class(class1) {}
 class3 := class(class1) {}
 -->
-<!-- 18 -->
+<!-- 19 -->
 ```verse
 # Array element type is class1 (common supertype)
 MixedArray : []class1 = array{class2{}, class3{}}
@@ -311,7 +311,7 @@ MixedArray : []class1 = array{class2{}, class3{}}
 This applies to any type hierarchy, including interfaces. If you mix completely unrelated types, the element type becomes `any`:
 
 <!--versetest-->
-<!-- 19 -->
+<!-- 20 -->
 ```verse
 # Array of comparable - different types sharing comparable in common
 DisjointArray : []comparable = array{42, 13.37, true}
@@ -327,7 +327,7 @@ Verse provides automatic conversion between tuples and arrays in specific contex
 Tuples can be directly assigned to array variables when all tuple elements are compatible with the array's element type:
 
 <!--versetest-->
-<!-- 20 -->
+<!-- 21 -->
 ```verse
 # Homogeneous tuple to array
 X:tuple(int, int) = (1, 2)
@@ -345,7 +345,7 @@ This conversion creates an array containing all the tuple's elements in order.
 When a function has a single array parameter, you can call it with multiple arguments, which automatically form an array:
 
 <!--versetest-->
-<!-- 21 -->
+<!-- 22 -->
 ```verse
 ProcessNumbers(Nums:[]int):int = Nums.Length
 
@@ -359,7 +359,7 @@ ProcessNumbers(Values)             # Tuple variable → array
 This "variadic-like" syntax provides convenience while keeping the function signature simple:
 
 <!--versetest-->
-<!-- 22 -->
+<!-- 23 -->
 ```verse
 Sum(Nums:[]int):int =
     var Total:int = 0
@@ -388,7 +388,7 @@ GetP()<transacts>:player = player{ID := 1, Name := "Alice"}
 GetE()<transacts>:entity = entity{ID := 2}
 <#
 -->
-<!-- 23 -->
+<!-- 24 -->
 ```verse
 # Homogeneous tuple - all int
 F(X:[]int):int = X.Length
@@ -412,7 +412,7 @@ ProcessEntities(P, E)             # Valid - player is subtype of entity
 Functions taking `[]any` accept **any tuple**, regardless of element types:
 
 <!--versetest-->
-<!-- 24 -->
+<!-- 25 -->
 ```verse
 GetLength(Items:[]any):int = Items.Length
 
@@ -444,7 +444,7 @@ assert:
     ProcessInterfaces(X, Y) = 2
 <#
 -->
-<!-- 25 -->
+<!-- 26 -->
 ```verse
 interface1 := interface:
     GetID():int
@@ -474,7 +474,7 @@ Tuple-to-array conversion works with nested structures:
 <!--versetest
 ProcessMatrix(Matrix:[][]int):int = Matrix.Length
 -->
-<!-- 26 -->
+<!-- 27 -->
 ```verse
 # Nested tuples → nested arrays
 MatrixData := ((1, 2), (3, 4))
@@ -487,7 +487,7 @@ ProcessMatrix((1, 2), (3, 4))   # Valid
 **Optional arrays:**
 
 <!--versetest-->
-<!-- 27 -->
+<!-- 28 -->
 ```verse
 ProcessOptional(Items:?[]int)<decides>:int = Items?[0]
 
@@ -499,7 +499,7 @@ ProcessOptional[Values]           # Valid
 **Tuples containing arrays:**
 
 <!--versetest-->
-<!-- 28 -->
+<!-- 29 -->
 ```verse
 ProcessComplex(Data:tuple([]int, int)):int = Data(0).Length
 
@@ -514,7 +514,7 @@ Arrays support slicing operations through the `.Slice` method, which extracts a 
 The two-parameter form `Array.Slice[Start, End]` returns elements from index `Start` up to but not including index `End`:
 
 <!--versetest-->
-<!-- 29 -->
+<!-- 30 -->
 ```verse
 NumArray : []int = array{10, 20, 30, 40, 50}
 if (Slice := NumArray.Slice[1, 4]):
@@ -526,7 +526,7 @@ The one-parameter form `Array.Slice[Start]` returns all elements from `Start` to
 <!--versetest
 NumArray : []int = array{10, 20, 30, 40, 50}
 -->
-<!-- 30 -->
+<!-- 31 -->
 ```verse
 if (Slice := NumArray.Slice[2]):
     Slice = array{30, 40, 50}
@@ -537,7 +537,7 @@ Slicing fails if indices are negative, out of bounds, or if `Start` is greater t
 <!--versetest
 NumArray:[]int = array{10, 20, 30, 40, 50}
 -->
-<!-- 31 -->
+<!-- 32 -->
 ```verse
 NumArray.Slice[2, 2]  # Succeeds with array{}
 # NumArray.Slice[2, 1]  # Would fail - Start > End
@@ -548,7 +548,7 @@ NumArray.Slice[2, 2]  # Succeeds with array{}
 Slicing also works on strings and character tuples, returning a string:
 
 <!--versetest-->
-<!-- 32 -->
+<!-- 33 -->
 ```verse
 "hello".Slice[1, 4] = "ell"
 ```
@@ -565,14 +565,14 @@ M():void =
     if (Example := SomeArray.Find[2]) {}
 <#
 -->
-<!-- 33 -->
+<!-- 34 -->
 ```verse
 Array.Find(Element:t where t:subtype(comparable))<decides>:int
 ```
 <!-- #> -->
 
 <!--versetest-->
-<!-- 34 -->
+<!-- 35 -->
 ```verse
 NumArray := array{1, 2, 3, 1, 2, 3}
 
@@ -601,14 +601,14 @@ M():void =
     if (Updated := SomeArray.RemoveFirstElement[2]) {}
 <#
 -->
-<!-- 35 -->
+<!-- 36 -->
 ```verse
 Array.RemoveFirstElement(Element:t where t:subtype(comparable))<decides>:[]t
 ```
 <!-- #> -->
 
 <!--versetest-->
-<!-- 36 -->
+<!-- 37 -->
 ```verse
 NumArray := array{1, 2, 3, 1, 2, 3}
 
@@ -624,7 +624,7 @@ if (not NumArray.RemoveFirstElement[0]):
 `RemoveAllElements()` removes all occurrences:
 
 <!--versetest-->
-<!-- 37 -->
+<!-- 38 -->
 ```verse
 NumArray := array{1, 2, 3, 1, 2, 3}
 Updated := NumArray.RemoveAllElements(2)
@@ -638,13 +638,13 @@ Same = array{1, 2, 3, 1, 2, 3}
 `Remove()` removes element at specific position:
 
 <!--NoCompile-->
-<!--00-->
+<!-- 39 -->
 ```verse
 Array.Remove(From:int, To:int)<decides>:[]t
 ```
 
 <!--versetest-->
-<!-- 38 -->
+<!-- 40 -->
 ```verse
 NumArray := array{10, 20, 30, 40}
 
@@ -661,12 +661,13 @@ if (Updated := NumArray.Remove[1,2]):
 `ReplaceFirstElement()` replace first occurrence:
 
 <!--NoCompile-->
+<!-- 41 -->
 ```verse
 Array.ReplaceFirstElement(OldValue:t, NewValue:t where t:subtype(comparable))<decides>:[]t
 ```
 
 <!--versetest-->
-<!-- 39 -->
+<!-- 42 -->
 ```verse
 NumArray := array{1, 2, 3, 1, 2, 3}
 
@@ -680,12 +681,13 @@ if (not NumArray.ReplaceFirstElement[0, 99]):
 `ReplaceAllElements()` replace all occurrences:
 
 <!--NoCompile-->
+<!-- 43 -->
 ```verse
 Array.ReplaceAllElements(OldValue:t, NewValue:t where t:subtype(comparable)):[]t
 ```
 
 <!--versetest-->
-<!-- 40 -->
+<!-- 44 -->
 ```verse
 NumArray := array{1, 2, 3, 1, 2, 3}
 Updated := NumArray.ReplaceAllElements(2, 99)
@@ -699,12 +701,13 @@ Same := NumArray.ReplaceAllElements(0, 99)
 `ReplaceElement()` replaces at specific index:
 
 <!--NoCompile-->
+<!-- 45 -->
 ```verse
 Array.ReplaceElement(Index:int, NewValue:t)<decides>:[]t
 ```
 
 <!--versetest-->
-<!-- 41 -->
+<!-- 46 -->
 ```verse
 NumArray := array{10, 20, 30, 40}
 
@@ -721,7 +724,7 @@ if (not NumArray.ReplaceElement[10, 99]):
 `ReplaceAll()` is a pattern-based replacement:
 
 <!--versetest-->
-<!-- 42 -->
+<!-- 47 -->
 ```verse
 NumArray := array{1, 2, 3, 4, 2, 3, 5}
 Pattern := array{2, 3}
@@ -745,13 +748,13 @@ NewMessage = "Applesy, this is a string, Applesllo!"
 `Insert()` inserts an element at a specific position:
 
 <!--NoCompile-->
-<!-- 00 -->
+<!-- 48 -->
 ```verse
 Array.Insert(Index:int, Element:[]t)<decides>:[]t
 ```
 
 <!--versetest-->
-<!-- 43 -->
+<!-- 49 -->
 ```verse
 NumArray := array{10, 20, 40}
 
@@ -782,7 +785,7 @@ M():void =
     Result := Concatenate(array{1}, array{2, 3})
 <#
 -->
-<!-- 44 -->
+<!-- 50 -->
 ```verse
 Concatenate(Arrays:[][]t):[]t
 ```
@@ -791,7 +794,7 @@ Concatenate(Arrays:[][]t):[]t
 Thanks to tuple-to-array coercion, you can pass multiple array arguments directly and they are automatically gathered into the array-of-arrays parameter. Unlike the `+` operator which joins exactly two arrays, `Concatenate()` accepts any number of array arguments:
 
 <!--versetest-->
-<!-- 45 -->
+<!-- 51 -->
 ```verse
 # Empty call returns empty array
 Empty := Concatenate()
@@ -813,7 +816,7 @@ Many = array{1, 2, 3, 4, 5, 6}
 Verse handles empty arrays seamlessly:
 
 <!--versetest-->
-<!-- 46 -->
+<!-- 52 -->
 ```verse
 # Empty arrays contribute nothing
 Result1 := Concatenate(array{1, 2}, array{}, array{3})
@@ -829,7 +832,7 @@ Result2 = array{}
 **Comparison with `+` operator:**
 
 <!--versetest-->
-<!-- 48 -->
+<!-- 53 -->
 ```verse
 # Using + operator (binary)
 First := array{1, 2}
@@ -856,7 +859,7 @@ assert:
     not array{}.Last[]
 <#
 -->
-<!-- 918 -->
+<!-- 54 -->
 ```verse
 Values := array{10, 20, 30}
 
@@ -878,7 +881,7 @@ A map is an immutable associative container that stores zero or more key–value
 Maps are useful whenever you want to store data that is naturally indexed by something other than an integer position. For example, you might want to store the weights of different objects keyed by their names:
 
 <!--versetest-->
-<!-- 50 -->
+<!-- 55 -->
 ```verse
 Empty := map{}
 
@@ -894,7 +897,7 @@ Looking up a value in a map uses square brackets. The expression succeeds if the
 <!--versetest
 Weights:[string]float = map{"ant" => 0.0001}
 -->
-<!-- 51 -->
+<!-- 56 -->
 ```verse
 Weights["ant"]  # succeeds, since "ant" key exists in map
 # Weights["car"] would fail
@@ -903,7 +906,7 @@ Weights["ant"]  # succeeds, since "ant" key exists in map
 If you want to update a map stored in a variable, you use `set`. This works both for adding a new key–value pair and for changing the value of an existing key. If you try to modify a key that is not present, the operation fails:
 
 <!--versetest-->
-<!-- 52 -->
+<!-- 57 -->
 ```verse
 var Friendliness:[string]int = map{"peach" => 1000}
 
@@ -917,7 +920,7 @@ Every map also carries its size, accessible as the `Length` field:
 <!--versetest
 Friendliness:[string]int = map{"peach" => 1000, "pelican" => 17}
 -->
-<!-- 53 -->
+<!-- 58 -->
 ```verse
 Friendliness.Length = 2         # succeed: the map has 2 entries
 ```
@@ -925,7 +928,7 @@ Friendliness.Length = 2         # succeed: the map has 2 entries
 When constructing a map with duplicate keys, only the last value is kept. This is because a map enforces uniqueness of keys, so earlier entries are silently overwritten:
 
 <!--versetest-->
-<!-- 54 -->
+<!-- 59 -->
 ```verse
 WordCount:[string]int = map{
     "apple" => 0,
@@ -938,7 +941,7 @@ WordCount:[string]int = map{
 Maps can also be iterated over, letting you traverse all key–value pairs exactly in the order they were inserted:
 
 <!--versetest-->
-<!-- 55 -->
+<!-- 60 -->
 ```verse
 ExampleMap:[string]string = map{
     "a" => "apple",
@@ -959,7 +962,7 @@ This produces:
 Sometimes you want to remove an entry from a map. Since maps are immutable, "removing" means creating a new map that excludes the given key. For example, here is a function that removes an element from a `[string]int` map:
 
 <!--versetest-->
-<!-- 56 -->
+<!-- 61 -->
 ```verse
 RemoveKeyFromMap(TheMap:[string]int, ToRemove:string):[string]int =
     var NewMap:[string]int = map{}
@@ -992,7 +995,7 @@ The following examples demonstrate various comparable types used as map keys:
 **Tuples as keys:**
 
 <!--versetest-->
-<!-- 71 -->
+<!-- 62 -->
 ```verse
 # Coordinate system using tuple keys
 Grid:[tuple(int, int)]string = map{
@@ -1006,7 +1009,7 @@ Grid:[tuple(int, int)]string = map{
 **Structs as keys:**
 
 <!--versetest-->
-<!-- 72 -->
+<!-- 63 -->
 ```verse
 point := struct{X:int, Y:int}
 Landmarks:[point]string = map{
@@ -1018,7 +1021,7 @@ Landmarks:[point]string = map{
 **Enums as keys:**
 
 <!--versetest-->
-<!-- 73 -->
+<!-- 64 -->
 ```verse
 direction := enum{North, South, East, West}
 Instructions:[direction]string = map{
@@ -1046,7 +1049,7 @@ assert:
     Fractions[2/2] = "whole"
 <#
 -->
-<!-- 74 -->
+<!-- 65 -->
 ```verse
 Half := 1/2
 Third := 1/3
@@ -1063,7 +1066,7 @@ Equivalent rational numbers (like `1/1` and `2/2`) are treated as the same key.
 **Unicode characters as keys:**
 
 <!--versetest-->
-<!-- 75 -->
+<!-- 66 -->
 ```verse
 Translations:[char32]string = map{
     '😀' => "grinning face",
@@ -1077,7 +1080,7 @@ Translations:[char32]string = map{
 Float special values like `NaN` and `Inf` can be used as map keys:
 
 <!--versetest-->
-<!-- 76 -->
+<!-- 67 -->
 ```verse
 SpecialFloats:[float]string = map{
     Inf => "positive infinity",
@@ -1104,7 +1107,7 @@ class1 := class<unique> {}
 class2 := class<unique>(class1) {}
 class3 := class<unique>(class1) {}
 -->
-<!-- 57 -->
+<!-- 68 -->
 ```verse
     Instance2 := class2{}
     Instance3 := class3{}
@@ -1118,7 +1121,7 @@ class3 := class<unique>(class1) {}
 Maps preserve insertion order, which is significant for both iteration and equality checks. When you insert entries into a map, they maintain the order of insertion. Two maps are equal only if they contain the same key–value pairs **in the same order**:
 
 <!--versetest-->
-<!-- 58 -->
+<!-- 69 -->
 ```verse
 var Scores:[string]int = map{}
 set Scores["Alice"] = 100
@@ -1138,7 +1141,7 @@ When a map literal contains duplicate keys, the last value overwrites earlier va
 
 <!--versetest
 -->
-<!-- 59 -->
+<!-- 70 -->
 ```verse
 Map := map{0 => "zero", 1 => "one", 0 => "ZERO", 2 => "two"}
 # Equivalent to map{0 => "ZERO", 1 => "one", 2 => "two"}
@@ -1153,7 +1156,7 @@ Empty maps can infer their key and value types from context, similar to arrays:
 
 <!--versetest
 -->
-<!-- 60 -->
+<!-- 71 -->
 ```verse
 StringToInt : [string]int = map{}  # Empty map with inferred types
 
@@ -1178,7 +1181,7 @@ While map types are covariant, map lookup operations accept keys that are `compa
 animal := class<unique> {}
 dog := class<unique>(animal) {}
 -->
-<!-- 61 -->
+<!-- 72 -->
 ```verse
 # assume
 # animal := class<unique> {}
@@ -1221,7 +1224,7 @@ assert_semantic_error(3509):
         K1 : animal2 = K2
         set M[K1] = 2
 -->
-<!-- 62 -->
+<!-- 73 -->
 ```verse
 var Map : [dog]int = map{}
 Key2 : dog = dog{}
@@ -1237,7 +1240,7 @@ Maps can contain other maps as values, enabling multi-level associations:
 
 <!--versetest
 -->
-<!-- 63 -->
+<!-- 74 -->
 ```verse
 # Map from strings to maps of ints to strings
 NestedMap : [string][int]string = map{
@@ -1263,7 +1266,7 @@ M():void =
     Result := ConcatenateMaps(Map1, Map2)
 <#
 -->
-<!-- 64 -->
+<!-- 75 -->
 ```verse
 ConcatenateMaps(Map1:[k]v, Map2:[k]v):[k]v
 ```
@@ -1272,7 +1275,7 @@ ConcatenateMaps(Map1:[k]v, Map2:[k]v):[k]v
 `ConcatenateMaps()` takes exactly two maps and combines them into one. When maps contain duplicate keys, values from the **second** map override values from the first:
 
 <!--versetest-->
-<!-- 65 -->
+<!-- 76 -->
 ```verse
 Map1 := map{1 => "one", 2 => "two"}
 Map2 := map{3 => "three", 4 => "four"}
@@ -1289,7 +1292,7 @@ All = map{1 => "one", 2 => "two", 3 => "three", 4 => "four", 5 => "five"}
 **Handling duplicate keys:**
 
 <!--versetest-->
-<!-- 66 -->
+<!-- 77 -->
 ```verse
 Base := map{1 => "original", 2 => "base"}
 Override := map{2 => "updated", 3 => "new"}
@@ -1304,7 +1307,7 @@ The right-to-left precedence ensures that later maps take priority, enabling a n
 **Empty maps:**
 
 <!--versetest-->
-<!-- 67 -->
+<!-- 78 -->
 ```verse
 # Empty maps contribute nothing
 FirstMap := map{1 => "a"}
@@ -1319,7 +1322,7 @@ Combined = map{1 => "a"}
 The resulting map type will coerce to the most specific shared type from the input maps:
 
 <!--versetest-->
-<!-- 68 -->
+<!-- 79 -->
 ```verse
 # Maps with the same key and value types
 FirstMap := map{1 => "a"}
@@ -1336,7 +1339,7 @@ A `weak_map` is declared with `weak_map(k,v)` and can be initialized from an ord
 
 <!--versetest
 -->
-<!-- 69 -->
+<!-- 80 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{}
 
@@ -1361,7 +1364,7 @@ assert_semantic_error(3506):
         Size := W.Length
 <#
 -->
-<!-- 70 -->
+<!-- 81 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{1 => 2}
 # ERROR: weak_map has no Length property
@@ -1380,7 +1383,7 @@ assert_semantic_error(3524):
         for (Entry : W) {}
 <#
 -->
-<!-- 83 -->
+<!-- 82 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{1 => 2, 3 => 4}
 # ERROR: Cannot iterate over weak_map
@@ -1399,7 +1402,7 @@ assert_semantic_error(3509):
         C:comparable = W
 <#
 -->
-<!-- 84 -->
+<!-- 83 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{}
 # ERROR: weak_map cannot be converted to comparable
@@ -1418,7 +1421,7 @@ assert_semantic_error(3509):
         Result:[int]int = if (true?) then W else map{3 => 4}
 <#
 -->
-<!-- 85 -->
+<!-- 84 -->
 ```verse
 var MyWeakMap:weak_map(int,int) = map{1 => 2}
 
@@ -1444,7 +1447,7 @@ assert_semantic_error(3502):
         GetAll():weak_map(p86, int) = PlayerData
 <#
 -->
-<!-- 86 -->
+<!-- 85 -->
 ```verse
 # Module-scoped persistent weak_map
 var PlayerData:weak_map(player, int) = map{}
@@ -1470,7 +1473,7 @@ assert_semantic_error(3502):
             set PlayerData = map{}
 <#
 -->
-<!-- 87 -->
+<!-- 86 -->
 ```verse
 var PlayerData:weak_map(player, int) = map{}
 
@@ -1497,7 +1500,7 @@ M()<transacts>:void =
         if (set LocalData[Key] = Score) {}
 <#
 -->
-<!-- 88 -->
+<!-- 87 -->
 ```verse
 var PlayerData:weak_map(player, int) = map{}
 
@@ -1531,7 +1534,7 @@ assert_semantic_error(3502):
         var InvalidData:weak_map(regular89, int) = map{}
 <#
 -->
-<!-- 89 -->
+<!-- 88 -->
 ```verse
 # Valid key type
 persistent_class := class<unique><allocates><computes><persistent><module_scoped_var_weak_map_key> {}
@@ -1562,7 +1565,7 @@ assert_semantic_error(3502):
         var InvalidData:weak_map(p78, rs78) = map{}
 <#
 -->
-<!-- 78 -->
+<!-- 89 -->
 ```verse
 persistent_class := class<unique><allocates><computes><persistent><module_scoped_var_weak_map_key> {}
 
@@ -1612,7 +1615,7 @@ assert_semantic_error(3509):
         DM:weak_map(d2, v2) = BM
 <#
 -->
-<!-- 79 -->
+<!-- 90 -->
 ```verse
 base_class := class<unique> {}
 derived_class := class(base_class) {}
@@ -1644,7 +1647,7 @@ F():void=
     WeakMap:weak_map(base_class, value_struct) = RegularMap
 <#
 -->
-<!-- 80 -->
+<!-- 91 -->
 ```verse
 DerivedKey := derived_class{}
 RegularMap:[derived_class]value_struct = map{DerivedKey => value_struct{}}
@@ -1678,7 +1681,7 @@ M()<transacts>:void =
             set Stored.Level = NewLevel + 1
 <#
 -->
-<!-- 81 -->
+<!-- 92 -->
 ```verse
 player_data := struct<persistable>:
     Level:int
@@ -1712,7 +1715,7 @@ F():void=
     AttemptUpdate()
 <#
 -->
-<!-- 82 -->
+<!-- 93 -->
 ```verse
 var GameData:weak_map(int, int) = map{}
 

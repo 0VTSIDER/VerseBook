@@ -171,7 +171,7 @@ type, if no common type is found, the array coerces to `any`:
 <!--versetest
 SomeFunction():void={}
 -->
-<!-- 09 -->
+<!-- 07 -->
 ```verse
 MixedArray := array{42, "hello", true, 3.14} # []comparable
 MixedMap := map{0=>"zero", 1=>1, 2=>2.0} # [int]comparable
@@ -181,7 +181,7 @@ ConfigMap := map{"count"=>42, "process"=>SomeFunction, "name"=>"Player"} # [stri
 Conditional expressions with disjoint branch types produce `any`:
 
 <!--versetest-->
-<!-- 11 -->
+<!-- 08 -->
 ```verse
 # If branches return different types
 GetValue(UseString:logic):any =
@@ -194,7 +194,7 @@ GetValue(UseString:logic):any =
 Logical OR with disjoint types coerces to `any`:
 
 <!--versetest-->
-<!-- 12 -->
+<!-- 09 -->
 ```verse
 # Returns either int or string
 OneOf(Flag:logic, I:int, S:string):any =
@@ -215,7 +215,7 @@ Generic functions with `where t:type` constraints behave fundamentally different
 When you pass a value to a function with parameter type `any`, the type information is lost:
 
 <!--versetest-->
-<!-- 53 -->
+<!-- 10 -->
 ```verse
 AcceptAny(X:any):any = X
 
@@ -226,7 +226,7 @@ Result := AcceptAny(MyMap)  # Result has type any - type info lost
 In contrast, generic functions preserve exact types:
 
 <!--versetest-->
-<!-- 54 -->
+<!-- 11 -->
 ```verse
 Identity(X:t where t:type):t = X
 
@@ -247,7 +247,7 @@ This preservation extends to all container types, including arrays, maps, tuples
 Container types passed through generic functions maintain their structure completely:
 
 <!--versetest-->
-<!-- 55 -->
+<!-- 12 -->
 ```verse
 Identity(X:t where t:type):t = X
 
@@ -301,7 +301,7 @@ ProcessComponent(Comp:component):void =
         Print("Unknown component type")
 <#
 -->
-<!-- 17 -->
+<!-- 13 -->
 ```verse
 # Define a class hierarchy
 component := class<castable>:
@@ -346,7 +346,7 @@ assert:
 		E = P
 <#
 -->
-<!-- 18 -->
+<!-- 14 -->
 ```verse
 entity := class<unique><castable>:
     ID:int
@@ -397,7 +397,7 @@ assert_semantic_error(3512, 3552, 3547, 3512):
     Value := (?int)[component{}]
 <#
 -->
-<!-- 19 -->
+<!-- 15 -->
 ```verse
 component := class<castable>{}
 
@@ -424,7 +424,7 @@ casts require the source type to be a compile-time subtype of the
 target type:
 
 <!--versetest-->
-<!-- 20 -->
+<!-- 16 -->
 ```verse
 component := class<castable>:
     Name:string = "Component"
@@ -445,7 +445,7 @@ Any type can be infallibly cast to `void`, which discards the value:
 <!--versetest
 component:=class{}
 -->
-<!-- 21 -->
+<!-- 17 -->
 ```verse
 void(42)           # Discard an integer
 void("result")     # Discard a string
@@ -480,7 +480,7 @@ assert:
    TestComponent(P, render_component)
 <#
 -->
-<!-- 22 -->
+<!-- 18 -->
 ```verse
 # Type hierarchy
 component := class<castable>{}
@@ -517,7 +517,7 @@ Components:[]component=array{}
 ProcessSpecific(:component)<computes>:void={}
 LoadedConfig:string=""
 -->
-<!-- 23 -->
+<!-- 19 -->
 ```verse
 # Select type based on configuration
 GetComponentType(Config:string):castable_subtype(component) =
@@ -549,7 +549,7 @@ creates a powerful system for writing generic code that is both
 flexible and type-safe.
 
 <!--versetest-->
-<!-- 24 -->
+<!-- 20 -->
 ```verse
 # Simple subtype constraint
 Process(Value:t where t:subtype(comparable)):void =
@@ -569,7 +569,7 @@ assert_semantic_error(3588, 3588, 3503, 3503, 3506, 3532):
         In
 <#
 -->
-<!-- 25 -->
+<!-- 21 -->
 ```verse
 # Multiple constraints on the same type
 F(In:t where t:subtype(comparable), t:subtype(printable)):t = # Not supported
@@ -581,7 +581,7 @@ F(In:t where t:subtype(comparable), t:subtype(printable)):t = # Not supported
 Where clauses become more powerful when working with multiple type parameters:
 
 <!--versetest-->
-<!-- 26 -->
+<!-- 22 -->
 ```verse
 # Independent constraints on different parameters
 Combine(A:t1, B:t2 where t1:type, t2:type):tuple(t1, t2) =
@@ -597,7 +597,7 @@ Where clauses can express sophisticated relationships between types:
 <!--versetest
 Contains(Arr:[]t, Item:t where t:type)<decides><computes>:logic = false
 -->
-<!-- 27 -->
+<!-- 23 -->
 ```verse
 # Constraint that ensures compatible types for an operation
 Merge(Container1:[]t, Container2:[]t where t:subtype(comparable)):[]t =
@@ -614,7 +614,7 @@ ApplyTwice(F:type{_(:t):t}, Value:t where t:type):t =
 Where clauses enable sophisticated generic programming patterns:
 
 <!--versetest-->
-<!-- 28 -->
+<!-- 24 -->
 ```verse
 MapFunction(F:type{_(:a):b}, Container:[]a where a:type, b:type):[]b =
     for (Element : Container):
@@ -649,7 +649,7 @@ A refinement type defines a constrained subtype using value predicates:
 <!--versetest
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0} 
 -->
-<!-- 29 -->
+<!-- 25 -->
 ```verse
 # Percentages: floats between 0.0 and 1.0
 # percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
@@ -665,7 +665,7 @@ Alpha:percent = 1.0
 **Syntax structure:**
 
 <!--NoCompile-->
-<!-- 30 -->
+<!-- 26 -->
 ```verse
 TypeName := type{_Variable:BaseType where Constraint1, Constraint2, ...}
 ```
@@ -684,7 +684,7 @@ Count:positive_int = 42
 small_int := type{_X:int where _X < 100}
 <#
 -->
-<!-- 31 -->
+<!-- 27 -->
 ```verse
 # Age between 0 and 120
 age := type{_X:int where 0 <= _X, _X <= 120}
@@ -711,7 +711,7 @@ positive := type{_X:float where _X > 0.0}
 celsius := type{_X:float where _X >= -273.15}
 <#
 -->
-<!-- 32 -->
+<!-- 28 -->
 ```verse
 # Unit interval [0.0, 1.0]
 normalized := type{_X:float where 0.0 <= _X, _X <= 1.0}
@@ -733,7 +733,7 @@ assert:
 	MinFinite:finite = -1.7976931348623157e+308
 <#
 -->
-<!-- 33 -->
+<!-- 29 -->
 ```verse
 # Finite values only (no ±Inf)
 finite := type{_X:float where -Inf < _X, _X < Inf}
@@ -756,7 +756,7 @@ with no distinction between positve or negative.
 
 <!--versetest-->
 When any expression evaluates to Zero, the sign is discarded:
-<!-- 34 -->
+<!-- 30 -->
 ```verse
 # Integer Zero (type{0})
 Value1 := -0
@@ -783,7 +783,7 @@ assert:
     Tiny:small_float = 0.09999999999999999167332731531132594682276248931884765625
 <#
 -->
-<!-- 36 -->
+<!-- 31 -->
 ```verse
 # Values strictly less than 0.1
 small_float := type{_X:float where _X < 0.1}
@@ -824,7 +824,7 @@ assert_semantic_error(3506, 3502):
     bad_type := type{_X:float where _X < (Config:)Max}
 <#
 -->
-<!-- 37 -->
+<!-- 32 -->
 ```verse
 # Valid: literal float
 bounded := type{_X:float where _X < 100.0}
@@ -857,7 +857,7 @@ assert_semantic_error(3502):
     bad_float38 := type{_X:float where _X <= 142}
 <#
 -->
-<!-- 38 -->
+<!-- 33 -->
 ```verse
 # Invalid: integer literal in float constraint
 # bad_float := type{_X:float where _X <= 142}  # ERROR
@@ -874,7 +874,7 @@ constraints:
 assert_semantic_error(3502):
     nan_type39 := type{_X:float where _X <= NaN}
 -->
-<!-- 39 -->
+<!-- 34 -->
 ```verse
 # Invalid: NaN in constraint
 # nan_type := type{_X:float where _X <= NaN}      # ERROR
@@ -909,7 +909,7 @@ assert:
        ShowError()
 <#
 -->
-<!-- 40 -->
+<!-- 35 -->
 ```verse
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 
@@ -947,7 +947,7 @@ assert_semantic_error(3509):
         Half41(Inf)
 <#
 -->
-<!-- 41 -->
+<!-- 36 -->
 ```verse
 finite := type{_X:float where -Inf < _X, _X < Inf}
 
@@ -974,7 +974,7 @@ assert:
    NegValue2:negative_percent = ---0.7
 <#
 -->
-<!-- 42 -->
+<!-- 37 -->
 ```verse
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 negative_percent := type{_X:float where _X <= 0.0, _X >= -1.0}
@@ -1002,7 +1002,7 @@ assert_semantic_error(3532):
     F(X:not_infinity):float = X
 <#
 -->
-<!-- 43 -->
+<!-- 38 -->
 ```verse
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 not_infinity := type{_X:float where Inf > _X}
@@ -1026,7 +1026,7 @@ assert:
    F(-1.0)=0.0
 <#
 -->
-<!-- 44 -->
+<!-- 39 -->
 ```verse
 positive := type{_X:float where _X > 0.0}
 negative := type{_X:float where _X < 0.0}
@@ -1060,7 +1060,7 @@ The equality operators `=` and `<>` are defined in terms of the
 comparable type:
 
 <!--NoCompile-->
-<!-- 45 -->
+<!-- 40 -->
 ```verse
 operator'='(X:t, Y:t where t:subtype(comparable))<decides>:t
 operator'<>'(X:t, Y:t where t:subtype(comparable))<decides>:t
@@ -1076,7 +1076,7 @@ assert:
 
 <#
 -->
-<!-- 46 -->
+<!-- 41 -->
 ```verse
 0 = 0        # Succeeds - both are int
 0.0 = 0.0    # Succeeds - both are float
@@ -1086,7 +1086,7 @@ assert:
 
 How the return type of `=` is computed:
 
-<!--46b -->
+<!-- 42 -->
 ```verse
 I:int=1
 R:rational=1/3
@@ -1121,7 +1121,7 @@ Player1 = Player2  # Fails - different instances
 Player1 = Player3  # Succeeds - same instance
 }<#
 -->
-<!-- 47 -->
+<!-- 43 -->
 ```verse
 entity := class<unique>:
     ID:int
@@ -1160,7 +1160,7 @@ assert:
     Position = 1
 <#
 -->
-<!-- 48 -->
+<!-- 44 -->
 ```verse
 Find(Items:[]t, Target:t where t:subtype(comparable))<decides>:int =
     Results := for (Index->Item:Items, Item = Target):
@@ -1178,7 +1178,7 @@ A notable feature of Verse's equality system is that arrays and tuples
 of comparable elements can be compared with each other:
 
 <!--versetest-->
-<!-- 49 -->
+<!-- 45 -->
 ```verse
 # Arrays can equal tuples
 array{1, 2, 3} = (1, 2, 3)       # Succeeds
@@ -1207,7 +1207,7 @@ assert_semantic_error(3532):
     G(X:comparable):void = {}
 <#
 -->
-<!-- 50 -->
+<!-- 46 -->
 ```verse
 # Not allowed - ambiguous overloads
 F(X:int):void = {}
@@ -1223,7 +1223,7 @@ G(X:comparable):void = {}  # ERROR: unique_class is comparable
 However, you can overload with non-comparable types:
 
 <!--versetest-->
-<!-- 51 -->
+<!-- 47 -->
 ```verse
 # This is allowed
 regular_class := class{}  # Not comparable
@@ -1238,7 +1238,7 @@ comparable values into the `comparable` type explicitly. These boxed
 values maintain their equality semantics:
 
 <!--versetest-->
-<!-- 52 -->
+<!-- 48 -->
 ```verse
 AsComparable(X:comparable):comparable = X
 
@@ -1302,7 +1302,7 @@ discarded by the type system:
 <!--versetest
 WriteToFile(:string)<transacts>:void = {}
 -->
-<!-- 77 -->
+<!-- 49 -->
 ```verse
 LogEvent(Message:string)<transacts>:void =
     WriteToFile(Message)
@@ -1318,7 +1318,7 @@ system. This ensures side effects and computations occur even when the
 return value is discarded:
 
 <!--versetest-->
-<!-- 78 -->
+<!-- 50 -->
 ```verse
 MakePair(X:string, Y:string):void = (X, Y)
 
@@ -1329,7 +1329,7 @@ MakePair("hello", "world")  # Still creates ("hello", "world")
 Functions with `void` parameters accept any argument type:
 
 <!--versetest-->
-<!-- 79 -->
+<!-- 51 -->
 ```verse
 Discard(X:void):int = 42
 
@@ -1342,7 +1342,7 @@ Class fields can be typed as `void`, accepting any initialization
 value:
 
 <!--versetest-->
-<!-- 80 -->
+<!-- 52 -->
 ```verse
 config := class:
     Setting:void = array{1, 2}  # Default with array
@@ -1351,7 +1351,7 @@ config := class:
 In function types, `void` participates in variance:
 
 <!--versetest-->
-<!-- 81 -->
+<!-- 53 -->
 ```verse
 IntIdentity(X:int):int = X
 
@@ -1376,7 +1376,7 @@ assert_semantic_error(3509):
     F:void->int = IntFunction  # ERROR: Cannot convert int->int to void->int
 <#
 -->
-<!-- 82 -->
+<!-- 54 -->
 ```verse
 IntFunction(X:int):int = X
 # F:void->int = IntFunction  # ERROR
@@ -1406,7 +1406,7 @@ subtype of `?B`. This allows natural code like:
 <!--versetest
 RationalPrinter(X:rational):string=""
 -->
-<!-- 89 -->
+<!-- 55 -->
 ```verse
 ProcessNumbers(Nums:[]rational):void =
     for (N : Nums):
@@ -1434,7 +1434,7 @@ TestSubtyping():void =
     UseFunction(ConcreteFunc, 5)
 <#
 -->
-<!-- 90 -->
+<!-- 56 -->
 ```verse
 function_type1 := type{_(:any):int}
 function_type2 := type{_(:int):any}
@@ -1477,7 +1477,7 @@ validator := int -> logic
 transformer := type{_(:string):int}
 <#
 -->
-<!-- 91 -->
+<!-- 57 -->
 ```verse
 # At module scope
 entity:=struct{}
@@ -1505,7 +1505,7 @@ alias and the original type are completely interchangeable:
 player_id := int
 game_id := int
 -->
-<!-- 92 -->
+<!-- 58 -->
 ```verse
 # Assume
 # player_id := int
@@ -1536,7 +1536,7 @@ InternalAlias<internal> := string
 # Note: Protected/private are for classes and interfaces, not type aliases at module scope
 <#
 -->
-<!-- 93 -->
+<!-- 59 -->
 ```verse
 # Public alias - accessible from other modules
 PublicAlias<public> := int
@@ -1564,7 +1564,7 @@ assert_semantic_error(3593):
         PublicToInternal<public> := internal_class
 <#
 -->
-<!-- 94 -->
+<!-- 60 -->
 ```verse
 private_class := class{}      # No specifier = internal scope
 
@@ -1620,7 +1620,7 @@ registry := class<computes><allocates>:
     F3(ClassArg:subtype(animal))<transacts>:void = set AnimalType = ClassArg
 <#
 -->
-<!-- 100 -->
+<!-- 61 -->
 ```verse
 animal := class {}
 dog := class(animal) {}
@@ -1647,7 +1647,7 @@ my_enum := enum { A, B, C }
 my_class := class {}
 my_interface := interface {}
 -->
-<!-- 101 -->
+<!-- 62 -->
 ```verse
 # Primitives
 IntType:subtype(int) = int
@@ -1676,7 +1676,7 @@ The `subtype` constructor preserves the subtyping relationship:
 assign a more specific subtype to a less specific one:
 
 <!--versetest-->
-<!-- 102 -->
+<!-- 63 -->
 ```verse
 super_class := class{}
 sub_class := class(super_class) {}
@@ -1692,7 +1692,7 @@ SupertypeVar:subtype(super_class) = SubtypeVar  # Valid
 This also applies to interfaces:
 
 <!--versetest-->
-<!-- 103 -->
+<!-- 64 -->
 ```verse
 super_interface := interface{}
 sub_interface := interface(super_interface) {}
@@ -1709,7 +1709,7 @@ GeneralType:subtype(super_interface) = SpecificType  # Valid
 When working with interfaces, `subtype(T)` can hold any class that implements the interface:
 
 <!--versetest-->
-<!-- 104 -->
+<!-- 65 -->
 ```verse
 printable := interface:
     PrintIt():void
@@ -1726,7 +1726,7 @@ DocumentType:subtype(printable) = document
 Both `subtype(T)` and `castable_subtype(T)` are subtypes of `type`, meaning they can be used where `type` is expected:
 
 <!--versetest-->
-<!-- 105 -->
+<!-- 66 -->
 ```verse
 c := class:
     f(C:subtype(c)):type = return(C)  # Valid: subtype(c) <: type
@@ -1753,7 +1753,7 @@ is one that can be instantiated directly—it has the `<concrete>`
 specifier and provides default values for all fields:
 
 <!--versetest-->
-<!-- 110 -->
+<!-- 67 -->
 ```verse
 # Abstract base class
 entity := class<abstract>:
@@ -1791,7 +1791,7 @@ concrete class—one marked with `<concrete>` and having all fields with
 defaults:
 
 <!--versetest-->
-<!-- 111 -->
+<!-- 68 -->
 ```verse
 # Valid: concrete class with all defaults
 config := class<concrete>:
@@ -1813,7 +1813,7 @@ empty archetype `{}`, but you cannot provide field initializers—the
 concrete class must provide all necessary defaults:
 
 <!--versetest-->
-<!-- 112 -->
+<!-- 69 -->
 ```verse
 entity_base := class<abstract>:
     Health:int
@@ -1845,7 +1845,7 @@ cast syntax regardless of `<castable>`:
 entity:=class{}
 vector3:=class{}
 -->
-<!-- 113 -->
+<!-- 70 -->
 ```verse
 # Castable base class
 component := class<abstract><castable>:
@@ -1880,7 +1880,7 @@ representatives for families of related types:
 entity:=class{}
 vector3:=class{}
 -->
-<!-- 114 -->
+<!-- 71 -->
 ```verse
 component := class<castable>:
     Owner:entity
@@ -1904,7 +1904,7 @@ By marking `physics_component` as `<final_super>`, you declare it as the canonic
 The `GetCastableFinalSuperClass` function queries the type hierarchy to find the `<final_super>` class between a base type and a derived type. Two variants exist:
 
 <!--NoCompile-->
-<!-- 115 -->
+<!-- 72 -->
 ```verse
 # Takes an instance
 GetCastableFinalSuperClass(BaseType, instance)<decides>:castable_subtype(BaseType)
@@ -1926,7 +1926,7 @@ Consider this hierarchy:
 <!--versetest
 vector3:=class{}
 -->
-<!-- 116 -->
+<!-- 73 -->
 ```verse
 component := class<castable>:
     ID:int
@@ -1952,7 +1952,7 @@ vector3:=class{}
 component:=class{}
 character_body:=class(component){ID :int, Velocity :vector3, Mass :float, Health :int}
 -->
-<!-- 117 -->
+<!-- 74 -->
 ```verse
 # All instances in the physics_component family return physics_component
 Body := character_body{ID:=1, Velocity:=vector3{}, Mass:=10.0, Health:=100}
@@ -1990,7 +1990,7 @@ TestQueries()<decides>:void =
         void
 <#
 -->
-<!-- 118 -->
+<!-- 75 -->
 ```verse
 base := class<castable>:
     Value:int
@@ -2037,7 +2037,7 @@ TestQueries()<decides>:void =
         void
 <#
 -->
-<!-- 120 -->
+<!-- 76 -->
 ```verse
 base := class<castable>:
     ID:int
@@ -2081,7 +2081,7 @@ TestBothVariants()<decides>:void =
         void
 <#
 -->
-<!-- 123 -->
+<!-- 77 -->
 ```verse
 # Same behavior, different syntax
 TypeFamily := GetCastableFinalSuperClassFromType[component, rigid_body]
@@ -2123,7 +2123,7 @@ assert:
             Instance
 -->
 <!--NoCompile-->
-<!-- 138 -->
+<!-- 78 -->
 ```verse
 entity := class{}
 
@@ -2190,7 +2190,7 @@ physics_component := class<final_super>(component){}
 rigid_body := class(physics_component){}
 render_component := class<castable>(component){}
 -->
-<!-- 124 -->
+<!-- 79 -->
 ```verse
 # Immutable set, initially empty
 EmptySet:classifiable_subset(component) = MakeClassifiableSubset()
@@ -2213,7 +2213,7 @@ f()<reads>:void =
 
 <#
 -->
-<!-- 125 -->
+<!-- 80 -->
 ```verse
 ComponentSet:classifiable_subset(component) = MakeClassifiableSubset()
 
@@ -2248,7 +2248,7 @@ physics_component := class<castable>(component):
 rigid_body_component := class<castable>(physics_component):
     Mass:float=0.0
 -->
-<!-- 126 -->
+<!-- 81 -->
 ```verse
 # Add a rigid body instance
 Set:classifiable_subset(component) =
@@ -2275,7 +2275,7 @@ rigid_body_component := class<castable>(physics_component){ }
 render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 -->
-<!-- 127 -->
+<!-- 82 -->
 ```verse
 # Add multiple different types
 TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
@@ -2295,7 +2295,7 @@ component := class<castable>{}
 physics_component := class<castable>(component){}
 rigid_body_component := class<castable>(physics_component){ }
 -->
-<!-- 128 -->
+<!-- 83 -->
 ```verse
 # Add multiple instances of same type
 TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
@@ -2324,7 +2324,7 @@ component := class<castable>{}
 physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 -->
-<!-- 129 -->
+<!-- 84 -->
 ```verse
 TheSet:classifiable_subset(component) =
     MakeClassifiableSubset(array{physics_component{}})
@@ -2343,7 +2343,7 @@ component := class<castable>{}
 physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 -->
-<!-- 130 -->
+<!-- 85 -->
 ```verse
 TheSet:classifiable_subset(component) =
     MakeClassifiableSubset(array{physics_component{}})
@@ -2355,7 +2355,7 @@ if (TheSet.ContainsAll[array{physics_component, render_component}]):
 **ContainsAny** checks whether at least one type from an array is present:
 
 <!--NoCompile-->
-<!-- 131 -->
+<!-- 86 -->
 ```verse
 if (TheSet.ContainsAny[array{physics_component, audio_component}]):
     # Either physics or audio component (or both) is present
@@ -2368,7 +2368,7 @@ if (TheSet.ContainsAny[array{physics_component, audio_component}]):
 component := class<castable>{ Name:string = "Component"}
 physics_component := class<castable>(component){}
 -->
-<!-- 132 -->
+<!-- 87 -->
 ```verse
 TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
 Key := TheSet.Add(physics_component{})
@@ -2381,7 +2381,7 @@ Key := TheSet.Add(physics_component{})
 component := class<castable>{}
 physics_component := class<castable>(component){}
 -->
-<!-- 133 -->
+<!-- 88 -->
 ```verse
 TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
 
@@ -2417,7 +2417,7 @@ TestFilterByType()<decides>:void =
         void
 <#
 -->
-<!-- 134 -->
+<!-- 89 -->
 ```verse
 TheSet:classifiable_subset(component) = MakeClassifiableSubset(array{
     physics_component{}, render_component{}, audio_component{}})
@@ -2443,7 +2443,7 @@ render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 entity := class{}
 -->
-<!-- 135 -->
+<!-- 90 -->
 ```verse
 Set1:classifiable_subset(component) =
     MakeClassifiableSubset(array{physics_component{}})
@@ -2463,7 +2463,7 @@ physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 -->
-<!-- 136 -->
+<!-- 91 -->
 ```verse
 Set1:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
 Set1.Add(physics_component{})
@@ -2497,7 +2497,7 @@ physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 -->
-<!-- 137 -->
+<!-- 92 -->
 ```verse
 render_set:classifiable_subset(render_component) = MakeClassifiableSubset()
 physics_comp:physics_component = physics_component{}

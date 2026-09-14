@@ -513,7 +513,7 @@ handled without `<decides>`:
 <!--versetest
 item:=struct{}
 -->
-<!-- 16 -->
+<!-- 15 -->
 ```verse
 TryGetItem(Items:[]item, Index:int):?item =
     option{Items[Index]}  # Array access might fail, option catches it
@@ -530,7 +530,7 @@ resource:=class{}
 DoAsyncWork():void={}
 GetResource()<transacts>:resource=resource{}
 -->
-<!-- 17 -->
+<!-- 16 -->
 ```verse
 AcquireResource()<transacts>:resource = GetResource()
 ReleaseResource(R:resource)<transacts>:void = {}
@@ -560,7 +560,7 @@ A function with **fewer effects** can be used where a function with
 does less is compatible with a context that allows more:
 
 <!--versetest-->
-<!-- 18 -->
+<!-- 17 -->
 ```verse
 # Pure function with only computes
 PureAdd(X:int)<computes>:int = X + 1
@@ -581,7 +581,7 @@ never exercises the failure capability.
 This principle applies to all effects:
 
 <!--versetest-->
-<!-- 19 -->
+<!-- 18 -->
 ```verse
 # Function with <computes>
 Compute(X:int)<computes>:int = X * 2
@@ -611,7 +611,7 @@ assert_semantic_error(3509):
         X
     F20:type{_(:int)<computes>:int} = Validate20
 -->
-<!-- 20 -->
+<!-- 19 -->
 ```verse
 Validate(X:int)<computes><decides>:int =
     X > 0
@@ -625,7 +625,7 @@ Validate(X:int)<computes><decides>:int =
 Similarly, functions with heap effects cannot be assigned to pure types:
 
 <!--NoCompile-->
-<!-- 21 -->
+<!-- 20 -->
 ```verse
 counter := class:
     var Count:int = 0
@@ -649,7 +649,7 @@ effects. This is *effect joining*: the compiler conservatively assumes
 the result might perform any effect that any branch could perform:
 
 <!--versetest-->
-<!-- 22 -->
+<!-- 21 -->
 ```verse
 # Functions with different effects
 PureFunction(X:int)<computes>:int = X + 1
@@ -674,7 +674,7 @@ Result := F[5]  # Must use [] because result type has <decides>
 Effect joining applies to all control flow that selects between functions:
 
 <!--versetest-->
-<!-- 23 -->
+<!-- 22 -->
 ```verse
 Identity(X:int)<computes>:int = X
 
@@ -709,7 +709,7 @@ PureAdd(:int)<computes>:int=1
 Validate(:int)<computes><decides>:int=1
 Increment(:int)<transacts>:int=1
 -->
-<!-- 25 -->
+<!-- 23 -->
 ```verse
 # Accepts any function that does not exceed <transacts><decides>
 ProcessValues(
@@ -735,7 +735,7 @@ Effect subtyping makes function composition work naturally:
 PureFunction(:int)<computes>:int=1
 FailableFunction(:int)<computes><decides>:int=1
 -->
-<!-- 26 -->
+<!-- 24 -->
 ```verse
 Compose(
     F(:int)<computes>:int,
@@ -786,7 +786,7 @@ useful for ensuring that creating certain objects remains pure or has
 limited effects:
 
 <!--versetest-->
-<!-- 28 -->
+<!-- 25 -->
 ```verse
 # Pure data structure - constructor has no effects
 vector3 := struct<computes>:
@@ -810,7 +810,7 @@ assert_semantic_error(3512):
 assert_semantic_error(3512):
     invalid_struct29 := struct<decides>{}
 -->
-<!-- 29 -->
+<!-- 26 -->
 ```verse
 # Valid effect specifiers for classes/interfaces/structs:
 valid_class := class<computes>{}
@@ -828,7 +828,7 @@ The archetype constructor `my_class{...}` cannot be failable or
 suspending. However, **constructor functions** can use `<decides>`:
 
 <!--NoCompile-->
-<!-- 29a -->
+<!-- 27 -->
 ```verse
 # The class declaration cannot be <decides>
 my_class := class:
@@ -859,7 +859,7 @@ assert_semantic_error(3512, 3512):
         block:
             set Counter = 1
 -->
-<!-- 30 -->
+<!-- 28 -->
 ```verse
 # Field initializers must use pure functions
 HelperFunction()<transacts>:int = 42
@@ -901,7 +901,7 @@ assert_semantic_error(3512):
     transacting31 := interface<transacts>{}
     invalid31 := class<computes>(transacting31){}
 -->
-<!-- 31 -->
+<!-- 29 -->
 ```verse
 # Interface with transacts effect
 transacting_interface := interface<transacts>{}
@@ -921,7 +921,7 @@ assert_semantic_error(3512):
     invalid_interface32 := interface<computes>:
         Instance:tc32 = tc32{}
 -->
-<!-- 32 -->
+<!-- 30 -->
 ```verse
 transacting_class := class<transacts>{}
 
@@ -960,7 +960,7 @@ weapon:=struct<computes>{Type:weapon_type,Dammage:int}
 weapon_type:=enum:
     Sword
 -->
-<!-- 321 -->
+<!-- 31 -->
 ```verse
 # API promises it might read state
 GetDefaultWeapon<public>()<reads>:weapon =

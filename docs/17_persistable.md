@@ -176,7 +176,7 @@ GetOrCreatePlayerStats(Player : player) : player_stats =
             player_stats{}
 <#
 -->
-<!-- 06 -->
+<!-- 05 -->
 ```verse
 # Define a persistable player stats structure
 player_stats := struct<persistable>:
@@ -223,7 +223,7 @@ PersistenceModule := module{
     ToJson<public>(Data:player_data)<decides>:string = ""
 }
 -->
-<!-- 08 -->
+<!-- 06 -->
 ```verse
 # Serialize persistable data to JSON
 Data := player_data{Level := 5, Score := 250}
@@ -244,7 +244,7 @@ PersistenceModule := module{
         player_data{Level := 1, Score := 100}
 }
 -->
-<!-- 09 -->
+<!-- 07 -->
 ```verse
 # Deserialize JSON to typed value
 JsonString := ""
@@ -286,7 +286,7 @@ PersistenceModule := module{
     ToJson<public>(Data:int_ref)<decides>:string = ""
 }
 -->
-<!-- 11 -->
+<!-- 08 -->
 ```verse
 # Serialized as JSON number
 JsonString := PersistenceModule.ToJson[int_ref{Value := 42}]
@@ -303,7 +303,7 @@ PersistenceModule := module{
     ToJson<public>(Data:optional_ref)<decides>:string = ""
 }
 -->
-<!-- 12 -->
+<!-- 09 -->
 ```verse
 # None serialized as false
 PersistenceModule.ToJson[optional_ref{Value := false}]
@@ -327,7 +327,7 @@ PersistenceModule := module{
     ToJson<public>(Data:empty_tuple_ref):string = ""
 }
 -->
-<!-- 13 -->
+<!-- 10 -->
 ```verse
 # Serialized as JSON array
 PersistenceModule.ToJson(tuple_ref{Pair := (4, 5)})
@@ -347,7 +347,7 @@ PersistenceModule := module{
     ToJson<public>(Data:array_ref)<decides>:string = ""
 }
 -->
-<!-- 14 -->
+<!-- 11 -->
 ```verse
 PersistenceModule.ToJson[array_ref{Values := array{1, 2, 3}}]
 # {..., "x_Values":[1,2,3]}
@@ -363,7 +363,7 @@ PersistenceModule := module{
     ToJson<public>(Data:map_ref)<decides>:string = ""
 }
 -->
-<!-- 15 -->
+<!-- 12 -->
 ```verse
 PersistenceModule.ToJson[map_ref{Lookup := map{"a" => 1, "b" => 2}}]
 # {..., "x_Lookup":[{"k":{"":"a"},"v":{"":1}}, {"k":{"":"b"},"v":{"":2}}]}
@@ -382,7 +382,7 @@ PersistenceModule := module{
     ToJson<public>(Data:enum_ref)<decides>:string = ""
 }
 -->
-<!-- 16 -->
+<!-- 13 -->
 ```verse
 PersistenceModule.ToJson[enum_ref{Day := day.Monday}]
 # {..., "x_Day":"day::Monday"}
@@ -403,7 +403,7 @@ PersistenceModule := module{
         versioned_data{Version := 1, NewField := 0}
 }
 -->
-<!-- 17 -->
+<!-- 14 -->
 ```verse
 # Old JSON without NewField
 OldJson := ""
@@ -430,7 +430,7 @@ PersistenceModule := module{
     FromJson<public>(JsonStr:string, T:type)<transacts>:logged_class = logged_class{Value := 1}
 }
 -->
-<!-- 18 -->
+<!-- 15 -->
 ```verse
 # Normal construction triggers block
 Instance1 := logged_class{Value := 1}
@@ -457,7 +457,7 @@ PersistenceModule := module{
     ToJson<public>(Data:int_ref)<decides>:string = ""
 }
 -->
-<!-- 19 -->
+<!-- 16 -->
 ```verse
 # Safe range integers work fine
 SafeData := int_ref{Value := 1000000000000000000}

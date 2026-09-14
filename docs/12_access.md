@@ -70,6 +70,7 @@ inheritance hierarchies while maintaining encapsulation:
 vector3:=class{}
 MaxHealth:int=1
 -->
+<!-- 02 -->
 ```verse
 game_entity := class:
     var Position<protected>:vector3 = vector3{x:=0.0, y:=0.0, z:=0.0}
@@ -213,6 +214,7 @@ A scoped access level is created using the `scoped{...}` expression,
 which takes one or more module references:
 
 <!--NoCompile-->
+<!-- 05 -->
 ```verse
 Collaboration := module:
     # Create a scope that includes both ModuleA and ModuleB
@@ -382,6 +384,7 @@ visible. To access a scoped member, you must be able to see the entire
 path to it:
 
 <!--NoCompile-->
+<!-- 09 -->
 ```verse
 Outer := module:
     # Internal to outer
@@ -406,6 +409,7 @@ A definition can only have one scoped access level—you cannot apply
 multiple scoped specifiers:
 
 <!-- NoCompile-->
+<!-- 10 -->
 ```verse
 # ERROR: Cannot have multiple access level specifiers
 InvalidScope<scoped{ModuleA}><scoped{ModuleB}> := class{}
@@ -462,7 +466,7 @@ assert_semantic_error(3593):
             S.Size
 <#
 -->
-<!-- 901 -->
+<!-- 12 -->
 ```verse
 Graphics := module:
     shape<scoped{Physics}> := class:
@@ -489,7 +493,7 @@ Physics := module:
         S.Size
 <#
 -->
-<!-- 902 -->
+<!-- 13 -->
 ```verse
 Graphics := module:
     shape<scoped{Physics}> := class:
@@ -526,7 +530,7 @@ assert_semantic_error(3593, 3593):
             Reset<override>():void = {}
 <#
 -->
-<!-- 903 -->
+<!-- 14 -->
 ```verse
 Graphics := module:
     collidable<scoped{Physics}> := interface:
@@ -549,6 +553,7 @@ certain functionality should be shared between specific modules but
 not exposed as part of the public interface:
 
 <!--NoCompile-->
+<!-- 15 -->
 ```verse
 Networking := module:
     # Public scope for modules that need network access
@@ -600,7 +605,7 @@ game_state := class:
     var<private> SessionID<internal>:string
 <#
 -->
-<!-- 13 -->
+<!-- 16 -->
 ```verse
 game_state := class:
     # Public read, protected write
@@ -669,7 +674,7 @@ resource_manager := class:
         set AvailableResources = AvailableResources - Amount
 <#
 -->
-<!-- 14 -->
+<!-- 17 -->
 ```verse
 resource_manager := class:
     var<private> TotalResources<public>:int = 1000
@@ -714,7 +719,7 @@ UseDeprecated():void =
     OldFunction()
 <#
 -->
-<!-- 15 -->
+<!-- 18 -->
 ```verse
 # Mark a definition as deprecated
 @deprecated
@@ -746,7 +751,7 @@ MigrateOldAPI():int = OldAPI()
 
 <#
 -->
-<!-- 16 -->
+<!-- 19 -->
 ```verse
 @deprecated
 OldAPI():int = 42
@@ -770,6 +775,7 @@ MigrateOldAPI():int = OldAPI()
 The version comparison is `>=`: a package uploaded at **exactly** the cutoff
 already counts as discontinued, not merely deprecated.
 
+<!-- 20 -->
 ```verse
 @deprecated{Message := "Use NewSpawn instead."}
 OldSpawn():void = {}
@@ -799,6 +805,7 @@ and may change or be removed in future versions. Experimental features
 can only be used when the `AllowExperimental` package flag is enabled:
 
 <!--NoCompile-->
+<!-- 21 -->
 ```verse
 # Mark a feature as experimental
 @experimental
@@ -840,7 +847,7 @@ NewImplementation():int = 100
 
 <#
 -->
-<!-- 18 -->
+<!-- 22 -->
 ```verse
 using { /Verse.org/Native }  # Required for @available
 
@@ -880,7 +887,7 @@ weapon_system := class:
     Damage:int
 <#
 -->
-<!-- 19 -->
+<!-- 23 -->
 ```verse
 # Define a custom attribute
 @attribscope_class
@@ -927,7 +934,7 @@ entity := class<abstract>:
 
 <#
 -->
-<!-- 20 -->
+<!-- 24 -->
 ```verse
 # Attribute that can only be applied to functions
 @attribscope_function
@@ -984,7 +991,7 @@ entity := class:
 
 <#
 -->
-<!-- 21 -->
+<!-- 25 -->
 ```verse
 entity := class:
     # External field with custom accessors
@@ -1024,7 +1031,7 @@ ShowWelcome():void =
     Print(Localize(WelcomeMessage))
 <#
 -->
-<!-- 22 -->
+<!-- 26 -->
 ```verse
 # Simple localized message
 WelcomeMessage<localizes> : message = "Welcome to the game!"
@@ -1046,7 +1053,7 @@ ShowGreeting(Name:string):void =
     Print(Localize(GreetPlayer(Name)))
 <#
 -->
-<!-- 23 -->
+<!-- 27 -->
 ```verse
 # Message with parameter interpolation
 GreetPlayer<localizes>(PlayerName:string) : message = "Hello, {PlayerName}!"
@@ -1080,7 +1087,7 @@ OptionalParam<localizes>(Name:string, Score:int) : message =
     "Thanks for playing!"  # Score parameter ignored
 <#
 -->
-<!-- 24 -->
+<!-- 28 -->
 ```verse
 # Multiple parameters, some repeated
 ScoreMessage<localizes>(Player:string, Score:int) : message =
@@ -1103,7 +1110,7 @@ HighScore<localizes>(Points:int) : message = "New record: {Points} points!"
 
 <#
 -->
-<!-- 25 -->
+<!-- 29 -->
 ```verse
 HighScore<localizes>(Points:int) : message = "New record: {Points} points!"
 
@@ -1125,7 +1132,7 @@ assert:
     Localize(ConfigMessage(?TimeLimit := 600, ?MaxPlayers := 32))  # Override both
 <#
 -->
-<!-- 26 -->
+<!-- 30 -->
 ```verse
 ConfigMessage<localizes>(?MaxPlayers:int = 8, ?TimeLimit:int = 300):message =
     "Game settings: {MaxPlayers} players, {TimeLimit} seconds"
@@ -1150,7 +1157,7 @@ TestTupleParam():void =
     Localize(LocationMessage("Hero", (10, 20)))
 <#
 -->
-<!-- 27 -->
+<!-- 31 -->
 ```verse
 LocationMessage<localizes>(Player:string, (X:int, Y:int)) : message =
     "{Player} is at position ({X}, {Y})"
@@ -1169,7 +1176,7 @@ Localize(LocationMessage("Hero", (10, 20)))
 UnicodeMessage<localizes> : message = "The letter is {0u004d}"
 <#
 -->
-<!-- 28 -->
+<!-- 32 -->
 ```verse
 UnicodeMessage<localizes> : message = "The letter is {0u004d}"
 # Outputs: "The letter is M"
@@ -1183,7 +1190,7 @@ EscapedMessage<localizes>(Name:string) : message =
     "Use \{Name\} to insert {Name}"
 <#
 -->
-<!-- 29 -->
+<!-- 33 -->
 ```verse
 EscapedMessage<localizes>(Name:string) : message =
     "Use \{Name\} to insert {Name}"
@@ -1198,7 +1205,7 @@ SpecialChars<localizes> : message =
     "Supports: \\r\\n\\t\\\"\\'\\#\\<\\>\\&\\~"
 <#
 -->
-<!-- 30 -->
+<!-- 34 -->
 ```verse
 SpecialChars<localizes> : message =
     "Supports: \\r\\n\\t\\\"\\'\\#\\<\\>\\&\\~"
@@ -1212,7 +1219,7 @@ SpacedParam<localizes>(Name:string) : message = "Hello { Name }"
 CommentedParam<localizes>(Name:string) : message = "Hello {Name}"
 <#
 -->
-<!-- 31 -->
+<!-- 35 -->
 ```verse
 SpacedParam<localizes>(Name:string) : message = "Hello { Name }"
 CommentedParam<localizes>(Name:string) : message = "Hello {<# comment #>Name}"
@@ -1224,6 +1231,7 @@ CommentedParam<localizes>(Name:string) : message = "Hello {<# comment #>Name}"
 Localized messages **must be defined at module or snippet scope**. They cannot be defined inside functions:
 
 <!--NoCompile-->
+<!-- 36 -->
 ```verse
 # Valid: module scope
 MyModule := module:
@@ -1249,7 +1257,7 @@ derived_ui := class(base_ui):
     Title<localizes><override>:message = "Derived Title"
 <#
 -->
-<!-- 33 -->
+<!-- 37 -->
 ```verse
 base_ui := class:
     Title<localizes>:message = "Base Title"
@@ -1273,7 +1281,7 @@ fetch_quest := class<final>(quest_base):
     TaskDescription<localizes><override> : message = "Collect 10 items"
 <#
 -->
-<!-- 34 -->
+<!-- 38 -->
 ```verse
 quest_base := class<abstract>:
     # Abstract message - must be implemented by subclasses
@@ -1299,7 +1307,7 @@ assert_semantic_error(3639, 3560):
     BadMessage35<localizes> := "Text"
 <#
 -->
-<!-- 35 -->
+<!-- 39 -->
 ```verse
 # ERROR: Missing type annotation
 # BadMessage<localizes> := "Text"  # ERROR
@@ -1318,7 +1326,7 @@ assert_semantic_error(3638, 3560):
     InvalidMessage36<localizes> : message = "A" + "B"
 <#
 -->
-<!-- 36 -->
+<!-- 40 -->
 ```verse
 # ERROR: Expression not allowed
 # InvalidMessage<localizes> : message = "A" + "B"  # ERROR
@@ -1342,7 +1350,7 @@ assert_semantic_error(3506, 3506):
     ClassMsg37<localizes>(Obj:my_class37) : message = "{Obj}"
 <#
 -->
-<!-- 37 -->
+<!-- 41 -->
 ```verse
 # ERROR: Optional types not supported
 # OptionalMsg<localizes>(Player:?string) : message = "{Player}"  # ERROR
@@ -1364,7 +1372,7 @@ assert_semantic_error(3652, 3506, 3506):
     ExprMessage38<localizes>(Name:string) : message = "{"Hello"}"
 <#
 -->
-<!-- 38 -->
+<!-- 42 -->
 ```verse
 # ERROR: Expressions not allowed
 # ExprMessage<localizes>(Name:string) : message = "{"Hello"}"  # ERROR
@@ -1386,7 +1394,7 @@ RefMessage<localizes>(Greeting:string) : message =
 
 <#
 -->
-<!-- 39 -->
+<!-- 43 -->
 ```verse
 GlobalName:string = "World"
 
@@ -1411,7 +1419,7 @@ MyModule := module:
         PrivateMessage<localizes><private> : message = "Private message"
 <#
 -->
-<!-- 40 -->
+<!-- 44 -->
 ```verse
 MyModule := module:
     PublicMessage<localizes><public> : message = "Public message"
@@ -1445,7 +1453,7 @@ PlayerJoined<localizes>(PlayerName:string, TeamName:string) : message =
 
 <#
 -->
-<!-- 41 -->
+<!-- 45 -->
 ```verse
 # Good: Clear, complete, flexible
 PlayerJoined<localizes>(PlayerName:string, TeamName:string) : message =

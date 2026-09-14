@@ -348,7 +348,7 @@ Original.Level = 5   # unchanged, they are independent copies
 This deep-copy semantics extends to all value types: structs, arrays, maps, and tuples. When you pass a struct to a function, the function receives its own copy. When you store a struct in a container, the container holds a copy. This prevents aliasing and makes reasoning about struct mutations local and predictable.
 
 <!--versetest-->
-<!-- 16001 -->
+<!-- 17 -->
 ```verse
 # Arrays also have value semantics - assignments create copies
 var Original:[]int = array{1, 2, 3}
@@ -789,7 +789,7 @@ Array concatenation with `+=` works on struct fields, nested fields,
 and collection values, just like regular `set` does:
 
 <!--versetest-->
-<!-- 35001 -->
+<!-- 37 -->
 ```verse
 my_struct := struct<computes>:
     X:[]int = array{}
@@ -844,7 +844,7 @@ assert:
     not Q.Pop[]
 <#
 -->
-<!-- 919 -->
+<!-- 38 -->
 ```verse
 queue(t:type) := class:
     var Contents<private>:[]t = ()
@@ -872,7 +872,7 @@ Assignment into an element of a parametric container also works:
 Tuples can be replaced entirely but individual elements cannot be mutated:
 
 <!--versetest-->
-<!-- 37 -->
+<!-- 39 -->
 ```verse
 var T0:tuple(int, int) = (10, 20)
 T0(0) = 10
@@ -893,7 +893,7 @@ assert_semantic_error(3509):
         set T0(0) = 70
 <#
 -->
-<!-- 38 -->
+<!-- 40 -->
 ```verse
 var T0:tuple(int, int) = (50, 60)
 set T0(0) = 70  # ERROR: Cannot mutate tuple elements
@@ -909,7 +909,7 @@ Maps preserve **insertion order**, and this order is maintained through mutation
 #### New Keys Append to End
 
 <!--versetest-->
-<!-- 39 -->
+<!-- 41 -->
 ```verse
 var M:[int]int = map{2 => 2}
 
@@ -929,7 +929,7 @@ M = map{2 => 2, 1 => 1, 0 => 0}
 #### Updating Existing Keys Preserves Position
 
 <!--versetest-->
-<!-- 40 -->
+<!-- 42 -->
 ```verse
 var M:[string]int = map{"a" => 3, "b" => 1, "c" => 2}
 
@@ -948,7 +948,7 @@ M = map{"a" => 2, "b" => 1, "c" => 0}  # Still same order
 Map equality considers both keys/values **and order**:
 
 <!--versetest-->
-<!-- 41 -->
+<!-- 43 -->
 ```verse
 var M:[string]int = map{"a" => 3, "b" => 1, "c" => 2}
 set M["a"] = 0
@@ -978,7 +978,7 @@ assert_semantic_error(3509):
         set CX.AI = 30
 <#
 -->
-<!-- 42 -->
+<!-- 44 -->
 ```verse
 classX := class:
     X:int = 20  # Immutable field
@@ -996,7 +996,7 @@ This restriction applies even when the class instance itself is mutable. Only `v
 Only structs marked `<computes>` (pure structs) allow field mutation through a variable:
 
 <!--versetest-->
-<!-- 43 -->
+<!-- 45 -->
 ```verse
 # OK: <computes> struct allows field mutation
 my_mutable_struct := struct<computes>{M:int = 0, J:float = 3.0}
@@ -1033,7 +1033,7 @@ assert_semantic_error(3509):
         set S.C.Field.Value = 10
 <#
 -->
-<!-- 44 -->
+<!-- 46 -->
 ```verse
 struct0 := struct<computes>{A:int = 10}
 struct1 := struct<computes>{S0:struct0 = struct0{}}
@@ -1051,7 +1051,7 @@ The error occurs because `CI` is an immutable field (not declared with `var`). *
 Even with a mutable index, you cannot mutate an immutable array:
 
 <!--NoCompile-->
-<!-- 45 -->
+<!-- 47 -->
 ```verse
 var I:int = 2  # Mutable index
 A:[]int = array{5, 6, 7}  # Immutable array
@@ -1061,7 +1061,7 @@ set A[I] = 2  # ERROR: A is not var - mutability of I does not matter
 The array itself must be declared `var` to allow element mutation:
 
 <!--versetest-->
-<!-- 46 -->
+<!-- 48 -->
 ```verse
 I:int = 2
 var A:[]int = array{5, 6, 7}
@@ -1083,7 +1083,7 @@ assert:
     not (Item1 = Item3)
 <#
 -->
-<!-- 47 -->
+<!-- 49 -->
 ```verse
 unique_item := class<unique>:
     var Count:int = 0

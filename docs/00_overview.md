@@ -47,17 +47,15 @@ For experienced programmers coming from other languages, the [Failure System](08
 
 In Verse, there are no statements—everything is an expression that produces a value. This creates a composable system where any piece of code can be used anywhere a value is expected.
 
-<!--versetest
-Condition()<computes><decides> :void= {}
-Array :[]int= array{1}
--->
 <!-- 01 -->
 ```verse
-# Even control flow produces values
-Result := if (Condition[]) then "yes" else "no"
+Scores := array{10, 20, 30}
 
-# Loops are expressions
-Multiply := for (X : Array) { X * 42 }
+# Even control flow produces a value
+Verdict := if (Scores.Length > 2) then "long" else "short"
+
+# So does a loop: this one produces array{20, 40, 60}
+Doubled := for (Score : Scores) { Score * 2 }
 ```
 
 **Failure as Control Flow**
@@ -88,33 +86,25 @@ The [Failure](08_failure.md) chapter covers failable expressions and failure con
 
 Verse features a powerful type system that catches errors at compile time while minimizing the need for type annotations through inference. See [Types](11_types.md) for more on the type system and subtyping.
 
-<!--versetest-->
 <!-- 03 -->
 ```verse
-X := 42                    # Type inferred 
-Name := "Verse"            # Type inferred
+Level := 42                     # int, inferred from the literal
+Names := array{"Ada", "Alan"}   # []string, inferred from the elements
 ```
 
 **Effect Tracking**
 
 Functions declare their side effects through specifiers like `<computes>`, `<reads>`, `<writes>`, `<transacts>`, `<decides>`, and `<suspends>`. These effect specifiers make it immediately clear what a function can do beyond computing its return value:
 
-<!--versetest
-x := class:
-    GetCurrentValue()<reads>:int=1
-    var Score:int=0
-    PureCompute()<computes>:int = 2 + 2            # No side effects
-    ReadState()<reads>:int = GetCurrentValue()     # Can read mutable state
-    UpdateGame()<transacts>:void = set Score += 10 # Can read, write, allocate
-<#
--->
 <!-- 04 -->
 ```verse
-PureCompute()<computes>:int = 2 + 2            # No side effects
-ReadState()<reads>:int = GetCurrentValue()     # Can read mutable state
-UpdateGame()<transacts>:void = set Score += 10 # Can read, write, allocate
+scoreboard := class:
+    var Score:int = 0
+
+    BonusFor(Streak:int)<computes>:int = Streak * 100  # No side effects
+    CurrentScore()<reads>:int = Score                  # Can read mutable state
+    AddPoints(N:int)<transacts>:void = set Score += N  # Can read, write, allocate
 ```
-<!-- #> -->
 
 The [Effects](13_effects.md) chapter provides complete details on the effect system.
 
@@ -122,53 +112,45 @@ The [Effects](13_effects.md) chapter provides complete details on the effect sys
 
 Concurrency is a first-class feature with structured concurrency primitives that make concurrent programming safe and predictable.
 
-<!--versetest
-TaskA()<suspends>:void={}
-TaskB()<suspends>:void={}
-TaskC():void={}
-FastPath()<suspends>:void={}
-SlowButReliablePath()<suspends>:void={}
-M()<suspends>:void=
-    # Run tasks concurrently and wait for all
-    sync:
-        TaskA()
-        TaskB()
-        TaskC()
-
-    # Race tasks and take first result
-    race:
-        FastPath()
-        SlowButReliablePath()
-<#
--->
 <!-- 05 -->
 ```verse
-# Run tasks concurrently and wait for all
-sync:
-    TaskA()
-    TaskB()
-    TaskC()
+LoadTerrain()<suspends>:void = {}
+LoadTextures()<suspends>:void = {}
+ReadFromCache()<suspends>:void = {}
+FetchFromServer()<suspends>:void = {}
 
-# Race tasks and take first result
-race:
-    FastPath()
-    SlowButReliablePath()
+StartLevel()<suspends>:void =
+    # Run both and wait for the slower one to finish
+    sync:
+        LoadTerrain()
+        LoadTextures()
+
+    # Run both and keep whichever finishes first
+    race:
+        ReadFromCache()
+        FetchFromServer()
 ```
-<!-- #> -->
 
 **Speculative Execution**
 
 Verse can speculatively execute code and roll back changes if the execution fails, enabling flexible patterns for validation and error handling.
 
-<!--versetest
-TryComplexOperation()<computes><decides>:void={}
--->
 <!-- 06 -->
 ```verse
-if (TryComplexOperation[]):
-    # Changes performed by TryComplexOperation[] are committed
+wallet := class:
+    var Gold:int = 100
+
+    # Deducts the price, then fails if that overdrew the account
+    Buy(Price:int)<transacts><decides>:void =
+        set Gold -= Price
+        Gold >= 0
+
+Purse := wallet{}
+if (Purse.Buy[150]):
+    Print("Bought it, {Purse.Gold} gold left")
 else:
-    # Changes are rolled back automatically
+    # The deduction was rolled back, so this prints 100
+    Print("Too expensive, {Purse.Gold} gold left")
 ```
 
 **Reactive Programming with Live Variables**
@@ -199,7 +181,8 @@ Verse provides a foundation for building interactive experiences in persistent v
 
 The following example demonstrates key language features by building an inventory management system for a game, showing how Verse's constructs create robust, maintainable code.
 
-<!--versetest
+<!-- 08 -->
+```verse
 # Define item rarity as an enumeration - showing Verse's type system
 item_rarity := enum<persistable>:
     common
@@ -326,7 +309,7 @@ player_character := class:
         Inventory.AddItem[StarterSword]
 
 # Example usage demonstrating control flow and failure handling
-assert:
+RunExample()<transacts>:void =
     # Create a player (can't fail)
     Hero := player_character{Name := "Verse Hero"}
 
@@ -351,172 +334,12 @@ assert:
     IsRareOrLegendary(I:game_item)<computes><decides>:void =
         I.Rarity = item_rarity.rare or I.Rarity = item_rarity.legendary
 
-    RareItems := Hero.Inventory.FilterItems[IsRareOrLegendary]
+    # Filter with that predicate; the lookup can fail, so it needs a failure context
+    if (RareItems := Hero.Inventory.FilterItems[IsRareOrLegendary]):
+        Print("Found {RareItems.Length} rare items")
 
-    Print("Found {RareItems.Length} rare items")
-<#
--->
-<!-- 08 -->
-```verse
-# Module declaration - start by importing utility functions
-using { /Verse.org/VerseCLR }
-
-# Define item rarity as an enumeration - showing Verse's type system
-item_rarity := enum<persistable>:
-    common
-    uncommon
-    rare
-    epic
-    legendary
-
-# Struct for immutable item data - functional programming style
-item_stats := struct<persistable>:
-    Damage:float = 0.0
-    Defense:float = 0.0
-    Weight:float = 1.0
-    Value:int = 0
-
-# Class for game items - object-oriented features with functional constraints
-game_item := class<final><persistable>:
-    Name:string
-    Rarity:item_rarity = item_rarity.common
-    Stats:item_stats = item_stats{}
-    StackSize:int = 1
-
-    # Method with decides effect - can fail
-    GetRarityMultiplier()<decides>:float =
-        case(Rarity):
-            item_rarity.common => 1.0
-            item_rarity.uncommon => 1.5
-            item_rarity.rare => 2.0
-            item_rarity.epic => 3.0
-            _ => {false?; 0.0}  # Fails if the item is legendary or unexpected
-
-    # Computed property using closed-world function
-    GetEffectiveValue()<reads><decides>:int=
-        Floor[Stats.Value * GetRarityMultiplier[]]
-
-# Inventory system with state management and effects
-inventory_system := class:
-    var Items:[]game_item = array{}
-    var MaxWeight:float = 100.0
-    var Gold:int = 1000
-
-    # Method demonstrating failure handling and transactional semantics
-    AddItem(NewItem:game_item)<transacts><decides>:void =
-        # Calculate new weight - speculative execution
-        CurrentWeight := GetTotalWeight()
-        NewWeight := CurrentWeight + NewItem.Stats.Weight
-
-        # This check might fail, rolling back any changes
-        NewWeight <= MaxWeight
-
-        # Only executes if weight check passes
-        set Items += array{NewItem}
-        Print("Added {NewItem.Name} to inventory")
-
-    # Method with query operator and failure propagation
-    RemoveItem(ItemName:string)<transacts><decides>:game_item =
-        var RemovedItem:?game_item = false
-        var NewItems:[]game_item = array{}
-
-        for (Item : Items):
-            if (Item.Name = ItemName, not RemovedItem?):
-                set RemovedItem = option{Item}
-            else:
-                set NewItems += array{Item}
-        set Items = NewItems
-        RemovedItem?  # Fails if item not found
-
-    # Purchase with complex failure logic and rollback
-    PurchaseItem(ShopItem:game_item)<transacts><decides>:void =
-        # Multiple failure points - any failure rolls back all changes
-        Price := ShopItem.GetEffectiveValue[]
-        Price <= Gold  # Fails if not enough gold
-
-        # Tentatively deduct gold
-        set Gold = Gold - Price
-
-        # Try to add item - might fail due to weight
-        AddItem[ShopItem]
-
-        # All succeeded - changes are committed
-        Print("Purchased {ShopItem.Name} for {Price} gold")
-
-    # Higher-order function with type parameters and where clauses
-    FilterItems(Predicate:type{_(:game_item)<computes><decides>:void})<reads><decides>:[]game_item =
-        for (Item : Items, Predicate[Item]):
-            Item
-
-    GetTotalWeight()<transacts>:float =
-        var Total:float = 0.0
-        for (Item : Items):
-            set Total += Item.Stats.Weight
-        Total
-
-# Player class using composition
-player_character<public> := class:
-    Name<public>:string
-    var Level:int = 1
-    var Experience:int = 0
-    var Inventory:inventory_system = inventory_system{}
-
-    LevelUpThreshold := 100
-
-    GainExperience(Amount:int)<transacts>:void =
-        set Experience += Amount
-
-        # Automatic level up check with failure handling
-        loop:
-            RequiredXP := LevelUpThreshold * Level
-            if (Experience >= RequiredXP):
-                set Experience -= RequiredXP
-                set Level += 1
-                Print("{Name} leveled up to {Level}!")
-            else:
-                break
-
-    # Method showing qualified access
-    EquipStarterGear()<transacts><decides>:void =
-        StarterSword := game_item{
-            Name := "Rusty Sword"
-            Rarity := item_rarity.common
-            Stats := item_stats{Damage := 10.0, Weight := 5.0, Value := 50}
-        }
-        # These might fail if inventory is full
-        Inventory.AddItem[StarterSword]
-
-# Example usage demonstrating control flow and failure handling
-RunExample<public>()<suspends>:void =
-    # Create a player (can't fail)
-    Hero := player_character{Name := "Verse Hero"}
-
-    # Try to equip starter gear (might fail)
-    if (Hero.EquipStarterGear[]):
-        Print("Hero equipped with starter gear")
-
-    # Demonstrate transactional behavior
-    ExpensiveItem := game_item{
-        Name := "Golden Crown"
-        Rarity := item_rarity.epic
-        Stats := item_stats{Value := 2000, Weight := 90.0}  # Very heavy!
-    }
-
-    # This might fail due to weight or insufficient gold
-    if (Hero.Inventory.PurchaseItem[ExpensiveItem]):
-        Print("Purchase successful!")
-    else:
-        Print("Purchase failed - gold remains at {Hero.Inventory.Gold}")
-
-    # Use higher-order functions with nested function predicate
-    IsRareOrLegendary(I:game_item)<computes><decides>:void =
-        I.Rarity = item_rarity.rare or I.Rarity = item_rarity.legendary
-
-    RareItems := Hero.Inventory.FilterItems[IsRareOrLegendary]
-
-    Print("Found {RareItems.Length} rare items")
+RunExample()
 ```
-<!-- #> -->
 
 Several things in this example are specific to Verse:
 
@@ -561,19 +384,6 @@ Verse has a set of naming conventions that make code readable and predictable. W
 
 Identifiers should be in PascalCase (CamelCase starting with uppercase):
 
-<!--versetest
-player_record := struct:
-    Name:string
-
-PlayerDatabase(Id:int)<decides>:player_record =
-    if (Id = 0):
-        player_record{Name := "Alice"}
-    else if (Id = 1):
-        player_record{Name := "Bob"}
-    else:
-        false?
-        player_record{Name := ""}
--->
 <!-- 09 -->
 ```verse
 # Variables and constants use PascalCase
@@ -585,13 +395,13 @@ IsGameActive:logic = true
 CalculateDamage(Base:float, Multiplier:float):float =
     Base * Multiplier
 
-GetPlayerName(Id:int)<decides>:string =
-    PlayerDatabase[Id].Name
-
-# Classes and structs use snake_case
+# Classes and structs use snake_case, with PascalCase fields and methods
 player_character := class:
     Name:string
-    Level:int
+    var Level:int = 1
+
+    LevelUp():void =
+        set Level += 1
 
 inventory_item := struct:
     ItemId:int
@@ -633,22 +443,7 @@ using { /MyGame.com/Systems/CombatSystem }
 using { /Verse.org/Random }
 ```
 
-Class and struct fields use PascalCase, and methods follow the same PascalCase convention as functions:
-
-<!--versetest-->
-<!-- 12 -->
-```verse
-player := class:
-    Name:string          # PascalCase for fields
-    var Health:float= 0.0
-
-    # Methods use PascalCase like functions
-    TakeDamage(Amount:float):void =
-        set Health = Max(0.0, Health - Amount)
-
-    IsAlive():logic =
-        logic{Health > 0.0}
-```
+Class and struct fields use PascalCase, and methods follow the same PascalCase convention as functions.
 
 ## Code Formatting
 
@@ -666,7 +461,7 @@ UpdateDisplay()<transacts>:void = {}
 ImplementationHere()<transacts>:void = {}
 
 -->
-<!-- 13 -->
+<!-- 12 -->
 ```verse
 if (Condition[]):
     DoSomething()
@@ -693,7 +488,7 @@ LevelMultiplier:float = 1.5
 BonusPercentage:float = 10.0
 rarity_type := enum{common; uncommon; rare; epic; legendary}
 -->
-<!-- 14 -->
+<!-- 13 -->
 ```verse
 Player:player_type = player_type{}
 Rarity:rarity_type = rarity_type.rare
@@ -731,7 +526,7 @@ RecordTransaction()<transacts>:void = {}
 GetBaseReward(Difficulty:difficulty_level)<decides>:?int = option{100}
 CalculateTimeBonus(CompletionTime:float):int = 50
 -->
-<!-- 15 -->
+<!-- 14 -->
 ```verse
 # Simple pure function
 Add(X:int, Y:int)<computes>:int = X + Y
@@ -759,9 +554,9 @@ CalculateReward(
 Comments are ignored during execution but help with understanding and maintaining code. Verse offers several styles of comments to suit different documentation needs. The simplest is the single-line comment, which begins with `#` and continues to the end of the line:
 
 <!--versetest-->
-<!-- 16 -->
+<!-- 15 -->
 ```verse
-CalculateDamage := 100 * 1.5   # Apply critical hit multiplier
+CriticalDamage := 100.0 * 1.5   # Apply critical hit multiplier
 ```
 
 When you need to document something within a line of code without breaking it up, inline block comments provide the perfect solution. These are enclosed between `<#` and `#>`:
@@ -771,7 +566,7 @@ BaseValue:int = 100
 Multiplier:int = 2
 Bonus:int = 10
 -->
-<!-- 17 -->
+<!-- 16 -->
 ```verse
 Result := BaseValue <# original amount #> * Multiplier <# scaling factor #> + Bonus
 ```
@@ -779,7 +574,7 @@ Result := BaseValue <# original amount #> * Multiplier <# scaling factor #> + Bo
 The same can be used to write multi-line block comments, making them ideal for explaining complex algorithms or providing detailed context:
 
 <!--versetest-->
-<!-- 18 -->
+<!-- 17 -->
 ```verse
 <# This function implements the quadratic damage falloff formula
    used throughout the game. The falloff ensures that damage
@@ -792,7 +587,7 @@ CalculateFalloffDamage(Distance:float, MaxDamage:float):float =
 Block comments nest, which allows you to temporarily disable code that already contains comments without having to remove or modify existing documentation:
 
 <!--versetest-->
-<!-- 19 -->
+<!-- 18 -->
 ```verse
 <# Temporarily disabled for testing
    OriginalFunction()  <# This had a bug #>
@@ -805,7 +600,7 @@ Indented comments begin with a `<#>` on its own line; everything indented by fou
 <!--versetest
 DoSomething():void = {}
 -->
-<!-- 20 -->
+<!-- 19 -->
 ```verse
 <#>
     This entire block is a comment because it is indented.
@@ -824,12 +619,10 @@ The braced style uses curly braces to delimit blocks, familiar from C-family lan
 <!--versetest
 Score:int = 85
 -->
-<!-- 21 -->
+<!-- 20 -->
 ```verse
 Result := if (Score > 90) {
     "excellent"
-} else if (Score > 70) {
-    "good"
 } else {
     "needs improvement"
 }
@@ -840,12 +633,10 @@ The indented style uses colons and indentation to define structure, similar to P
 <!--versetest
 Score:int = 85
 -->
-<!-- 22 -->
+<!-- 21 -->
 ```verse
 Result := if (Score > 90):
     "excellent"
-else if (Score > 70):
-    "good"
 else:
     "needs improvement"
 ```
@@ -855,9 +646,9 @@ For simple expressions, the inline style keeps everything on one line:
 <!--versetest
 Score:int = 85
 -->
-<!-- 23 -->
+<!-- 22 -->
 ```verse
-Result := if (Score > 90) then "excellent" else if (Score > 70) then "good" else "needs improvement"
+Result := if (Score > 90) then "excellent" else "needs improvement"
 ```
 
 The dotted style uses a period to introduce the expression:
@@ -865,9 +656,9 @@ The dotted style uses a period to introduce the expression:
 <!--versetest
 Score:int = 85
 -->
-<!-- 24 -->
+<!-- 23 -->
 ```verse
-Result := if (Score > 90). "excellent" else if (Score > 70). "good" else. "needs improvement"
+Result := if (Score > 90). "excellent" else. "needs improvement"
 ```
 
 You can even mix styles when it makes sense:
@@ -877,7 +668,7 @@ ComplexCondition()<transacts><decides>:void = {}
 AnotherCheck()<transacts><decides>:void = {}
 YetAnotherValidation()<transacts><decides>:void = {}
 -->
-<!-- 25 -->
+<!-- 24 -->
 ```verse
 Result := if:
     ComplexCondition[] and

@@ -74,7 +74,7 @@ Arithmetic operators perform mathematical operations on numeric values. They wor
 | `/` | Division | `int` (failable), `float` | Integer division returns `rational` |
 
 <!--versetest-->
-<!-- 01-->
+<!-- 01 -->
 ```verse
 # Basic arithmetic
 Sum := 10 + 20      # 30
@@ -107,7 +107,7 @@ Compound assignment operators combine an arithmetic operation with assignment:
 | `set /=` | `set X = X / Y` | `float` only |
 
 <!--versetest-->
-<!-- 02-->
+<!-- 02 -->
 ```verse
 var Score:int = 100
 set Score += 50    # Score is now 150
@@ -134,7 +134,7 @@ functions: `BitAnd`, `BitOr`, `BitXor`, and `BitNot`. These operate on
 the two's complement binary representation of integers.
 
 <!--versetest-->
-<!-- 02001 -->
+<!-- 03 -->
 ```verse
 # Bitwise AND - sets bit only if both inputs have it set
 BitAnd(12, 10) = 8      # 1100 & 1010 = 1000
@@ -165,7 +165,7 @@ set and remaining bits inverted plus one.
 Common patterns using bitwise operations:
 
 <!--versetest-->
-<!-- 02002 -->
+<!-- 04 -->
 ```verse
 # Check if a bit is set (test bit at position N)
 Flags := 10                         # 10 = binary 1010: bits 1 and 3 set
@@ -188,7 +188,7 @@ BitAnd(Flags, 1) = 0                # Even (lowest bit clear)
 De Morgan's laws apply to bitwise operations:
 
 <!--versetest-->
-<!-- 02003 -->
+<!-- 05 -->
 ```verse
 # NOT(A AND B) = (NOT A) OR (NOT B)
 BitNot(BitAnd(15, 9)) = BitOr(BitNot(15), BitNot(9))
@@ -234,7 +234,7 @@ PlayerName:string = "Admin"
 CurrentState:game_state = game_state.Paused
 Level:int = 15
 -->
-<!-- 03-->
+<!-- 06 -->
 ```verse
 # Numeric comparisons
 if (Score > HighScore):
@@ -273,7 +273,7 @@ assert:
     not ("5" = 5)
 <#
 -->
-<!-- 04-->
+<!-- 07 -->
 ```verse
 0 = 0.0  # Fails: int vs float
 "5" = 5  # Fails: string vs int
@@ -291,7 +291,7 @@ The query operator checks if a `logic` value is `true` (see [Failure](08_failure
 <!--versetest
 StartGame():void={}
 -->
-<!-- 05-->
+<!-- 08 -->
 ```verse
 var IsReady:logic = true
 
@@ -311,7 +311,7 @@ The `not` operator negates the success or failure of an expression:
 ContinuePlaying()<computes>:void={}
 IsGameOver:?int = option{1}
 -->
-<!-- 06-->
+<!-- 09 -->
 ```verse
 if (not IsGameOver?):
     ContinuePlaying()
@@ -337,7 +337,7 @@ player := struct{Level:int, HasItem:?int}
 QuickCheck()<computes><decides>:void = {}
 ExpensiveCheck()<computes><decides>:void = {}
 -->
-<!-- 07-->
+<!-- 10 -->
 ```verse
 Player:player = player{Level:=10, HasItem:=option{1}}
 if (HasKey? and DoorUnlocked?):
@@ -360,7 +360,7 @@ HasMasterKey:?int = option{1}
 QuickCheck()<computes><decides>:void = {}
 ExpensiveCheck()<computes><decides>:void = {}
 -->
-<!-- 08-->
+<!-- 11 -->
 ```verse
 if (HasKeyCard? or HasMasterKey?):
     OpenDoor()
@@ -386,7 +386,7 @@ Consider two expressions `P` and `Q` which may either succeed or fail, the follo
 When initializing constants and variables, both `=` and `:=` can be used if an explicit type is provided. For type inference (no type annotation), you must use `:=`.
 
 <!--versetest-->
-<!-- 09-->
+<!-- 12 -->
 ```verse
 # Constant initialization with explicit types - both = and := work
 MaxHealth:int = 100
@@ -407,7 +407,7 @@ The `set =` operator updates variable values:
 <!--versetest
 vector3:=struct{X:float, Y:float, Z:float}
 -->
-<!-- 10-->
+<!-- 13 -->
 ```verse
 var Points:int = 0
 set Points = 100
@@ -432,7 +432,7 @@ Arg1:int = 0
 Arg2:int = 0
 <#
 -->
-<!-- 11-->
+<!-- 14 -->
 ```verse
 # Array indexing (failable)
 MyArray := array{10, 20, 30}
@@ -469,7 +469,7 @@ Player:player = player{}
 MyVector:vector3 = vector3{X:=1.0, Y:=2.0, Z:=3.0}
 Config:config = config{}
 -->
-<!-- 12-->
+<!-- 15 -->
 ```verse
 Player.Health
 Player.GetName()
@@ -483,7 +483,7 @@ Config.Settings.MaxPlayers
 The range operator creates ranges for iteration:
 
 <!--versetest-->
-<!-- 13-->
+<!-- 16 -->
 ```verse
 # Inclusive range
 for (I := 0..4):
@@ -499,7 +499,7 @@ point:=struct{X:int = 0, Y:int = 0}
 player_data:=struct{Name:string,Level:int,Health:float}
 game_config:=struct{MaxPlayers:int,EnablePvP:logic}
 -->
-<!-- 14-->
+<!-- 17 -->
 ```verse
 # Curly braces with commas
 Point1 := point{X:= 10, Y:= 20}
@@ -540,7 +540,7 @@ Point6 := point . Y:=20  # X gets default value 0
 Round braces when used with a single argument after a tuple expression, accesses tuple elements:
 
 <!--versetest-->
-<!-- 15-->
+<!-- 18 -->
 ```verse
 MyTuple := (10, 20, 30)
 FirstElement := MyTuple(0)  # Access first element
@@ -552,7 +552,7 @@ SecondElement := MyTuple(1)  # Access second element
 Verse has limited implicit type conversion. Most conversions must be explicit:
 
 <!--versetest-->
-<!-- 16-->
+<!-- 19 -->
 ```verse
 # No implicit int to float conversion
 MyInt:int = 42
@@ -568,7 +568,7 @@ Message:string = "Score: {Score}"  # OK: string interpolation
 When operators work with mixed types, specific rules apply:
 
 <!--versetest-->
-<!-- 17-->
+<!-- 20 -->
 ```verse
 # int * float -> float
 Result := 5 * 2.0  # Result is 10.0 (float)

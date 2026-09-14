@@ -200,7 +200,7 @@ Enums define types with a fixed set of named values, perfect for representing st
 An enum lists all possible values for a type:
 
 <!--NoCompile-->
-<!-- 05 -->
+<!-- 09 -->
 ```verse
 game_state := enum:
     MainMenu
@@ -228,7 +228,7 @@ Each value in the enum becomes a named constant of that enum type. The compiler 
 placeholder := enum{}
 <#
 -->
-<!-- 28 -->
+<!-- 10 -->
 ```verse
 placeholder := enum{}  # Valid but rarely useful
 ```
@@ -245,7 +245,7 @@ status := enum:
 CurrentStatus:status = status.Active
 <#
 -->
-<!-- 29 -->
+<!-- 11 -->
 ```verse
 status := enum:
     Active
@@ -276,7 +276,7 @@ assert_semantic_error(3509):
     BadAssignment30:status30 = status30
 <#
 -->
-<!-- 30 -->
+<!-- 12 -->
 ```verse
 # ERROR: Cannot use type as value
 BadAssignment:status = status  # Compile error
@@ -303,7 +303,7 @@ priority := enum:
     High
 <#
 -->
-<!-- 09 -->
+<!-- 13 -->
 ```verse
 # Valid
 priority := enum:
@@ -327,7 +327,7 @@ my_enum := enum:
 ProcessData():void = {}
 <#
 -->
-<!-- 10 -->
+<!-- 14 -->
 ```verse
 # Valid
 my_enum := enum:
@@ -353,7 +353,7 @@ game_state := enum:
     Paused
     GameOver
 -->
-<!-- 11 -->
+<!-- 15 -->
 ```verse
 var CurrentState:game_state = game_state.MainMenu
 
@@ -382,7 +382,7 @@ The `case` expression with enums provides powerful pattern matching with exhaust
 Enums can be marked as open or closed, fundamentally affecting how they can evolve and how they interact with pattern matching:
 
 <!--NoCompile-->
-<!-- 12 -->
+<!-- 16 -->
 ```verse
 # Closed enum - cannot add values after publication
 day_of_week := enum<closed>:  # <closed> is the default
@@ -415,7 +415,7 @@ The interaction between enum types and case expressions follows sophisticated ru
 When your case expression handles every value in a closed enum, no wildcard is needed:
 
 <!--NoCompile-->
-<!-- 13 -->
+<!-- 17 -->
 ```verse
 day := enum:
     Monday
@@ -446,7 +446,7 @@ GetDayType(D:day):string =
         day.Wednesday => "Weekday"
 <#
 -->
-<!-- 14 -->
+<!-- 18 -->
 ```verse
 # Warning: unreachable wildcard
 GetDayType(D:day):string =
@@ -463,7 +463,7 @@ GetDayType(D:day):string =
 If you do not match all values, you must either provide a wildcard or be in a `<decides>` context:
 
 <!--NoCompile-->
-<!-- 15 -->
+<!-- 19 -->
 ```verse
 day := enum:
     Monday
@@ -496,7 +496,7 @@ Open enums can have new values added after publication, so they can never be exh
 This is to ensure backwards compatibility of functions using them (see also [Publishing Functions](06_functions.md#publishing-functions)):
 
 <!--NoCompile-->
-<!-- 16 -->
+<!-- 20 -->
 ```verse
 weapon := enum<open>:
     Sword
@@ -575,7 +575,7 @@ assert_semantic_error(3616):
             status17.Pending => 4
 <#
 -->
-<!-- 17 -->
+<!-- 21 -->
 ```verse
 status := enum:
     Active
@@ -615,7 +615,7 @@ assert_semantic_error(3616):
             status18.Inactive => 2
 <#
 -->
-<!-- 18 -->
+<!-- 22 -->
 ```verse
 # ERROR: Case after wildcard
 GetStatusCode(S:status):int =
@@ -633,7 +633,7 @@ These errors prevent logic bugs where you think you are handling specific cases 
 Sometimes you intentionally want unreachable cases—for testing, migration, or defensive programming. The `@ignore_unreachable` attribute suppresses unreachable warnings and errors for specific cases:
 
 <!--NoCompile-->
-<!-- 19 -->
+<!-- 23 -->
 ```verse
 status := enum:
     Active
@@ -671,7 +671,7 @@ assert_semantic_error(3616):
             status20.Active => 4
 <#
 -->
-<!-- 20 -->
+<!-- 24 -->
 ```verse
 ProcessStatus(S:status):int =
     case (S):
@@ -689,7 +689,7 @@ Use `@ignore_unreachable` sparingly, primarily during refactoring or when mainta
 Enumerators can collide with identifiers in parent scopes. When this happens, you can use explicit qualification to disambiguate:
 
 <!--NoCompile-->
-<!-- 21 -->
+<!-- 25 -->
 ```verse
 # Top level 'Start'
 Start:int = 0
@@ -712,7 +712,7 @@ The syntax `(enum_name:)enumerator` explicitly qualifies the enumerator, prevent
 Qualification also allows you to use reserved words and keywords as enum values, which would otherwise cause errors:
 
 <!--NoCompile-->
-<!-- 22 -->
+<!-- 26 -->
 ```verse
 # Using reserved words as enum values
 keyword_enum := enum:
@@ -734,7 +734,7 @@ This is particularly useful when modeling language constructs, access levels, or
 You can even use the enum's own name as a value when qualified:
 
 <!--NoCompile-->
-<!-- 23 -->
+<!-- 27 -->
 ```verse
 recursive_enum := enum:
     (recursive_enum:)recursive_enum  # OK: qualified with enum name
@@ -763,7 +763,7 @@ game_state := enum:
 PlaySwordAnimation()<transacts>:void = {}
 OnStateChanged(Prev:game_state, Curr:game_state)<transacts>:void = {}
 -->
-<!-- 25 -->
+<!-- 28 -->
 ```verse
 CurrentWeapon := weapon_type.Sword
 if (CurrentWeapon = weapon_type.Sword):
@@ -791,7 +791,7 @@ Test()<decides>:letters =
     letters.A
 <#
 -->
-<!-- 26 -->
+<!-- 29 -->
 ```verse
 letters := enum:
     A, B, C
@@ -817,7 +817,7 @@ game_state := enum{
     Debug
     }
 -->
-<!-- 27 -->
+<!-- 30 -->
 ```verse
 # Enums as map keys
 StateIDs:[game_state]int = map{

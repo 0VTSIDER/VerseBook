@@ -152,7 +152,7 @@ Print("All operations complete with results: {Results(0)} {Results(1)} {Results(
 }
 <#
 -->
-<!-- 04 -->
+<!-- 03 -->
 ```verse
 # All expressions start simultaneously and must all complete
 Results := sync:
@@ -209,7 +209,7 @@ ProcessData(sync:
 }
 <#
 -->
-<!-- 05 -->
+<!-- 04 -->
 ```verse
 # Nested blocks for complex operations
 sync:
@@ -258,7 +258,7 @@ TestRace()<suspends>:void =
     Print("Winner result: {Winner}")  # Prints FastOperation's result 
 <#
 -->
-<!-- 06 -->
+<!-- 05 -->
 ```verse
 # First to complete wins, others are canceled
 Winner := race:
@@ -318,7 +318,7 @@ SameTypeResult:int = race:
 }
 <#
 -->
-<!-- 07 -->
+<!-- 06 -->
 ```verse
 base_class := class:
     Value:int
@@ -376,7 +376,7 @@ case(WinnerID):
 }
 <#
 -->
-<!-- 08 -->
+<!-- 07 -->
 ```verse
 # Adding identifiers to determine which expression won
 WinnerID := race:
@@ -439,7 +439,7 @@ Print("First result: {FirstResult}")
 }
 <#
 -->
-<!-- 09 -->
+<!-- 08 -->
 ```verse
 # First to complete allows continuation, others keep running
 FirstResult := rush:
@@ -490,7 +490,7 @@ CoroUtils := module:
     WaitTicks(N:int)<suspends>:void = {}
     Tick(N:int):void = {}
 -->
-<!-- 09b -->
+<!-- 09 -->
 ```verse
 Log(Msg:string):void = CoroUtils.LogEvent(Msg)
 
@@ -542,7 +542,7 @@ assert_semantic_error(3566):
         return
 <#
 -->
-<!-- 915 -->
+<!-- 10 -->
 ```verse
 F():void =
     spawn:
@@ -590,7 +590,7 @@ branch:
 }
 <#
 -->
-<!-- 10 -->
+<!-- 11 -->
 ```verse
 branch:
     # This block runs independently
@@ -645,7 +645,7 @@ for typical concurrent patterns.
 <!--versetest
 LongRunningTask()  <suspends> :int=0
 -->
-<!-- 11 -->
+<!-- 12 -->
 ```verse
 # spawn returns a task(t) object you can control
 BackgroundTask:task(int) = spawn{LongRunningTask()}
@@ -674,7 +674,7 @@ assert_semantic_error(3511, 3538):
     G12()<suspends>:void =
         spawn{FailableWork12()}
 -->
-<!-- 12 -->
+<!-- 13 -->
 ```verse
 AsyncWork()<suspends>:void =
     Sleep(1.0)
@@ -700,7 +700,7 @@ handles the failure internally:
 <!--versetest
 FailableWork<public>()<computes><decides>:void = {}
 -->
-<!-- 13 -->
+<!-- 14 -->
 ```verse
 SafeFailableWork()<suspends>:void =
     if (FailableWork[]):
@@ -745,7 +745,7 @@ expressions, only `spawn` gives you direct access to a task object
 that you can control and query.
 
 <!--versetest-->
-<!-- 14 -->
+<!-- 15 -->
 ```verse
 # spawn returns task(t) where t is the return type
 BackgroundWork()<suspends>:int =
@@ -891,7 +891,7 @@ SecondResult := MyTask.Await()
 <!--versetest
 ProcessData()<suspends>:void={}
 -->
-<!-- 27 -->
+<!-- 19 -->
 ```verse
 StartTask()<suspends>:void =
     DataTask:task(void) = spawn{ProcessData()}
@@ -913,7 +913,7 @@ Task1()<suspends>:int=1
 Task2()<suspends>:int=2
 Task3()<suspends>:int=3
 -->
-<!-- 28 -->
+<!-- 20 -->
 ```verse
 RunMultipleTasks()<suspends>:void =
     T1 := spawn{Task1()}
@@ -957,7 +957,7 @@ F()<suspends>:void=
     NextTick() 
 <#
 -->
-<!-- 30 -->
+<!-- 21 -->
 ```verse
 Sleep(1.0)  # Suspends for duration, checks cancellation when resuming
 NextTick()  # Waits one simulation update, checks cancellation
@@ -973,7 +973,7 @@ Result := SomeAsyncFunction()
 }
 <#
 -->
-<!-- 32 -->
+<!-- 22 -->
 ```verse
 Result := SomeAsyncFunction()  # Suspension point at the call
 ```
@@ -990,7 +990,7 @@ M()<suspends>:void =
         Op2()
 <#
 -->
-<!-- 33 -->
+<!-- 23 -->
 ```verse
 sync:  # Suspension point when entering sync
     Op1()
@@ -1009,7 +1009,7 @@ Result := MyTask.Await()
 }
 <#
 -->
-<!-- 34 -->
+<!-- 24 -->
 ```verse
 Result := MyTask.Await()  # Suspension point while waiting
 ```
@@ -1023,7 +1023,7 @@ next suspension point:
 <!--versetest
 ComputeExpensiveOperation(:int):void={}
 -->
-<!-- 35  -->
+<!-- 25 -->
 ```verse
 # Cannot be canceled during the loop
 LongComputation()<suspends>:void =
@@ -1076,7 +1076,7 @@ AcquireResource():int=42
 ReleaseResource(:int):void={}
 LongRunningTask(:int)<suspends>:void={loop{NextTick()}}
 -->
-<!-- 36 -->
+<!-- 26 -->
 ```verse
 ProcessWithTimeout()<suspends>:void =
     race:
@@ -1095,7 +1095,7 @@ Setup():void={}
 Teardown():void={}
 LongOperation()<suspends>:void={loop{NextTick()}}
 -->
-<!-- 42 -->
+<!-- 27 -->
 ```verse
 CancellableWork()<suspends>:void =
     Setup()
@@ -1125,7 +1125,7 @@ assert_semantic_error(3512, 3567):
             Nap44(1.0)
 <#
 -->
-<!-- 44 -->
+<!-- 28 -->
 ```verse
 # ERROR: Cannot use suspending operations in defer
 BadDefer()<suspends>:void =
@@ -1151,7 +1151,7 @@ M()<suspends>:void =
     Sleep(0.0)
 <#
 -->
-<!-- 46 -->
+<!-- 29 -->
 ```verse
 # Suspend for 1 second
 Sleep(1.0)
@@ -1173,7 +1173,7 @@ This makes `Sleep(0.0)` essential for responsive concurrent code:
 ProcessFrame():void={}
 ExpensiveOperation(:int):void={}
 -->
-<!-- 47 -->
+<!-- 30 -->
 ```verse
 # Without Sleep(0.0) - cannot be cancelled during loop
 UnresponsiveLoop()<suspends>:void =
@@ -1211,7 +1211,7 @@ M()<suspends>:void =
     NextTick()
 <#
 -->
-<!-- 48 -->
+<!-- 31 -->
 ```verse
 # Wait for exactly one simulation tick
 NextTick()
@@ -1248,7 +1248,7 @@ TestDelay()<suspends>:void =
     PerformAction()
 <#
 -->
-<!-- 49 -->
+<!-- 32 -->
 ```verse
 # Process game logic every tick
 GameLoop()<suspends>:void =
@@ -1284,7 +1284,7 @@ simulation clock.
 <!--versetest
 ProcessFrame()<computes>:logic=false
 -->
-<!-- 50 -->
+<!-- 33 -->
 ```verse
 # Common patterns
 LoopWithDelay()<suspends>:void =
@@ -1307,7 +1307,7 @@ UpdateLogic()<computes>:void={}
 Float(:int)<computes>:float=0.0
 SetPosition(:float):void={}
 -->
-<!-- 51 -->
+<!-- 34 -->
 ```verse
 # Delayed action
 PerformDelayedAction()<suspends>:void =
@@ -1341,7 +1341,7 @@ LogEvent(Message:string):void =
     Print("[{Timestamp}] {Message}")
 <#
 -->
-<!-- 52 -->
+<!-- 35 -->
 ```verse
 # Get current timestamp
 CurrentTime := GetSecondsSinceEpoch()
@@ -1375,7 +1375,7 @@ MeasureTransactionTime()<transacts>:void =
     Duration := EndTime - StartTime
 <#
 -->
-<!-- 53 -->
+<!-- 36 -->
 ```verse
 MeasureTransactionTime()<transacts>:void =
     StartTime := GetSecondsSinceEpoch()
@@ -1417,7 +1417,7 @@ logger := class:
             Entry(1)
 <#
 -->
-<!-- 55 -->
+<!-- 37 -->
 ```verse
 logger := class:
     var EventLog:[]tuple(float, string) = array{}
@@ -1436,7 +1436,7 @@ logger := class:
 
 **Session tracking:**
 <!--versetest-->
-<!-- 56 -->
+<!-- 38 -->
 ```verse
 player_session := class:
     LoginTime:float
@@ -1471,7 +1471,7 @@ assert:
        ShowCooldownMessage()
 <#
 -->
-<!-- 57 -->
+<!-- 39 -->
 ```verse
 rate_limiter := class:
     var LastAction:float = 0.0
@@ -1509,7 +1509,7 @@ M():void =
     ClockSkew := LocalTime - ServerTime
 <#
 -->
-<!-- 58 -->
+<!-- 40 -->
 ```verse
 # Timestamp for external analytics
 AnalyticsEvent := map{
@@ -1539,7 +1539,7 @@ ClockSkew := LocalTime - ServerTime
 <!--versetest
 PerformAction<public>()<suspends>:void = {}
 -->
-<!-- 59 -->
+<!-- 41 -->
 ```verse
 # Wait until a specific time
 WaitUntil(TargetTime:float)<suspends>:void =
@@ -1593,7 +1593,7 @@ sync:
 }
 <#
 -->
-<!-- 60 -->
+<!-- 42 -->
 ```verse
 # Create an event channel for integers
 GameEvent := event(int){}
@@ -1643,7 +1643,7 @@ Result := race:
 }
 <#
 -->
-<!-- 61 -->
+<!-- 43 -->
 ```verse
 # Wait for event with timeout
 Result := race:
@@ -1666,7 +1666,7 @@ While basic events deliver each signal to exactly one awaiter,
 all subsequent awaits until a new value is signaled:
 
 <!--NoCompile-->
-<!-- 62 -->
+<!-- 44 -->
 ```verse
 StateEvent := sticky_event(int){}
 
@@ -1711,7 +1711,7 @@ register callback functions that execute automatically when values are
 signaled:
 
 <!--NoCompile-->
-<!-- 63 -->
+<!-- 45 -->
 ```verse
 LogScore(:int):void={}
 UpdateUI(:int):void={}
@@ -1750,7 +1750,7 @@ signal reaches all interested parties.
 Events are built on two fundamental interfaces that you can use to create custom synchronization types:
 
 <!--NoCompile-->
-<!-- 64 -->
+<!-- 46 -->
 ```verse
 awaitable(t:type) := interface:
     Await()<suspends>:t
@@ -1776,7 +1776,7 @@ assert_semantic_error(3506):
     G65b(Target:signalable(int))<suspends>:void =
         Value := Target.Await()
 -->
-<!-- 65 -->
+<!-- 47 -->
 ```verse
 # This function can only await, not signal
 ConsumerFunction(Source:awaitable(int))<suspends>:void =
@@ -1803,7 +1803,7 @@ transaction containing a `Subscribe()` call fails and rolls back, the
 subscription never takes effect:
 
 <!--NoCompile-->
-<!-- 66 -->
+<!-- 48 -->
 ```verse
 Handler(:int):void={}
 
@@ -1828,7 +1828,7 @@ subscribable_event(t:type) := class:
     Subscribe(Handler:t->void)<transacts>:subscription = subscription{}
     Signal(Value:t)<transacts>:void = {}
 -->
-<!-- 67 -->
+<!-- 49 -->
 ```verse
 Handler(:int):void={}
 
@@ -1875,7 +1875,7 @@ pathfinding_system := class:
         PathResponse.Await()
 <#
 -->
-<!-- 68 -->
+<!-- 50 -->
 ```verse
 PathRequest := event(tuple(int, int)){}  # (start, goal)
 PathResponse := event(int){}             # path result
@@ -1908,7 +1908,7 @@ sticky_event(t:type) := class:
             if (V := CurrentValue?):
                 return V
 -->
-<!-- 69 -->
+<!-- 51 -->
 ```verse
 PhaseChange := sticky_event(game_phase){}
 
@@ -1940,7 +1940,7 @@ subscribable_event(t:type) := class:
     Subscribe(Handler:t->void)<transacts>:subscription = subscription{}
     Signal(Value:t)<transacts>:void = {}
 -->
-<!-- 70 -->
+<!-- 52 -->
 ```verse
 UpdateInventoryUI(:int):void={}
 PlayPickupSound(:int):void={}
@@ -1974,7 +1974,7 @@ Implement operations with timeouts using `race`:
 <!--versetest
 ActualOperation()<suspends>:void={}
 -->
-<!-- 71 -->
+<!-- 53 -->
 ```verse
 PerformWithTimeout()<suspends>:logic =
     race:
@@ -2003,7 +2003,7 @@ InitializeGame()<suspends>:void =
     Print("Game ready!")
 <#
 -->
-<!-- 72 -->
+<!-- 54 -->
 ```verse
 InitializeGame()<suspends>:void =
     sync:
@@ -2022,7 +2022,7 @@ MonitorPlayerStats()<suspends>:void={}
 UpdateLeaderboards()<suspends>:void={}
 ProcessAchievements()<suspends>:void={}
 -->
-<!-- 73 -->
+<!-- 55 -->
 ```verse
 StartBackgroundSystems()<suspends>:void =
     branch:
@@ -2039,7 +2039,7 @@ Spawn entities with delays:
 <!--versetest
 enemy_class := class {     Spawn()<suspends>:void={} }
 -->
-<!-- 74 -->
+<!-- 56 -->
 ```verse
 SpawnWave(Enemies:[]enemy_class)<suspends>:void =
     for (Enemy : Enemies):
@@ -2080,7 +2080,7 @@ assert_semantic_error(3552):
                 Op76()
 <#
 -->
-<!-- 76 -->
+<!-- 57 -->
 ```verse
 # Not allowed
 for (I := 0..10):

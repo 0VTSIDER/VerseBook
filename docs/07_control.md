@@ -122,7 +122,7 @@ weapon:=class<computes>{
 ConsumeAmmo():void={}
 PlayJumpSound():void={}
 -->
-<!-- 07 -->
+<!-- 06 -->
 ```verse
 HandlePlayerAction(Player:player, Action:string):void =
     if (Action = "jump", Player.CanJump[]):
@@ -143,7 +143,7 @@ An alternative syntax uses `then:` and `else:` keywords to explicitly
 label branches:
 
 <!--versetest-->
-<!-- 08 -->
+<!-- 07 -->
 ```verse
 ProcessValue(Value:int):string =
     if:
@@ -165,7 +165,7 @@ fail. This requirement ensures `if` is used for its intended
 purpose, handling uncertain outcomes:
 
 <!--NoCompile-->
-<!-- 10 -->
+<!-- 08 -->
 ```verse
 # Error: condition cannot fail
 if (1 + 1):  # Compile error - no fallible expression
@@ -186,7 +186,7 @@ condition are automatically rolled back (see
 <!--versetest
 GetPlayerScore()<decides><computes>:int=1
 -->
-<!-- 11 -->
+<!-- 09 -->
 ```verse
 var Counter:int = 0
 
@@ -208,7 +208,7 @@ Variables defined in the condition are available in the `then` branch
 but not in the `else` branch:
 
 <!--NoCompile-->
-<!-- 12 -->
+<!-- 10 -->
 ```verse
 if:
     Player := FindPlayer[Name]  # Define Player
@@ -231,7 +231,7 @@ IsCritical:logic= false
 BaseDamage:int=0
 Health:int=0
 -->
-<!-- 13 -->
+<!-- 11 -->
 ```verse
 Damage := if (IsCritical?):
     BaseDamage * 2
@@ -247,7 +247,7 @@ When branches have incompatible types, the result is widened to `any`:
 <!--versetest
 UseNumber:logic=false
 -->
-<!-- 14 -->
+<!-- 12 -->
 ```verse
 # Different types in branches yields any
 Result:any = if (UseNumber?) then 42 else "text"
@@ -263,7 +263,7 @@ expression, letting success continue without additional logic. The
 idiomatic way to express this is with `if (Condition): else:`:
 
 <!--versetest-->
-<!-- 14001 -->
+<!-- 13 -->
 ```verse
 ProcessData()<decides><transacts>:void = {}
 
@@ -284,6 +284,7 @@ A tempting but sometimes incorrect
 pattern is to use `not` to check for failure:
 
 <!--NoCompile-->
+<!-- 14 -->
 ```verse
 # Causes unwanted rollback
 if (not ProcessData[]):
@@ -295,7 +296,7 @@ causing the outer `if` to fail and roll back any transactional effects
 from `ProcessData`. Safer patterns are:
 
 <!--versetest-->
-<!-- 14002 -->
+<!-- 15 -->
 ```verse
 var Counter:int = 0
 
@@ -325,7 +326,7 @@ When you need to make decisions based on multiple possible values, the
 `case` expression provides clear, readable branching:
 
 <!--versetest-->
-<!-- 15 -->
+<!-- 16 -->
 ```verse
 GetWeaponDamage(WeaponType:string):float =
     case(WeaponType):
@@ -440,7 +441,7 @@ CheckCollisions()<transacts>:void={}
 RenderFrame()<transacts>:void={}
 GameOver()<decides><transacts>:void={}
 -->
-<!-- 22 -->
+<!-- 20 -->
 ```verse
 GameLoop():void =
     loop:
@@ -456,7 +457,7 @@ never returns normally. Since the bottom type is a subtype of all
 other types, `break` can be used in any type context:
 
 <!--versetest-->
-<!-- 55 -->
+<!-- 21 -->
 ```verse
 NumberOfBits(X:int):int =
     var B:int = 1
@@ -480,7 +481,7 @@ When `break` appears in nested loops, it exits only the innermost
 enclosing loop:
 
 <!--versetest-->
-<!-- 57 -->
+<!-- 22 -->
 ```verse
 var Outer:int = 0
 loop:
@@ -508,7 +509,7 @@ assert_semantic_error(3506, 3581):
                break      # Error
 <#
 -->
-<!-- 58 -->
+<!-- 23 -->
 ```verse
 ProcessData():void =
    if (ShouldStop[]):
@@ -525,7 +526,7 @@ player:=class{}
 GetScore(P:player):int=100
 <#
 -->
-<!-- 23 -->
+<!-- 24 -->
 ```verse
 CalculateTotalScore(Players:[]player)<transacts>:int =
     var Total:int = 0
@@ -542,7 +543,7 @@ filtering with speculative execution, and construction of a collection
 of results.
 
 <!--versetest-->
-<!-- 223 -->
+<!-- 25 -->
 ```verse
 Values:[]float= array{1.0, 10.1, 100.2}
 Result := 
@@ -584,7 +585,7 @@ using the pair syntax `Index -> Value` or `Key -> Value`:
 <!--versetest
 player:=struct{ Name:string }
 -->
-<!-- 28 -->
+<!-- 27 -->
 ```verse
 PrintRoster(Players:[]player):void =
     for (Index -> Player : Players):
@@ -599,7 +600,7 @@ The for loop allows you to define intermediate variables that can be
 used in subsequent filters or the loop body:
 
 <!--versetest-->
-<!-- 29 -->
+<!-- 28 -->
 ```verse
 # Define Y based on X
 Doubled := for (X := 1..5, Y := X * 2):
@@ -620,7 +621,7 @@ semicolon-separated expressions. Each filter must be failable, and if any fails,
 iteration is skipped:
 
 <!--versetest-->
-<!-- 30 -->
+<!-- 29 -->
 ```verse
 # Multiple independent filters
 Filtered := for (X := 1..10, X <> 3, X <> 7):
@@ -640,7 +641,7 @@ Maps can be iterated over in two ways: values only, or key-value pairs
 using the pair syntax:
 
 <!--versetest-->
-<!-- 31 -->
+<!-- 30 -->
 ```verse
 # Iterate over values only
 Scores:[int]int = map{1 => 100, 2 => 200, 3 => 150}
@@ -661,7 +662,7 @@ which keys were added to the map.
 Strings can be iterated character by character:
 
 <!--versetest-->
-<!-- 32 -->
+<!-- 31 -->
 ```verse
 CountVowels(Text:string):int =
     var Count:int = 0
@@ -675,7 +676,7 @@ CountVowels(Text:string):int =
 Multiple iteration sources create nested loops, producing the cartesian product:
 
 <!--NoCompile-->
-<!-- 33 -->
+<!-- 32 -->
 ```verse
 PrintGrid():void =
     for (X := 1..3, Y := 1..3):
@@ -692,7 +693,7 @@ failure contexts, as they can naturally filter:
 player:=struct{ Name:string }
 GetScore(P:player)<computes>:int=0
 -->
-<!-- 34 -->
+<!-- 33 -->
 ```verse
 GetHighScorers(Players:[]player):[]player =
     for (Player : Players, Score := GetScore(Player), Score > 1000):
@@ -706,7 +707,7 @@ statements:
 <!--versetest
 item:=struct{Price:float}
 -->
-<!-- 35 -->
+<!-- 34 -->
 ```verse
 # Filter items under budget and apply transformation
 AffordableItems(Items:[]item, Budget:float):[]float =
@@ -721,7 +722,7 @@ Like other control flow constructs, `for` is an expression. When the body produc
 <!--versetest
 player:=struct{Name:string}
 -->
-<!-- 36 -->
+<!-- 35 -->
 ```verse
 # Collect player names
 GetNames(Players:[]player):[]string =
@@ -748,7 +749,7 @@ logic or failure-based filtering to achieve similar results:
 item:=struct{IsValid:logic}
 ProcessItem(I:item):void={}
 -->
-<!-- 38 -->
+<!-- 36 -->
 ```verse
 # Instead of continue, use conditional blocks
 ProcessItems(Items:[]item):void =
@@ -768,7 +769,7 @@ ProcessValidItems(Items:[]item):void =
 iteration over integer sequences. Ranges are inclusive on both ends:
 
 <!--versetest-->
-<!-- 27 -->
+<!-- 37 -->
 ```verse
 # Iterates: 1, 2, 3, 4, 5 (both bounds included)
 for (I := 1..5):
@@ -797,7 +798,7 @@ While you cannot store ranges as values, you can create arrays using
 for expressions:
 
 <!--versetest-->
-<!-- 47 -->
+<!-- 38 -->
 ```verse
 # This works because for produces an array, not because ranges are storable
 DoubledNumbers:[]int = for (I := 1..5){ I * 2 }
@@ -831,7 +832,7 @@ separate value. Ranges cannot be used in some contexts where you
 might expect them to work:
 
 <!--NoCompile-->
-<!-- 40 -->
+<!-- 39 -->
 ```verse
 # ERROR: Cannot store range in variable
 MyRange := 1..10
@@ -872,7 +873,7 @@ assert:
     for(None?) { 1 } = array{}
 <#
 -->
-<!-- 911 -->
+<!-- 40 -->
 ```verse
 Some:?int = option{7}
 for(Some?) { 1 }        # array{1} - filter succeeded, body ran once
@@ -899,7 +900,7 @@ assert:
     List = array{22,23,24}
 <#
 -->
-<!-- 913 -->
+<!-- 41 -->
 ```verse
 # A failable call used purely as a guard
 for(PassesFilter[], I:=1..3) { I }          # array{1,2,3}
@@ -922,7 +923,7 @@ fails, so it requires a `<decides>` context.
 player:=struct{ Name:string }
 GetScore(P:player)<computes><decides>:int=0
 -->
-<!-- 80 -->
+<!-- 42 -->
 ```verse
 # Find the first player with a score above the threshold
 FindTopScorer(Players:[]player, Threshold:int)<decides>:player =
@@ -935,7 +936,7 @@ The block form uses `do:` to separate the iteration clauses from
 the body:
 
 <!--NoCompile-->
-<!-- 81 -->
+<!-- 43 -->
 ```verse
 # Block form with do:
 first:
@@ -957,7 +958,7 @@ pairs with the `->` syntax, chain multiple filters, and nest multiple
 iteration sources:
 
 <!--versetest-->
-<!-- 82 -->
+<!-- 44 -->
 ```verse
 # Find the index of an element using index -> value binding
 IndexOf(Arr:[]int, Target:int)<decides>:int =
@@ -983,7 +984,7 @@ Since `first` requires `<decides>`, a common way to use it is to wrap
 it in an `if` or an `option` to handle the case where no match is found:
 
 <!--versetest-->
-<!-- 83 -->
+<!-- 45 -->
 ```verse
 # Find with fallback using if
 FindOrDefault(Arr:[]int, Target:int):int =
@@ -996,7 +997,7 @@ FindOrDefault(Arr:[]int, Target:int):int =
 Or:
 
 <!--versetest-->
-<!-- 84 -->
+<!-- 46 -->
 ```verse
 # Find with fallback using if
 FindOptional(Arr:[]int, Target:int):?int =
@@ -1022,7 +1023,7 @@ assert:
     not first(Thing := FirstGetNoThing[]; I:=Thing..Thing+2) { Thing*10+I }
 <#
 -->
-<!-- 914 -->
+<!-- 47 -->
 ```verse
 # Binding succeeds - first yields the first body value
 first(Thing := GetThing[], I:=Thing..Thing+2) { Thing*10+I }     # 22
@@ -1086,7 +1087,7 @@ CalculateBonus(Score:int):int={
     Score*10
 }
 -->
-<!-- 51 -->
+<!-- 50 -->
 ```verse
 # Implicit return
 GetValue():int = 42  # Returns 42
@@ -1107,7 +1108,7 @@ config:=struct{MaxRetries:int}
 GetConfig()<transacts><decides>:config=config{MaxRetries:=3}
 AttemptOperation(Retry:int)<computes><decides>:string="success"
 -->
-<!-- 52 -->
+<!-- 51 -->
 ```verse
 RetryableOperation()<transacts>:string =
     if (Config := GetConfig[]):
@@ -1168,7 +1169,7 @@ ReadFile(P:int)<computes>:?string=false
 ProcessContents(P:string)<computes><decides>:void={}
 SaveResults()<computes><decides>:void={}
 -->
-<!-- 61 -->
+<!-- 52 -->
 ```verse
 ProcessFile(FileName:string)<transacts><decides>:void =
     File := OpenFile(FileName)?
@@ -1205,7 +1206,7 @@ assert:
     # ProcessQuery is defined and demonstrates defer with return
 <#
 -->
-<!-- 62 -->
+<!-- 53 -->
 ```verse
 ProcessQuery()<transacts>:void =
     ConnId := OpenConnection()
@@ -1231,7 +1232,7 @@ AcquireResource()<transacts><decides>:int=0
 ReleaseResource(Id:int)<transacts>:void={}
 RiskyOperation(Id:int)<transacts><decides>:void={}
 -->
-<!-- 63 -->
+<!-- 54 -->
 ```verse
 ExampleWithFailure()<transacts><decides>:void =
     ResourceId := AcquireResource[]
@@ -1263,7 +1264,7 @@ BeginTransaction(Id:int)<decides><transacts>:int=0
 CommitTransaction(Id:int)<transacts>:void={}
 DoWork()<transacts><decides>:void={}
 -->
-<!-- 64 -->
+<!-- 55 -->
 ```verse
 DatabaseTransaction()<transacts><decides>:void =
     DbId := OpenDatabase()
@@ -1305,7 +1306,7 @@ assert:
     # ProcessWithTimeout demonstrates defer with async cancellation
 <#
 -->
-<!-- 65 -->
+<!-- 56 -->
 ```verse
 ProcessWithTimeout()<suspends><transacts>:void =
     race:
@@ -1332,7 +1333,7 @@ cascade of cleanup operations:
 <!--versetest
 Log(S:string)<transacts>:void={}
 -->
-<!-- 66 -->
+<!-- 57 -->
 ```verse
 ProcessWithCleanup():void =
     Log("A")
@@ -1356,7 +1357,7 @@ Defers work correctly within all control flow constructs:
 <!--versetest
 Log(S:string)<transacts>:void={}
 -->
-<!-- 67 -->
+<!-- 58 -->
 ```verse
 ProcessLoop():void =
     for (I := 0..2):
@@ -1407,7 +1408,7 @@ Understanding how your code performs is crucial for optimization, and
 the `profile` expression measures execution time:
 
 <!--versetest-->
-<!-- 73 -->
+<!-- 59 -->
 ```verse
 OptimizedCalculation():float =
     profile("Complex Math"):
@@ -1431,7 +1432,7 @@ BaseDamage:float = 50.0
 GetMultiplier()<computes>:float = 1.5
 GetCriticalBonus()<computes>:float = 2.0
 -->
-<!-- 74 -->
+<!-- 60 -->
 ```verse
 PlayerDamage := profile("Damage Calculation"):
     BaseDamage * GetMultiplier() * GetCriticalBonus()
