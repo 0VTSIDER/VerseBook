@@ -8,22 +8,24 @@ multiple play sessions.
 Persistable data is stored using module-scoped `weak_map(player, t)`
 variables, where `t` is any persistable type. When a player joins a
 game, their previously saved data is automatically loaded into all
-module-scoped variables of type `weak_map(player, t)`.
+module-scoped variables of type `weak_map(player, t)`. The examples in
+this chapter use `persistent_key` rather than `player`, because it is
+the key type available outside a Fortnite island; everything shown
+applies unchanged to `weak_map(player, t)`.
 
-<!--NoCompile-->
 <!-- 01 -->
 ```verse
-using { /Fortnite.com/Devices }
-using { /UnrealEngine.com/Temporary/Diagnostics }
-using { /Verse.org/Simulation }
+progress := module:
+    # Persistent storage is a module-scoped var weak_map
+    var Levels:weak_map(persistent_key, int) = map{}
 
-# Global persistable variable storing player data
-MySavedPlayerData : weak_map(player, int) = map{}
+    # A player with nothing saved yet gets the default
+    GetLevel(Key:persistent_key)<transacts>:int =
+        if (Level := Levels[Key]) then Level else 1
 
-# Initialize data for a player if not already present
-InitializePlayerData(Player : player) : void =
-    if (not MySavedPlayerData[Player]):
-        if (set MySavedPlayerData[Player] = 0) {}
+    # Writing one entry saves it for the next session
+    SetLevel(Key:persistent_key, Level:int)<transacts><decides>:void =
+        set Levels[Key] = Level
 ```
 
 ## Built-in Persistable Types
@@ -32,22 +34,22 @@ The following primitive types are persistable by default:
 
 - Numeric Types:
 
-   - **`logic`** - Boolean values (true/false)
-   - **`int`** - Integer values (must fit in 64-bit signed range for persistence)
-   - **`float`** - Floating-point numbers
+   - `logic` - Boolean values (true/false)
+   - `int` - Integer values (must fit in 64-bit signed range for persistence)
+   - `float` - Floating-point numbers
 
 - Character Types:
 
-   - **`string`** - Text values
-   - **`char`** - Single UTF-8 character
-   - **`char32`** - Single UTF-32 character
+   - `string` - Text values
+   - `char` - Single UTF-8 character
+   - `char32` - Single UTF-32 character
 
 - Container Types:
 
-   - **`array`** - Persistable if element type is persistable
-   - **`map`** - Persistable if both key and value types are persistable
-   - **`option`** - Persistable if the wrapped type is persistable
-   - **`tuple`** - Persistable if all element types are persistable
+   - `array` - Persistable if element type is persistable
+   - `map` - Persistable if both key and value types are persistable
+   - `option` - Persistable if the wrapped type is persistable
+   - `tuple` - Persistable if all element types are persistable
 
 !!! warning
     Persistence stores integers as 64-bit values. Serializing an integer outside
@@ -62,35 +64,73 @@ specifier with classes, structs, and enums.
 
 Classes must meet specific requirements to be persistable:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3663):
+    not_final := class<persistable>:
+        XP:int = 0
+assert_semantic_error(3664):
+    is_unique := class<final><unique><persistable>:
+        XP:int = 0
+assert_semantic_error(3665):
+    some_base := class:
+        XP:int = 0
+    has_super := class<final><persistable>(some_base){}
+assert_semantic_error(3665):
+    some_marker := interface{}
+    has_interface := class<final><persistable>(some_marker):
+        XP:int = 0
+assert_semantic_error(3502):
+    is_parametric(t:type) := class<final><persistable>:
+        XP:int = 0
+assert_semantic_error(3662):
+    has_var := class<final><persistable>:
+        var XP:int = 0
+assert_semantic_error(3582):
+    StartingXP():int = 0
+    calls_function := class<final><persistable>:
+        XP:int = StartingXP()
+-->
 <!-- 02 -->
 ```verse
-player_class := enum<persistable>:
-    Villager
-
-player_profile_data := class<final><persistable>:
+player_profile := class<final><persistable>:
     Version:int = 1
-    Class:player_class = player_class.Villager
-    XP:int = 0
-    Rank:int = 0
-    CompletedQuestCount:int = 0
+    Title:string = ""
+    Unlocked:[]string = array{}
+    BestTimes:[string]float = map{}
+    LastScore:?int = false
 ```
 
 Requirements for persistable classes:
 
 - Must have the `<persistable>` specifier
 - Must be `<final>` (no subclasses allowed)
-- Cannot be `<unique>` 
-- Cannot have a superclass (including interfaces) 
-- Cannot be parametric (generic) 
-- Can only contain persistable field types 
-- Cannot have variable members (`var` fields) 
-- Field initializers must be effect-free (cannot use `<transacts>`, `<decides>`, etc.) 
+- Cannot be `<unique>`
+- Cannot have a superclass (including interfaces)
+- Cannot be parametric (generic)
+- Can only contain persistable field types
+- Cannot have variable members (`var` fields)
+- Field initializers cannot call functions
+
+Two of those rules are less separate than they look. A `var` field is
+rejected not on its own account but because a mutable member's type is
+never persistable, so it reports the same diagnostic as any other
+unpersistable field. And the restriction on initializers is not about
+effects: the compiler rejects every call in a data-member initializer,
+effect-free ones included and in ordinary classes as much as persistable
+ones, because it cannot prove the call terminates. Initializers are
+limited to literals and constants.
 
 Structs are ideal for simple data structures that will not change after
 publication:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3502):
+    parametric_pair(t:type) := struct<persistable>:
+        Value:int
+assert_semantic_error(3607, 3662):
+    mutable_point := struct<persistable>:
+        var X:float = 0.0
+-->
 <!-- 03 -->
 ```verse
 coordinates := struct<persistable>:
@@ -101,24 +141,24 @@ coordinates := struct<persistable>:
 Requirements for persistable structs:
 
 - Must have the `<persistable>` specifier
-- Cannot be parametric (generic) 
-- Can only contain persistable field types (see Prohibited Field Types below) 
-- Field initializers must be effect-free (cannot use `<transacts>`, `<decides>`, etc.)
+- Cannot be parametric (generic)
+- Can only contain persistable field types (see Prohibited Field Types below)
+- Field initializers cannot call functions
 - Cannot be modified after island publication
 
 Enums represent a fixed set of named values:
 
-<!--versetest-->
 <!-- 04 -->
 ```verse
-day := enum<persistable>:
-    Monday
-    Tuesday
-    Wednesday
-    Thursday
-    Friday
-    Saturday
-    Sunday
+# A closed enum's set of values is fixed once published
+difficulty := enum<persistable><closed>:
+    Easy
+    Normal
+    Hard
+
+# An open enum can gain new values in a later release
+achievement := enum<persistable><open>:
+    FirstWin
 ```
 
 Important notes:
@@ -129,77 +169,114 @@ Important notes:
 ## Prohibited Field Types
 
 Persistable types have strict restrictions on what field types they
-can contain. The following types **cannot** be used as fields in
+can contain. The following types cannot be used as fields in
 persistable classes or structs:
 
 - Abstract and Dynamic Types:
 
-   - **`any`** - Cannot be persisted (too dynamic)
-   - **`comparable`** - Abstract interface type
-   - **`type`** - Type values cannot be persisted
+   - `any` - Cannot be persisted (too dynamic)
+   - `comparable` - Abstract interface type
+   - `type` - Type values cannot be persisted
 
 - Non-Serializable Types:
 
-   - **`rational`** - Exact rational numbers (not persistable)
-   - **Function types** (e.g., `int -> int`) - Functions cannot be serialized
-   - **`weak_map`** - Weak references are not persistable
-   - **Interface types** - Abstract interfaces cannot be persisted
+   - `rational` - Exact rational numbers (not persistable)
+   - Function types (e.g., `int -> int`) - Functions cannot be serialized
+   - `weak_map` - Weak references are not persistable
+   - Interface types - Abstract interfaces cannot be persisted
 
 - Non-Persistable User Types
 
-   - **Non-persistable enums** - Enums without `<persistable>` specifier cannot be used
-   - **Non-persistable classes** - Classes without `<persistable>` specifier cannot be used
-   - **Non-persistable structs** - Structs without `<persistable>` specifier cannot be used
+   - Non-persistable enums - Enums without `<persistable>` specifier cannot be used
+   - Non-persistable classes - Classes without `<persistable>` specifier cannot be used
+   - Non-persistable structs - Structs without `<persistable>` specifier cannot be used
 
-
-## Example
-
-Initializing Player Data:
+Every one of these produces the same diagnostic: the data member of a
+persistable type must itself be persistable.
 
 <!--versetest
-player := class<unique><persistent><module_scoped_var_weak_map_key>{}
-player_stats := struct<persistable>:
-    Level:int = 1
-    Experience:int = 0
-    GamesPlayed:int = 0
-
-var PlayerData : weak_map(player, player_stats) = map{}
-
-GetOrCreatePlayerStats(Player : player) : player_stats =
-    if (ExistingStats := PlayerData[Player]):
-        ExistingStats
-    else:
-        NewStats := player_stats{}
-        if (set PlayerData[Player] = NewStats):
-            NewStats
-        else:
-            player_stats{}
-<#
+assert_semantic_error(3662):
+    f_any := class<final><persistable>:
+        Anything:any
+assert_semantic_error(3662):
+    f_comparable := class<final><persistable>:
+        Key:comparable
+assert_semantic_error(3662):
+    f_type := class<final><persistable>:
+        Shape:type
+assert_semantic_error(3662):
+    f_rational := class<final><persistable>:
+        Exact:rational
+assert_semantic_error(3662):
+    f_function := class<final><persistable>:
+        Scale:type{_(:int):int}
+assert_semantic_error(3662):
+    f_weak_map := class<final><persistable>:
+        Cache:weak_map(int, int)
+assert_semantic_error(3662):
+    marker := interface{}
+    f_interface := class<final><persistable>:
+        Plugin:marker
+assert_semantic_error(3662):
+    plain_enum := enum:
+        Solo
+    f_enum := class<final><persistable>:
+        Mode:plain_enum
+assert_semantic_error(3662):
+    plain_class := class:
+        Value:int = 0
+    f_class := class<final><persistable>:
+        Owner:plain_class
+assert_semantic_error(3662):
+    plain_struct := struct:
+        Value:int = 0
+    f_struct := class<final><persistable>:
+        Point:plain_struct
 -->
 <!-- 05 -->
 ```verse
-# Define a persistable player stats structure
+save_slot := class<final><persistable>:
+    Label:string = ""
+    Scores:[]int = array{}
+
+    # ERROR: Anything:any              - too dynamic to serialize
+    # ERROR: Key:comparable            - abstract interface type
+    # ERROR: Shape:type                - type values cannot be persisted
+    # ERROR: Exact:rational            - not serializable
+    # ERROR: Scale:type{_(:int):int}   - functions cannot be serialized
+    # ERROR: Cache:weak_map(int, int)  - weak references are not persistable
+    # ERROR: Plugin:marker             - interface types are abstract
+    # ERROR: Mode:plain_enum           - enum without <persistable>
+    # ERROR: Owner:plain_class         - class without <persistable>
+    # ERROR: Point:plain_struct        - struct without <persistable>
+```
+
+## Example
+
+Putting the pieces together, here is a persistable struct behind a
+module that reads and updates one player's saved progress. Because a
+persistable type has no `var` fields, an update replaces the whole
+stored value rather than assigning into it:
+
+<!-- 06 -->
+```verse
 player_stats := struct<persistable>:
     Level:int = 1
     Experience:int = 0
-    GamesPlayed:int = 0
 
-# Global persistent storage
-PlayerData : weak_map(player, player_stats) = map{}
+progress_tracker := module:
+    var Stats:weak_map(persistent_key, player_stats) = map{}
 
-# Initialize or retrieve player data
-GetOrCreatePlayerStats(Player : player) : player_stats =
-    if (ExistingStats := PlayerData[Player]):
-        ExistingStats
-    else:
-        NewStats := player_stats{}
-        if (set PlayerData[Player] = NewStats):
-            NewStats
-        else:
-            player_stats{}  # Fallback
+    # A player with nothing saved yet gets the struct's defaults
+    GetStats(Key:persistent_key)<transacts>:player_stats =
+        if (Existing := Stats[Key]) then Existing else player_stats{}
+
+    AddExperience(Key:persistent_key, Points:int)<transacts><decides>:void =
+        Current := GetStats(Key)
+        set Stats[Key] = player_stats:
+            Level := Current.Level
+            Experience := Current.Experience + Points
 ```
-<!-- #> -->
-
 
 ## JSON Serialization
 
@@ -212,45 +289,28 @@ primary persistence mechanism uses `weak_map(player, t)` for automatic
 player data, JSON serialization can be useful for debugging, data
 migration, or integration with external systems.
 
-Converts a persistable value to JSON string:
+`ToJson` converts a persistable value to a JSON string, and `FromJson`
+deserializes a JSON string back to a typed value:
 
 <!--versetest
-player := class<unique>{}
 player_data := class<final><persistable>:
     Level:int = 1
     Score:int = 100
 PersistenceModule := module{
     ToJson<public>(Data:player_data)<decides>:string = ""
-}
--->
-<!-- 06 -->
-```verse
-# Serialize persistable data to JSON
-Data := player_data{Level := 5, Score := 250}
-JsonString := PersistenceModule.ToJson[Data]
-# Produces: {"$package_name":"/...", "$class_name":"player_data", "x_Level":5, "x_Score":250}
-```
-
-Deserializes JSON string to typed value:
-
-<!--versetest
-player := class<unique>{}
-player_data := class<final><persistable>:
-    Level:int = 1
-    Score:int = 100
-PersistenceModule := module{
     FromJson<public>(JsonStr:string, T:type)<transacts><decides>:player_data =
         false?
-        player_data{Level := 1, Score := 100}
+        player_data{}
 }
 -->
 <!-- 07 -->
 ```verse
-# Deserialize JSON to typed value
-JsonString := ""
-if (Restored := PersistenceModule.FromJson[JsonString, player_data]):
-    # Restored.Level = 10
-    # Restored.Score = 500
+Data := player_data{Level := 5, Score := 250}
+Json := PersistenceModule.ToJson[Data]
+# {"$package_name":"/...", "$class_name":"player_data", "x_Level":5, "x_Score":250}
+
+if (Restored := PersistenceModule.FromJson[Json, player_data]):
+    Restored.Level = 5
 ```
 
 All serialized persistable objects include metadata fields:
@@ -264,154 +324,53 @@ All serialized persistable objects include metadata fields:
 }
 ```
 
-**Metadata fields:**
-
-- `$package_name` - Package path of the type
-- `$class_name` - Qualified class/struct name
-
-**Field names:**
-
-- Prefixed with `x_` in current format
-- Old format used mangled names like `i___verse_0x123_FieldName`
+Of these, `$package_name` is the package path of the type and
+`$class_name` is the qualified class or struct name. Field names are
+prefixed with `x_` in the current format; an older format used mangled
+names like `i___verse_0x123_FieldName`.
 
 ### Type-Specific Serialization
 
-**Primitives:**
+Each persistable type has its own JSON encoding:
 
-<!--versetest
-player := class<unique>{}
-int_ref := class<final><persistable>:
-    Value:int
-PersistenceModule := module{
-    ToJson<public>(Data:int_ref)<decides>:string = ""
-}
--->
-<!-- 08 -->
-```verse
-# Serialized as JSON number
-JsonString := PersistenceModule.ToJson[int_ref{Value := 42}]
-# {"$package_name":"...", "$class_name":"int_ref", "x_Value":42}
-```
+| Field                                | JSON                                                   |
+| ------------------------------------ | ------------------------------------------------------ |
+| `Value:int = 42`                     | `"x_Value":42`                                         |
+| `Value:?int = false`                 | `"x_Value":false`                                      |
+| `Value:?int = option{42}`            | `"x_Value":{"":42}`                                    |
+| `Pair:tuple(int, int) = (4, 5)`      | `"x_Pair":[4,5]`                                       |
+| `Empty:tuple() = ()`                 | `"x_Empty":[]`                                         |
+| `Values:[]int = array{1, 2, 3}`      | `"x_Values":[1,2,3]`                                   |
+| `Lookup:[string]int = map{"a" => 1}` | `"x_Lookup":[{"k":{"":"a"},"v":{"":1}}]`               |
+| `Mode:difficulty = difficulty.Easy`  | `"x_Mode":"difficulty::Easy"`                          |
 
-**Optional types:**
-
-<!--versetest
-player := class<unique>{}
-optional_ref := class<final><persistable>:
-    Value:?int
-PersistenceModule := module{
-    ToJson<public>(Data:optional_ref)<decides>:string = ""
-}
--->
-<!-- 09 -->
-```verse
-# None serialized as false
-PersistenceModule.ToJson[optional_ref{Value := false}]
-# {..., "x_Value":false}
-
-# Some serialized as object with empty key
-PersistenceModule.ToJson[optional_ref{Value := option{42}}]
-# {..., "x_Value":{"":42}}
-```
-
-**Tuples:**
-
-<!--versetest
-player := class<unique>{}
-tuple_ref := class<final><persistable>:
-    Pair:tuple(int, int)
-empty_tuple_ref := class<final><persistable>:
-    Empty:tuple()
-PersistenceModule := module{
-    ToJson<public>(Data:tuple_ref):string = ""
-    ToJson<public>(Data:empty_tuple_ref):string = ""
-}
--->
-<!-- 10 -->
-```verse
-# Serialized as JSON array
-PersistenceModule.ToJson(tuple_ref{Pair := (4, 5)})
-# {..., "x_Pair":[4,5]}
-
-# Empty tuple
-PersistenceModule.ToJson(empty_tuple_ref{Empty := ()})
-# {..., "x_Empty":[]}
-```
-
-**Arrays:**
-<!--versetest
-player := class<unique>{}
-array_ref := class<final><persistable>:
-    Values:[]int
-PersistenceModule := module{
-    ToJson<public>(Data:array_ref)<decides>:string = ""
-}
--->
-<!-- 11 -->
-```verse
-PersistenceModule.ToJson[array_ref{Values := array{1, 2, 3}}]
-# {..., "x_Values":[1,2,3]}
-```
-
-**Maps:**
-
-<!--versetest
-player := class<unique>{}
-map_ref := class<final><persistable>:
-    Lookup:[string]int
-PersistenceModule := module{
-    ToJson<public>(Data:map_ref)<decides>:string = ""
-}
--->
-<!-- 12 -->
-```verse
-PersistenceModule.ToJson[map_ref{Lookup := map{"a" => 1, "b" => 2}}]
-# {..., "x_Lookup":[{"k":{"":"a"},"v":{"":1}}, {"k":{"":"b"},"v":{"":2}}]}
-```
-
-**Enums:**
-
-<!--versetest
-player := class<unique>{}
-day := enum<persistable>:
-    Monday
-    Tuesday
-enum_ref := class<final><persistable>:
-    Day:day
-PersistenceModule := module{
-    ToJson<public>(Data:enum_ref)<decides>:string = ""
-}
--->
-<!-- 13 -->
-```verse
-PersistenceModule.ToJson[enum_ref{Day := day.Monday}]
-# {..., "x_Day":"day::Monday"}
-```
+A primitive becomes the corresponding JSON scalar. An `option` is
+`false` when empty and an object with a single empty key when present.
+Tuples and arrays become JSON arrays, a map becomes an array of
+key/value pairs, and an enum becomes its qualified name as a string.
 
 ### Default Value Handling
 
 When deserializing, missing fields are automatically filled with their default values:
 
 <!--versetest
-player := class<unique>{}
 versioned_data := class<final><persistable>:
     Version:int = 1
     NewField:int = 0
 PersistenceModule := module{
     FromJson<public>(JsonStr:string, T:type)<transacts><decides>:versioned_data =
         false?
-        versioned_data{Version := 1, NewField := 0}
+        versioned_data{}
 }
 -->
-<!-- 14 -->
+<!-- 08 -->
 ```verse
-# Old JSON without NewField
-OldJson := ""
+# Old JSON, written before NewField existed, carries no x_NewField
+OldJson := "\{\"x_Version\":1\}"
 
-# Deserializes successfully with default for NewField
 if (Data := PersistenceModule.FromJson[OldJson, versioned_data]):
     Data.Version = 1
-    Data.NewField = 0  # Uses default value
+    Data.NewField = 0   # filled in from the field's default
 ```
 
 This enables forward-compatible schema evolution - new fields with
@@ -422,22 +381,25 @@ defaults can be added without breaking old saved data.
 Block clauses do not execute when deserializing from JSON:
 
 <!--versetest
-player := class<unique>{}
-logged_class := class<final><persistable>:
-    Value:int
 PersistenceModule := module{
-    ToJson<public>(Data:logged_class):string = ""
-    FromJson<public>(JsonStr:string, T:type)<transacts>:logged_class = logged_class{Value := 1}
+    FromJson<public>(JsonStr:string, T:type)<transacts><decides>:audited =
+        false?
+        audited{}
 }
 -->
-<!-- 15 -->
+<!-- 09 -->
 ```verse
-# Normal construction triggers block
-Instance1 := logged_class{Value := 1}
+audited := class<final><persistable>:
+    Value:int = 0
+    block:
+        Print("constructed")
 
-# Deserialization does NOT trigger block
-Json := PersistenceModule.ToJson(Instance1)
-Instance2 := PersistenceModule.FromJson(Json, logged_class)  # No print
+# Normal construction runs the block clause
+Instance := audited{Value := 1}
+
+# Deserialization does not: nothing is printed here
+if (Loaded := PersistenceModule.FromJson["{}", audited]):
+    Loaded.Value = 0
 ```
 
 Block clauses are only executed during normal construction, not during
@@ -447,46 +409,28 @@ for loaded data.
 ### Integer Range Limitations
 
 Verse protects against integer overflow during serialization. Integers
-that exceed the safe serialization range cause runtime errors:
-
-<!--versetest
-player := class<unique>{}
-int_ref := class<final><persistable>:
-    Value:int
-PersistenceModule := module{
-    ToJson<public>(Data:int_ref)<decides>:string = ""
-}
--->
-<!-- 16 -->
-```verse
-# Safe range integers work fine
-SafeData := int_ref{Value := 1000000000000000000}
-PersistenceModule.ToJson[SafeData]  # OK
-
-# Very large integers may cause runtime errors during serialization
-# to prevent silent precision loss
-```
+that exceed the safe serialization range cause runtime errors, so a
+field holding a value produced by arbitrary-precision arithmetic can
+serialize correctly in testing and fail in the field.
 
 This prevents silent precision loss that could occur with
 floating-point representation of large integers.
 
-
 ## Best Practices
 
-- **Schema Stability:** Design your persistable types carefully, as
+- Design your persistable types carefully for schema stability, as
 they cannot be easily changed after publication. Consider versioning
 strategies for future updates.
 
-- **Use Structs for Simple Data:** For data that will not need
-inheritance or complex behavior, prefer persistable structs over
-classes.
+- For data that will not need inheritance or complex behavior, prefer
+persistable structs over classes.
 
-- **Handle Missing Data:** Always check if data exists for a player
-before accessing it, and provide appropriate defaults.
+- Always check if data exists for a player before accessing it, and
+provide appropriate defaults for missing data.
 
-- **Atomic Updates:** When updating persistent data, create new
-instances rather than trying to modify existing ones (Verse uses
-immutable data structures).
+- When updating persistent data, create new instances rather than
+trying to modify existing ones (Verse uses immutable data structures),
+which makes every update atomic.
 
-- **Consider Memory Usage:** Persistent data is loaded for all players
-when they join, so be mindful of the amount of data stored per player.
+- Persistent data is loaded for all players when they join, so be
+mindful of the memory used by the amount of data stored per player.

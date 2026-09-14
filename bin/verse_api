@@ -1745,11 +1745,15 @@ const APPENDIX_INTRO = [
   'part of the native runtime surface. Listed for completeness.',
 ];
 
+// Deliberately free of the build date and of the local path to the engine.
+// The HTML is committed so that GitHub Pages can serve it, and either of those
+// would change the file on every regeneration — daily for the date, and per
+// contributor for the path — producing a megabyte of diff that says nothing.
+// What it is generated from is identified by the engine version instead, and
+// when it was generated is a question for git.
 function provenanceLines(model) {
-  const now = new Date().toISOString().slice(0, 10);
   return [
-    `Produced by \`bin/verse_api\` on ${now} from the engine checkout at`,
-    `\`${model.engineRoot.split(path.sep).join('/')}\`` +
+    `Produced by \`bin/verse_api\` from the Verse runtime in fortniteMain` +
       (model.engineVersion ? ` (${model.engineVersion}).` : '.'),
     'Regenerate rather than edit by hand.',
   ];
