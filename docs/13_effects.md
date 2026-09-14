@@ -29,25 +29,16 @@ verifiable.
 
 Consider this simple function that greets a player:
 
-<!--versetest
-c:=class:
-    var CurrentGreeting:string=""
-    GreetPlayer()<transacts>:void =
-        set CurrentGreeting = "Hello, adventurer!"
-assert:
-    C:=c{}
-    C.GreetPlayer()
-<#
--->
 <!-- 01 -->
 ```verse
+var CurrentGreeting:string = ""
+
 GreetPlayer()<transacts>:void =
     set CurrentGreeting = "Hello, adventurer!"
-    Print(CurrentGreeting)
+
+GreetPlayer()
+CurrentGreeting = "Hello, adventurer!"
 ```
-<!--
-#>
--->
 
 The `<transacts>` effect tells you immediately that this function
 modifies mutable state. You do not need to read the implementation to
@@ -62,7 +53,7 @@ propagation ensures that effects can't be hidden or laundered through
 intermediate functions, so the true nature of an operation is always
 visible at every level of the call stack.
 
-**Why Effects Matter**
+### Why Effects Matter
 
 Making effects explicit serves both human understanding and compiler
 optimization. For developers, effects act as documentation that can't
@@ -142,10 +133,9 @@ Think of effect specifiers as setting bits in a bit vector: one bit
 per fundamental effect. Without any annotation, a function such as
 `GameUpdate` has the following effects:
 
-<!--NoCompile-->
 <!-- 02 -->
 ```verse
-GameUpdate():void = ...  # No explicit effects specified
+GameUpdate():void = {}  # No explicit effects specified
 ```
 
 | dictates | suspends | reads | writes | allocates | succeeds | fails |
@@ -166,10 +156,9 @@ Annotating a function only affects the bits in that specifier's
 family. For example, function `CheckPlayerStatus` with the `<reads>`
 and `<predicts>` specifier:
 
-<!--NoCompile-->
 <!-- 03 -->
 ```verse
-CheckPlayerStatus()<reads><predicts>:string = ...
+CheckPlayerStatus()<reads><predicts>:string = "Ready"
 ```
 
 has the following effects:
@@ -192,34 +181,19 @@ they are deterministic transformations that always produce output. But
 functions marked with `<decides>` can fail, turning failure into a
 control flow mechanism.
 
-<!--versetest
-ValidateHealth(Health:float)<transacts><decides>:void =
-    Health > 0.0
-    Health <= 100.0
-
-StartCombat():void={}
-player:=struct{Health:float}
-
-assert:
-    Player:=player{Health:=50.0}
-    if (ValidateHealth[Player.Health]):
-        StartCombat()
-<#
--->
 <!-- 04 -->
 ```verse
 ValidateHealth(Health:float)<transacts><decides>:void =
     Health > 0.0      # Fails if health is zero or negative
     Health <= 100.0   # Fails if health exceeds maximum
 
-# Usage
-if (ValidateHealth[Player.Health]):
-    # Health is valid, continue processing
-    StartCombat()
+# The check itself is the branch
+if (ValidateHealth[50.0]):
+    Print("Combat starts")
+
+not ValidateHealth[0.0]
+not ValidateHealth[150.0]
 ```
-<!--
-#>
--->
 
 The beauty of the decides effect is that it unifies validation with
 control flow. You do not check conditions and then act on them; the
@@ -249,31 +223,11 @@ can see the current values of variables and mutable fields, but cannot
 modify them. This is useful for queries and calculations based on
 current game state.
 
-<!--versetest
-player := class:
-    Name:string
-    var Health:float = 100.0
-    var Score:int = 0
-
-GetPlayerStatus(P:player)<reads>:string =
-    if (P.Health > 50.0):
-        "Healthy"
-    else if (P.Health > 0.0):
-        "Injured"
-    else:
-        "Defeated"
-
-assert:
-    P:=player{Name:="Test"}
-    Status:=GetPlayerStatus(P)
-<#
--->
 <!-- 06 -->
 ```verse
 player := class:
     Name:string
     var Health:float = 100.0
-    var Score:int = 0
 
 GetPlayerStatus(P:player)<reads>:string =
     if (P.Health > 50.0):
@@ -282,10 +236,11 @@ GetPlayerStatus(P:player)<reads>:string =
         "Injured"
     else:
         "Defeated"
+
+GetPlayerStatus(player{Name := "Ana"}) = "Healthy"
+GetPlayerStatus(player{Name := "Bo", Health := 10.0}) = "Injured"
+GetPlayerStatus(player{Name := "Cy", Health := 0.0}) = "Defeated"
 ```
-<!--
-#>
--->
 
 The `<writes>` effect permits modification of mutable state. Functions
 with this effect can use `set` to update variables and mutable
@@ -302,40 +257,46 @@ with potentially some `reads` and `allocates`.
 player := class:
     Name:string
     var Health:float = 100.0
-
-HealPlayer(P:player, Amount:float)<transacts>:void =
-    NewHealth := P.Health + Amount
-    set P.Health = Min(NewHealth, 100.0)
-
-assert:
-    P:=player{Name:="Test", Health:=50.0}
-    HealPlayer(P, 30.0)
-<#
 -->
 <!-- 07 -->
 ```verse
 HealPlayer(P:player, Amount:float)<transacts>:void =
     NewHealth := P.Health + Amount
     set P.Health = Min(NewHealth, 100.0)
+
+Hurt := player{Name := "Ana", Health := 50.0}
+HealPlayer(Hurt, 30.0)
+Hurt.Health = 80.0
+
+HealPlayer(Hurt, 50.0)   # Min caps the result at the maximum
+Hurt.Health = 100.0
 ```
-<!--
-#>
--->
 
 The `<allocates>` effect indicates functions that create observably
 unique values: either objects marked `<unique>` or values containing
 mutable fields. Each call to such a function returns a distinct value,
 even if the inputs are identical.
 
-<!--NoCompile-->
+<!--versetest
+vector3 := struct:
+    X:float
+    Y:float
+    Z:float
+-->
 <!-- 08 -->
 ```verse
-game_entity := class<allocates>:
-    ID:id
+game_entity := class<unique><allocates>:
+    Name:string
     var Position:vector3
 
-CreateEntity(Pos:vector3)<allocates>:game_entity =
-    game_entity{ID := GenerateID(), Position := Pos}
+CreateEntity(N:string, Pos:vector3)<allocates>:game_entity =
+    game_entity{Name := N, Position := Pos}
+
+# Identical arguments, yet two distinguishable entities
+Origin := vector3{X := 0.0, Y := 0.0, Z := 0.0}
+First := CreateEntity("goblin", Origin)
+Second := CreateEntity("goblin", Origin)
+not First = Second
 ```
 
 The `<transacts>` is the default for functions. 
@@ -348,13 +309,17 @@ resume later, potentially across multiple game frames. This is
 essential for operations that take time: animations, cooldowns,
 waiting for player input, or any multi-frame behavior.
 
-<!--NoCompile-->
+<!--versetest
+PlayAnimation(Name:string):void = {}
+PlaySound(Name:string):void = {}
+ShowRewardsScreen():void = {}
+-->
 <!-- 09 -->
 ```verse
 PlayVictorySequence()<suspends>:void =
-    PlayAnimation(VictoryDance)
+    PlayAnimation("VictoryDance")
     Sleep(2.0)  # Wait 2 seconds
-    PlaySound(VictoryFanfare)
+    PlaySound("VictoryFanfare")
     Sleep(1.0)
     ShowRewardsScreen()
 ```
@@ -397,7 +362,13 @@ ProcessAsync(Value:int)<suspends>:void =
 
 A `<suspends>` function can call another `<suspends>` function, but *must not use failure-handling syntax* like `?`:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3512):
+    AsyncOp11()<suspends>:?int = false
+    CallAsync11()<suspends>:void =
+        if (Value := AsyncOp11()?):
+            Value
+-->
 <!-- 11 -->
 ```verse
 AsyncOp()<suspends>:?int = false
@@ -417,7 +388,9 @@ forms creates ambiguity about what's being handled.
 
 ### Internal effects
 
-**[Pre-release]**: The `<no_rollback>` effect is deprecated.
+The internal family exists for the compiler's own use. Its single
+effect, `no_rollback`, marks code in which transactions are disallowed.
+It has no specifier of its own and is being deprecated.
 
 #### Prediction effects
 
@@ -431,21 +404,29 @@ specifier allows functions to run predictively on clients for
 responsiveness, with the server later validating and potentially
 correcting the results.
 
-<!--NoCompile-->
+<!--versetest
+StartJumpAnimation()<predicts>:void = {}
+PlayJumpSound()<predicts>:void = {}
+ApplyJumpVelocity()<predicts>:void = {}
+-->
 <!-- 12 -->
 ```verse
 HandleJumpInput()<predicts>:void =
     # Runs immediately on the client for responsiveness
     StartJumpAnimation()
     PlayJumpSound()
-
-    # Server will validate and correct if needed
-    PerformJump()
+    ApplyJumpVelocity()
 ```
 
 This enables responsive gameplay even with network latency, as players
 see immediate feedback for their actions while the server maintains
 authoritative state.
+
+Because `<predicts>` clears the `dictates` bit rather than adding to
+it, the effect propagates downwards: everything a predicting function
+calls must itself predict. A server-authoritative function cannot be
+invoked from one, so the client-side path has to be built out of
+predicting pieces all the way down.
 
 #### Divergence effects
 
@@ -559,40 +540,28 @@ A function with **fewer effects** can be used where a function with
 **more effects** is expected. This is effect subtyping: a function that
 does less is compatible with a context that allows more:
 
-<!--versetest-->
 <!-- 17 -->
 ```verse
 # Pure function with only computes
 PureAdd(X:int)<computes>:int = X + 1
 
-# Variable that expects computes and decides
-F:type{_(:int)<computes><decides>:int} = PureAdd
+# Assignable to any type that permits at least as much
+F1:type{_(:int)<computes><decides>:int} = PureAdd
+F2:type{_(:int)<transacts>:int} = PureAdd
+F3:type{_(:int)<reads>:int} = PureAdd
 
-# Calling through the variable
-Result := F[5]  # Must use [] syntax since type has <decides>
-# Returns 6 since PureAdd never fails
+F1[5] = 6   # Must use [] since this type has <decides>
+F2(5) = 6
+F3(5) = 6
 ```
 
 In this example, `PureAdd` has only `<computes>`, but it can be
 assigned to a variable expecting `<computes><decides>`. The pure
 function is a valid implementation of the failable interface; it simply
-never exercises the failure capability.
-
-This principle applies to all effects:
-
-<!--versetest-->
-<!-- 18 -->
-```verse
-# Function with <computes>
-Compute(X:int)<computes>:int = X * 2
-
-# Can assign to types expecting more effects
-F1:type{_(:int)<computes><decides>:int} = Compute
-F2:type{_(:int)<transacts>:int} = Compute
-F3:type{_(:int)<reads>:int} = Compute
-
-# All valid - Compute does less than what's allowed
-```
+never exercises the failure capability. The same principle applies to
+all effects, which is why the assignments to the `<transacts>` and
+`<reads>` types are equally valid: `PureAdd` does less than what any of
+them allows.
 
 When deciding subtyping, effects have the following impact:
 
@@ -611,7 +580,7 @@ assert_semantic_error(3509):
         X
     F20:type{_(:int)<computes>:int} = Validate20
 -->
-<!-- 19 -->
+<!-- 18 -->
 ```verse
 Validate(X:int)<computes><decides>:int =
     X > 0
@@ -624,8 +593,16 @@ Validate(X:int)<computes><decides>:int =
 
 Similarly, functions with heap effects cannot be assigned to pure types:
 
-<!--NoCompile-->
-<!-- 20 -->
+<!--versetest
+assert_semantic_error(3509):
+    c20 := class:
+        var Count:int = 0
+    Increment20(C:c20)<transacts>:int =
+        set C.Count = C.Count + 1
+        C.Count
+    F20:type{_(:c20)<computes>:int} = Increment20
+-->
+<!-- 19 -->
 ```verse
 counter := class:
     var Count:int = 0
@@ -634,9 +611,12 @@ Increment(C:counter)<transacts>:int =
     set C.Count = C.Count + 1
     C.Count
 
-# ERROR: Cannot assign transacts function to computes type
-# F:type{_(:counter)<computes>:int} = Increment
-# The function writes state, type does not permit it
+Tally := counter{}
+Increment(Tally) = 1
+Increment(Tally) = 2
+
+# ERROR: F:type{_(:counter)<computes>:int} = Increment
+# The function writes state, the type does not permit it
 ```
 
 This restriction ensures type safety: the type signature is a promise
@@ -648,33 +628,7 @@ effects, the resulting expression has the union of all possible
 effects. This is *effect joining*: the compiler conservatively assumes
 the result might perform any effect that any branch could perform:
 
-<!--versetest-->
-<!-- 21 -->
-```verse
-# Functions with different effects
-PureFunction(X:int)<computes>:int = X + 1
-FailableFunction(X:int)<computes><decides>:int =
-    X > 0
-    X + 1
-
-# Conditional selection joins effects
-SelectFunction(UseFailable:logic):type{_(:int)<computes><decides>:int} =
-    if (UseFailable?):
-        FailableFunction  # Has <computes><decides>
-    else:
-        PureFunction      # Has <computes>
-    # Result type must account for both: <computes><decides>
-
-# The returned function might fail (from FailableFunction)
-# or might not (from PureFunction), so type must include <decides>
-F := SelectFunction(true)
-Result := F[5]  # Must use [] because result type has <decides>
-```
-
-Effect joining applies to all control flow that selects between functions:
-
-<!--versetest-->
-<!-- 22 -->
+<!-- 20 -->
 ```verse
 Identity(X:int)<computes>:int = X
 
@@ -684,32 +638,28 @@ DecidesIdentity(X:int)<computes><decides>:int =
 
 TransactsIdentity(X:int)<transacts>:int = X
 
-# Joining <computes> and <computes><decides>
+# Joining <computes> and <computes><decides> gives <computes><decides>
 F1:type{_(:int)<computes><decides>:int} =
-    if (true?):
-        Identity
-    else:
-        DecidesIdentity
-# Result: <computes><decides> (union of effects)
+    if (true?) then Identity else DecidesIdentity
 
-# Joining <computes><decides> and <transacts>
+# Joining <computes><decides> and <transacts> gives both
 F2:type{_(:int)<decides><transacts>:int} =
-    if (true?):
-        DecidesIdentity  # <computes><decides>
-    else:
-        TransactsIdentity  # <transacts>
-# Result: <decides><transacts> (union of effects)
+    if (true?) then DecidesIdentity else TransactsIdentity
+
+# Both must be called with [] because each joined type has <decides>
+F1[5] = 5
+F2[5] = 5
 ```
+
+The selected function might fail, if the branch taken was the failable
+one, or might not, so the type has to include `<decides>` either way.
+Effect joining applies to all control flow that selects between
+functions, not just `if`.
 
 
 Effect subtyping enables flexible function parameters:
 
-<!--versetest
-PureAdd(:int)<computes>:int=1
-Validate(:int)<computes><decides>:int=1
-Increment(:int)<transacts>:int=1
--->
-<!-- 23 -->
+<!-- 21 -->
 ```verse
 # Accepts any function that does not exceed <transacts><decides>
 ProcessValues(
@@ -719,46 +669,39 @@ ProcessValues(
     for (Value:Data, Result := Transform[Value]):
         Result
 
-# Can pass pure functions
-ProcessValues(array{1, 2, 3}, PureAdd)
+Double(X:int)<computes>:int = X * 2
+Positive(X:int)<computes><decides>:int =
+    X > 0
+    X
 
-# Can pass failable functions
-ProcessValues(array{1, 2, 3}, Validate)
+ProcessValues(array{1, 2, 3}, Double) = array{2, 4, 6}
 
-# Can pass transactional functions
-ProcessValues(array{1, 2, 3}, Increment)
+# A failing Transform simply drops that element from the result
+ProcessValues(array{-1, 2, 3}, Positive) = array{2, 3}
 ```
 
 Effect subtyping makes function composition work naturally:
 
-<!--versetest
-PureFunction(:int)<computes>:int=1
-FailableFunction(:int)<computes><decides>:int=1
--->
-<!-- 24 -->
+<!-- 22 -->
 ```verse
-Compose(
-    F(:int)<computes>:int,
-    G(:int)<computes>:int
-):type{_(:int)<computes>:int} =
-    Local(X:int)<computes>:int = G(F(X))
-    Local
+PureFunction(X:int)<computes>:int = X + 1
+FailableFunction(X:int)<computes><decides>:int =
+    X > 0
+    X * 10
 
-# If we want to allow more effects:
 ComposeFlexible(
     F(:int)<transacts><decides>:int,
     G(:int)<transacts><decides>:int
 ):type{_(:int)<transacts><decides>:int} =
-    Local(X:int)<transacts><decides>:int =
-        if (IntermediateResult := F[X]):
-            G[IntermediateResult]
-        else:
-            1=2; 0
+    Local(X:int)<transacts><decides>:int = G[F[X]]
     Local
 
-# Can pass functions with fewer effects
-ComposeFlexible(PureFunction, PureFunction)
-ComposeFlexible(PureFunction, FailableFunction)
+# Both arguments have fewer effects than the parameter types allow
+H := ComposeFlexible(PureFunction, FailableFunction)
+H[4] = 50
+
+# Failure propagates out of the composition
+not H[-1]
 ```
 
 The following table summarize the interaction of effects and types:
@@ -786,7 +729,7 @@ useful for ensuring that creating certain objects remains pure or has
 limited effects:
 
 <!--versetest-->
-<!-- 25 -->
+<!-- 23 -->
 ```verse
 # Pure data structure - constructor has no effects
 vector3 := struct<computes>:
@@ -810,7 +753,7 @@ assert_semantic_error(3512):
 assert_semantic_error(3512):
     invalid_struct29 := struct<decides>{}
 -->
-<!-- 26 -->
+<!-- 24 -->
 ```verse
 # Valid effect specifiers for classes/interfaces/structs:
 valid_class := class<computes>{}
@@ -827,8 +770,7 @@ This restriction applies to the class/struct **declaration** itself.
 The archetype constructor `my_class{...}` cannot be failable or
 suspending. However, **constructor functions** can use `<decides>`:
 
-<!--NoCompile-->
-<!-- 27 -->
+<!-- 25 -->
 ```verse
 # The class declaration cannot be <decides>
 my_class := class:
@@ -840,6 +782,10 @@ MakeMyClass<constructor>(V:int)<transacts><decides> := my_class:
         V > 0      # Fails if V <= 0
         V < 100    # Fails if V >= 100
         V
+
+MakeMyClass[42].Value = 42
+not MakeMyClass[0]
+not MakeMyClass[100]
 ```
 
 This provides failable construction when needed: the object either
@@ -859,7 +805,7 @@ assert_semantic_error(3512, 3512):
         block:
             set Counter = 1
 -->
-<!-- 28 -->
+<!-- 26 -->
 ```verse
 # Field initializers must use pure functions
 HelperFunction()<transacts>:int = 42
@@ -901,7 +847,7 @@ assert_semantic_error(3512):
     transacting31 := interface<transacts>{}
     invalid31 := class<computes>(transacting31){}
 -->
-<!-- 29 -->
+<!-- 27 -->
 ```verse
 # Interface with transacts effect
 transacting_interface := interface<transacts>{}
@@ -921,7 +867,7 @@ assert_semantic_error(3512):
     invalid_interface32 := interface<computes>:
         Instance:tc32 = tc32{}
 -->
-<!-- 30 -->
+<!-- 28 -->
 ```verse
 transacting_class := class<transacts>{}
 
@@ -956,16 +902,18 @@ beneficial. A function marked `<reads>` can be implemented as pure
 without breaking existing callers.
 
 <!--versetest
-weapon:=struct<computes>{Type:weapon_type,Dammage:int}
+weapon:=struct<computes>{Type:weapon_type,Damage:int}
 weapon_type:=enum:
     Sword
 -->
-<!-- 31 -->
+<!-- 29 -->
 ```verse
 # API promises it might read state
-GetDefaultWeapon<public>()<reads>:weapon =
+GetDefaultWeapon()<reads>:weapon =
     # But current implementation is pure
-    weapon{Type := weapon_type.Sword, Dammage := 10}
+    weapon{Type := weapon_type.Sword, Damage := 10}
+
+GetDefaultWeapon().Damage = 10
 ```
 
 Effect over-specification can future-proof APIs and avoid breaking

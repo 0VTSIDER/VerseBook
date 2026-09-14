@@ -66,26 +66,28 @@ private, allowing access within the defining class and any classes
 that inherit from it. This level exists specifically to support
 inheritance hierarchies while maintaining encapsulation:
 
-<!--versetest
-vector3:=class{}
-MaxHealth:int=1
--->
+<!--versetest-->
 <!-- 02 -->
 ```verse
 game_entity := class:
-    var Position<protected>:vector3 = vector3{x:=0.0, y:=0.0, z:=0.0}
     var Health<protected>:int = 100
 
-    UpdatePosition<protected>(NewPos:vector3):void =
-        set Position = NewPos
-        OnPositionChanged()
+    Damage<protected>(Amount:int):void =
+        set Health -= Amount
+        OnHealthChanged()
 
-    OnPositionChanged<protected>():void = {}  # Overridable by subclasses
+    OnHealthChanged<protected>():void = {}  # Overridable by subclasses
 
 player := class(game_entity):
-    MoveToSpawn():void =
-        UpdatePosition(GetSpawnLocation())  # Can access protected member
-        set Health = MaxHealth              # Can modify protected variable
+    TakeHit():void =
+        Damage(25)       # Can call a protected method
+        set Health += 5  # Can modify a protected variable
+
+    Report():int = Health
+
+Hero := player{}
+Hero.TakeHit()
+Hero.Report() = 80
 ```
 
 Protected access enables the template method pattern and other

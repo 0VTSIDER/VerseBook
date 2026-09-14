@@ -1086,20 +1086,21 @@ assert:
 
 How the return type of `=` is computed:
 
+<!--versetest-->
 <!-- 42 -->
 ```verse
-I:int=1
-R:rational=1/3
-X:rational= (I=R)  # Compiles and fails at runtime
+# The declared return types are what `=` actually produces, so these
+# signatures type-check; both comparisons then fail at runtime
+CompareToRational(I:int, R:rational)<computes><decides>:rational = I = R
+CompareToString(I:int, S:string)<computes><decides>:comparable = I = S
 
-I:int=1
-S:string="hi"
-Y:comparable= (I=S)  # Compiles and fails at runtime
+not CompareToRational[1, 1/3]
+not CompareToString[1, "hi"]
 ```
 
-In the case of variable `X`, its type can be either `rational` or
-`comparable`. For variable `Y`, the only common type between `int` and
-`string` is `comparable`.
+Comparing an `int` with a `rational` could yield either `rational` or
+`comparable`, and the least upper bound, `rational`, is the one chosen.
+For an `int` and a `string` the only common type is `comparable`.
 
 
 Classes require special handling for comparability. By default, class

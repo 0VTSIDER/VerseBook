@@ -72,13 +72,13 @@ if (IsPlayerReady[]) {
 
 For simple operations, the single-line dot format keeps code concise:
 
-<!--versetest-->
-<!-- 04 -->
-```verse
+<!--versetest
 HasPowerup()<computes><decides>:void={}
 ApplyBoost():void={}
-F():void=
-    if (HasPowerup[]). ApplyBoost()
+-->
+<!-- 04 -->
+```verse
+if (HasPowerup[]). ApplyBoost()
 ```
 
 Since everything is an expression, blocks themselves have values. The
@@ -100,6 +100,8 @@ FinalScore := block:              # The variable has the block's value
     Bonus := CalculateBonus(CompletionTime)
     Accuracy := Floor[AccuracyValue * 100.0]
     Base + Bonus + Accuracy       # This becomes the block's value
+
+FinalScore = 245
 ```
 
 
@@ -164,17 +166,30 @@ The condition in an `if` must contain at least one expression that can
 fail. This requirement ensures `if` is used for its intended
 purpose, handling uncertain outcomes:
 
-<!--NoCompile-->
+<!--versetest
+Items:[]int = array{1, 2, 3}
+Process(X:int):void = {}
+assert_semantic_error(3513):
+    DoSomething():void = {}
+    NoFallibleCondition():void =
+        if (1 + 1):
+            DoSomething()
+assert:
+    if (FirstItem := Items[0]):
+        Process(FirstItem)
+<#
+-->
 <!-- 08 -->
 ```verse
 # Error: condition cannot fail
-if (1 + 1):  # Compile error - no fallible expression
+if (1 + 1):
     DoSomething()
 
 # Valid: array access can fail
 if (FirstItem := Items[0]):
     Process(FirstItem)
 ```
+<!-- #> -->
 
 Empty conditions are also not allowed: every `if` must test something.
 
@@ -183,21 +198,24 @@ If any expression in the condition fails, control flow proceeds to the
 condition are automatically rolled back (see
 [Failure](08_failure.md#speculative-execution) for details):
 
-<!--versetest
-GetPlayerScore()<decides><computes>:int=1
--->
+<!--versetest-->
 <!-- 09 -->
 ```verse
-var Counter:int = 0
+var Attempts:int = 0
 
-if:
-    set Counter = Counter + 1  # Provisional change
-    Score := GetPlayerScore[]  # Might fail
-    Score > 100
-then:
-    # Counter was incremented
-else:
-    # Counter rolled back to original value - increment undone!
+TryScore(Score:int)<transacts>:logic =
+    if:
+        set Attempts += 1  # Provisional change
+        Score > 100        # Might fail
+    then:
+        true
+    else:
+        false
+
+TryScore(200)?      # Condition succeeded
+Attempts = 1        # The increment was kept
+not TryScore(50)?   # Condition failed
+Attempts = 1        # The increment was rolled back - undone!
 ```
 
 This speculative execution makes conditional logic safer. You can
@@ -207,7 +225,20 @@ subsequent conditions fail.
 Variables defined in the condition are available in the `then` branch
 but not in the `else` branch:
 
-<!--NoCompile-->
+<!--versetest
+assert_semantic_error(3506):
+    FindPlayer(N:string)<computes><decides>:int = 1
+    AwardBonus(P:int):void = {}
+    Penalize(P:int):void = {}
+    ElseCannotSeeBinding(Name:string):void =
+        if:
+            Player := FindPlayer[Name]  # Define Player
+        then:
+            AwardBonus(Player)  # OK - Player available
+        else:
+            Penalize(Player)  # Compile error
+<#
+-->
 <!-- 10 -->
 ```verse
 if:
@@ -217,6 +248,7 @@ then:
 else:
     Penalize(Player)  # Compile error
 ```
+<!-- #> -->
 
 This scoping reflects the logical flow: in the `else` branch, the
 condition failed, so any variables bound during the condition might
@@ -227,9 +259,9 @@ return compatible types, the `if` can be used anywhere a value is
 expected:
 
 <!--versetest
-IsCritical:logic= false
-BaseDamage:int=0
-Health:int=0
+IsCritical:logic = true
+BaseDamage:int = 10
+Health:int = 100
 -->
 <!-- 11 -->
 ```verse
@@ -237,9 +269,11 @@ Damage := if (IsCritical?):
     BaseDamage * 2
 else:
     BaseDamage
+Damage = 20
 
 # Ternary-style
 Status := if (Health > 50). "Healthy" else. "Wounded"
+Status = "Healthy"
 ```
 
 When branches have incompatible types, the result is widened to `any`:
@@ -265,14 +299,18 @@ idiomatic way to express this is with `if (Condition): else:`:
 <!--versetest-->
 <!-- 13 -->
 ```verse
-ProcessData()<decides><transacts>:void = {}
+var Attempts:int = 0
 
-HandleWithFailureCase()<transacts>:void =
-    if (ProcessData[]):
-        # Success - no additional logic needed
-    else:
-        # Handle the failure case
-        Print("Processing failed")
+ProcessData()<decides><transacts>:void =
+    set Attempts += 1
+
+if (ProcessData[]):
+    # Success - no additional logic needed
+else:
+    # Handle the failure case
+    Print("Processing failed")
+
+Attempts = 1  # Effect preserved
 ```
 
 When the condition succeeds, execution continues after the `if`
@@ -283,42 +321,44 @@ behave differently.
 A tempting but sometimes incorrect
 pattern is to use `not` to check for failure:
 
-<!--NoCompile-->
+<!--versetest-->
 <!-- 14 -->
 ```verse
+var Attempts:int = 0
+
+ProcessData()<decides><transacts>:void =
+    set Attempts += 1
+
 # Causes unwanted rollback
 if (not ProcessData[]):
     Print("Processing failed")
+
+Attempts = 0  # The successful increment was undone
 ```
 
 This fails because when `ProcessData[]` succeeds, `not true` fails,
 causing the outer `if` to fail and roll back any transactional effects
-from `ProcessData`. Safer patterns are:
+from `ProcessData`. The other safe pattern converts the failure into a
+boolean with `logic{}`:
 
 <!--versetest-->
 <!-- 15 -->
 ```verse
-var Counter:int = 0
+var Attempts:int = 0
 
-IncrementCounter()<decides><transacts>:void =
-    set Counter += 1
+ProcessData()<decides><transacts>:void =
+    set Attempts += 1
 
-# Correct: if (Expr): else: for handling failures
-TestIfElse():void =
-    set Counter = 0
-    if (IncrementCounter[]):
-    else:
-        Print("Failed")
-    # Counter is 1 - effect preserved
+Succeeded := logic{ProcessData[]}  # Bound before the if
+if (not Succeeded?):
+    Print("Processing failed")
 
-# Correct: logic{} to convert to boolean
-TestLogic():void =
-    set Counter = 0
-    Result := logic{IncrementCounter[]}
-    if (not Result?):
-        Print("Failed")
-    # Counter is 1 - effect preserved
+Attempts = 1  # Effect preserved
 ```
+
+The `logic{}` conversion has to be bound before the `if`. Inlining it
+into the condition puts it back inside a condition that fails, so the
+effect is rolled back after all.
 
 ## Case Expressions
 
@@ -354,9 +394,11 @@ comparison:
 They do not work on `float`, objects and tuples due to implementation
 limitations.
 
-**Exhaustiveness Checking with Enums.** `case` with `enum` are checked
-for exhaustiveness.  For closed enums where all values are known, the
-compiler verifies you've handled all cases:
+### Exhaustiveness Checking with Enums
+
+Case expressions over enums are checked for exhaustiveness.  For closed
+enums where all values are known, the compiler verifies you've handled
+all cases:
 
 <!--versetest
 direction := enum:
@@ -382,48 +424,34 @@ If you add a wildcard when all cases are covered, you'll get a warning
 that the wildcard is unreachable:
 
 <!--versetest
-direction := enum:
-    North
-    South
-    East
-    West
-
-GetVectorWithUnreachable(Dir:direction):tuple(int, int) =
-    case (Dir):
-        direction.North => (0, 1)
-        direction.South => (0, -1)
-        direction.East => (1, 0)
-        direction.West => (-1, 0)
-        _ => (0, 0)
-
-assert:
-    # Test that the function works despite unreachable wildcard
-    GetVectorWithUnreachable(direction.North) = (0, 1)
-<#
+coin := enum{ Heads, Tails }
 -->
 <!-- 18 -->
 ```verse
-    case (Dir):
-        direction.North => (0, 1)
-        direction.South => (0, -1)
-        direction.East => (1, 0)
-        direction.West => (-1, 0)
-        _ => (0, 0)  # Warning: all cases already covered
+Score(C:coin):int =
+    case (C):
+        coin.Heads => 1
+        coin.Tails => 0
+        _ => -1  # Warning: all cases already covered
+
+Score(coin.Heads) = 1
 ```
-<!-- #> -->
 
 Incomplete case coverage is allowed in a `<decides>` context:
 
 <!--versetest
-direction := enum{  North, South, East, West}
+direction := enum{ North, South, East, West }
 -->
 <!-- 19 -->
 ```verse
 # Without wildcard in <decides> context - OK
-GetPrimaryDirection2(Dir:direction)<decides>:string =
+PrimaryDirection(Dir:direction)<transacts><decides>:string =
     case (Dir):
         direction.North => "Primary"
         # Other directions cause function to fail
+
+PrimaryDirection[direction.North] = "Primary"
+not PrimaryDirection[direction.South]
 ```
 
 Open enums can have values added after publication, so they can never
@@ -466,13 +494,16 @@ NumberOfBits(X:int):int =
         set B = if (B > X) { break } else { 2*B }
         set C = C+1
     C
+
+NumberOfBits(8) = 4
+NumberOfBits(0) = 0
 ```
 
 This demonstrates bottom type: `break` unifies with `int` (from `2*B`)
 in the if-expression. The assignment `set B = ...` uses the value of
 the if-expression, showing that `break` is compatible in any type context.
 
-**Loop Return Value:** The loop expression itself produces a value of type
+The loop expression itself produces a value of type
 `true`, regardless of what expressions appear in its body.
 This return value is rarely useful in practice; loops are typically used for
 their side effects.
@@ -493,6 +524,7 @@ loop:
             break        # Exits inner loop
     if (Outer = 10):
         break            # Exits outer loop
+Outer = 10
 ```
 
 The following restrictions apply. The `break` statement must appear in
@@ -501,21 +533,21 @@ contain at least one non-break statement. Finally, using `break`
 outside a `loop` produces an error:
 
 <!--versetest
-ShouldStop()<decides>:void={}
-
-assert_semantic_error(3506, 3581):
+assert_semantic_error(3581):
+    ShouldStop()<computes><decides>:void={}
     ProcessData():void =
-       if (ShouldStop[]):
-               break      # Error
+        if (ShouldStop[]):
+            break      # Error
 <#
 -->
 <!-- 23 -->
 ```verse
 ProcessData():void =
-   if (ShouldStop[]):
-           break      # Error
+    if (ShouldStop[]):
+        break      # Error
 ```
 <!-- #> -->
+
 ## For Expressions
 
 The `for` expression iterates over collections, ranges, and other
@@ -523,8 +555,7 @@ iterable types, providing a more structured approach to repetition:
 
 <!--versetest
 player:=class{}
-GetScore(P:player):int=100
-<#
+GetScore(P:player)<transacts>:int=100
 -->
 <!-- 24 -->
 ```verse
@@ -534,8 +565,9 @@ CalculateTotalScore(Players:[]player)<transacts>:int =
         PlayerScore := GetScore(Player)
         set Total += PlayerScore
     Total
+
+CalculateTotalScore(array{player{}, player{}}) = 200
 ```
-<!-- #> -->
 
 While it may look familiar from earlier imperative languages, `for` is
 best thought of as a functional construct that combines iteration,
@@ -562,7 +594,7 @@ The above is written with an alternative multi-clause syntax using the
 The `for` iterates  over the `Values` array,  discarding values smaller
 than 10  and rounding down  numbers. It  returns an array  of floats.
 The `Floor` function is defined as `decides` --if it were to fail that
-iterate would be discarded.
+iteration would be discarded.
 
 There is another alternative syntax: the single-line dot syntax for
 simple operations:
@@ -577,7 +609,7 @@ DoSomething(V:int):void = {}
 for (V : Values). DoSomething(V)
 ```
 
-**Index and Value Pairs:**
+### Index and Value Pairs
 
 When iterating arrays or maps, you can access both the index/key and the value
 using the pair syntax `Index -> Value` or `Key -> Value`:
@@ -587,14 +619,17 @@ player:=struct{ Name:string }
 -->
 <!-- 27 -->
 ```verse
-PrintRoster(Players:[]player):void =
+Roster(Players:[]player):[]string =
     for (Index -> Player : Players):
-        Print("Player {Index}: {Player.Name}")
+        "Player {Index}: {Player.Name}"
+
+Roster(array{player{Name:="Ada"}, player{Name:="Bo"}}) =
+    array{"Player 0: Ada", "Player 1: Bo"}
 ```
 
 The index is zero-based, matching Verse's array indexing convention.
 
-**Defining Variables in For Clauses:**
+### Defining Variables in For Clauses
 
 The for loop allows you to define intermediate variables that can be
 used in subsequent filters or the loop body:
@@ -604,17 +639,19 @@ used in subsequent filters or the loop body:
 ```verse
 # Define Y based on X
 Doubled := for (X := 1..5, Y := X * 2):
-    Y  # Returns array{2, 4, 6, 8, 10}
+    Y
+Doubled = array{2, 4, 6, 8, 10}
 
 # Combine with filtering
 SafeDivision := for (X := -3..3, X <> 0, Y := Floor[10.0 / (X*1.0)]):
-    Y  # Skips X=0, returns array{-4, -5, -10, 10, 5, 3}
+    Y  # Skips X=0
+SafeDivision = array{-4, -5, -10, 10, 5, 3}
 ```
 
 These intermediate variables are scoped to the iteration and can
 reference earlier variables in the same clause.
 
-**Multiple Filters:**
+### Multiple Filters
 
 You can chain multiple filter conditions using comma-separated or
 semicolon-separated expressions. Each filter must be failable, and if any fails, that
@@ -623,19 +660,16 @@ iteration is skipped:
 <!--versetest-->
 <!-- 29 -->
 ```verse
-# Multiple independent filters
-Filtered := for (X := 1..10, X <> 3, X <> 7):
-    X  # Returns array{1, 2, 4, 5, 6, 8, 9, 10}
-
-# Filters with intermediate variables
-Complex := for (X := 1..5, X <> 2, Y := X * 2, Y < 10):
-    Y  # Only includes values where X≠2 and Y<10
+Filtered := for (X := 1..10; X <> 3; X <> 7):
+    X
+Filtered = array{1, 2, 4, 5, 6, 8, 9, 10}
 ```
 
 Each filter condition is evaluated in order, and iteration continues
-only if all conditions succeed.
+only if all conditions succeed. The two separators cannot be mixed
+within one clause list.
 
-**Iterating Over Maps:**
+### Iterating Over Maps
 
 Maps can be iterated over in two ways: values only, or key-value pairs
 using the pair syntax:
@@ -645,19 +679,18 @@ using the pair syntax:
 ```verse
 # Iterate over values only
 Scores:[int]int = map{1 => 100, 2 => 200, 3 => 150}
-TopScores := for (Score : Scores):
-    Score  # Returns array{100, 200, 150}
+for (Score : Scores) { Score } = array{100, 200, 150}
 
 # Iterate over key-value pairs
-PlayerScores:[string]int = map{"Alice" => 100, "Bob" => 200}
-for (PlayerName -> Score : PlayerScores):
-    Print("{PlayerName} scored {Score}")
+Ranking:[string]int = map{"Alice" => 100, "Bob" => 200}
+for (Name -> Score : Ranking) { "{Name} scored {Score}" } =
+    array{"Alice scored 100", "Bob scored 200"}
 ```
 
 Maps preserve insertion order, so iteration order matches the order in
 which keys were added to the map.
 
-**String Iteration:**
+### String Iteration
 
 Strings can be iterated character by character:
 
@@ -669,77 +702,68 @@ CountVowels(Text:string):int =
     for (Char : Text, Char = 'a' or Char = 'e' or Char = 'i' or Char = 'o' or Char = 'u'):
         set Count += 1
     Count
+
+CountVowels("education") = 5
 ```
 
-**Nested Iteration (Cartesian Products):**
+### Nested Iteration
 
 Multiple iteration sources create nested loops, producing the cartesian product:
 
-<!--NoCompile-->
+<!--versetest-->
 <!-- 32 -->
 ```verse
-PrintGrid():void =
-    for (X := 1..3, Y := 1..3):
-        Print("({X}, {Y})")
-    # Produces: (1,1), (1,2), (1,3), (2,1), (2,2), (2,3), (3,1), (3,2), (3,3)
+Cells := for (X := 1..3, Y := 1..3):
+    X*10 + Y
+Cells = array{11, 12, 13, 21, 22, 23, 31, 32, 33}
 ```
 
-**Filtering with Failure:**
+### Filtering with Failure
 
 Verse's `for` expressions are particularly powerful when they leverage
 failure contexts, as they can naturally filter:
 
 <!--versetest
-player:=struct{ Name:string }
-GetScore(P:player)<computes>:int=0
+player:=struct{ Name:string, Score:int }
 -->
 <!-- 33 -->
 ```verse
 GetHighScorers(Players:[]player):[]player =
-    for (Player : Players, Score := GetScore(Player), Score > 1000):
+    for (Player : Players, Player.Score > 1000):
         Player  # Only players with score > 1000 are included
+
+Best := GetHighScorers(array{player{Name:="Ada", Score:=2000},
+                             player{Name:="Bo", Score:=100}})
+for (P : Best) { P.Name } = array{"Ada"}
 ```
 
 When any expression in the iteration header fails, that iteration is
 skipped. This allows elegant filtering without explicit `if`
-statements:
+statements.
 
-<!--versetest
-item:=struct{Price:float}
--->
-<!-- 34 -->
-```verse
-# Filter items under budget and apply transformation
-AffordableItems(Items:[]item, Budget:float):[]float =
-    for (Item : Items, Item.Price <= Budget):
-        Item.Price * 1.1  # Apply 10% markup
-```
-
-**For as an Expression:**
+### For as an Expression
 
 Like other control flow constructs, `for` is an expression. When the body produces values, `for` collects them into an array:
 
 <!--versetest
 player:=struct{Name:string}
 -->
-<!-- 35 -->
+<!-- 34 -->
 ```verse
 # Collect player names
 GetNames(Players:[]player):[]string =
     for (Player : Players):
         Player.Name  # Each iteration produces a string
+
+GetNames(array{player{Name:="Ada"}, player{Name:="Bo"}}) = array{"Ada", "Bo"}
 ```
 
 This makes `for` a powerful tool for transforming collections without
 explicit accumulator variables.
 
-**Breaking from For Loops:**
-
 The `break` statement cannot exit `for` loops early. If you need only the
 first matching result from an iteration, use `first` instead of `for`
 (see [First Expressions](#first-expressions) below).
-
-**Note on Continue:**
 
 Unlike many languages, Verse does not currently support a `continue`
 statement to skip to the next iteration. Instead, use conditional
@@ -749,7 +773,7 @@ logic or failure-based filtering to achieve similar results:
 item:=struct{IsValid:logic}
 ProcessItem(I:item):void={}
 -->
-<!-- 36 -->
+<!-- 35 -->
 ```verse
 # Instead of continue, use conditional blocks
 ProcessItems(Items:[]item):void =
@@ -765,23 +789,17 @@ ProcessValidItems(Items:[]item):void =
 ```
 
 
-**Range Iteration.** The range operator `..` provides numeric
+### Range Iteration
+
+The range operator `..` provides numeric
 iteration over integer sequences. Ranges are inclusive on both ends:
 
 <!--versetest-->
-<!-- 37 -->
+<!-- 36 -->
 ```verse
-# Iterates: 1, 2, 3, 4, 5 (both bounds included)
-for (I := 1..5):
-    Print("Count: {I}")
-
-# Single element range
-for (I := 42..42):
-    Print("Answer: {I}")  # Prints once: "Answer: 42"
-
-# Empty range (start > end produces no iterations)
-for (I := 5..1):
-    Print("Never executes")  # Loop body never runs
+for (N := 1..5)   { N } = array{1, 2, 3, 4, 5}  # Both bounds included
+for (N := 42..42) { N } = array{42}             # Single element range
+for (N := 5..1)   { N } = array{}               # Start > end: no iterations
 ```
 
 The `..` operator is always inclusive. There is no exclusive range
@@ -798,20 +816,19 @@ While you cannot store ranges as values, you can create arrays using
 for expressions:
 
 <!--versetest-->
-<!-- 38 -->
+<!-- 37 -->
 ```verse
 # This works because for produces an array, not because ranges are storable
-DoubledNumbers:[]int = for (I := 1..5){ I * 2 }
-
-# Can then iterate over the array normally
-for (N : DoubledNumbers):
-    Print("{N}")
+Squares:[]int = for (X := 1..5){ X * X }
+Squares = array{1, 4, 9, 16, 25}
 ```
 
 The range exists only during the for expression evaluation; the
 resulting array is what gets stored.
 
-**Restrictions.** The for loop has several important restrictions:
+### Restrictions
+
+The for loop has several important restrictions:
 
 1. **Iteration source must be iterable:** Only ranges (`1..10`),
    arrays, maps, and strings can be iterated. 
@@ -831,28 +848,36 @@ are expressions that iteratively yield each integer in the range as a
 separate value. Ranges cannot be used in some contexts where you
 might expect them to work:
 
-<!--NoCompile-->
-<!-- 39 -->
+<!--versetest
+assert_semantic_error(3552):
+    StoreRange():void =
+        MyRange := 1..10
+assert_semantic_error(3552, 3509):
+    PassRange():void =
+        ProcessRange(X:int):void = {}
+        ProcessRange(1..10)
+assert_semantic_error(3552):
+    RangeInArray():void =
+        Ranges := array{1..10}
+<#
+-->
+<!-- 38 -->
 ```verse
-# ERROR: Cannot store range in variable
+# ERROR: Cannot store a range in a variable
 MyRange := 1..10
-for (I := MyRange):
 
-# ERROR: Cannot pass range to function
+# ERROR: Cannot pass a range to a function
 ProcessRange(1..10)
 
-# ERROR: Cannot use range as standalone expression
-Result := 1..10
-
-# ERROR: Cannot put range in array
+# ERROR: Cannot put a range in an array
 Ranges := array{1..10}
-
-# ERROR: Cannot index range
-Value := (1..10)(5)
-
-# ERROR: Cannot access members on range
-Length := (1..10).Length
 ```
+<!-- #> -->
+
+Every one of these reports the same error 3552: ranges are only
+supported as the iterated expression of `for`, `sync`, `rush`, or
+`race`. Indexing a range or reading a member off one fails the same
+way.
 
 Ranges work exclusively with the `int` type. Other numeric types,
 booleans, types, or objects are not supported.
@@ -864,24 +889,15 @@ failable expressions, the `for` behaves like the equivalent `if (X := Y)` chain:
 the body runs **at most once**, and if any domain expression fails the body does
 not run at all. The result is therefore an empty or single-element array.
 
-<!--versetest
-assert:
-    Some:?int = option{7}
-    for(Some?) { 1 } = array{1}
-assert:
-    None:?int = false
-    for(None?) { 1 } = array{}
-<#
--->
-<!-- 40 -->
+<!--versetest-->
+<!-- 39 -->
 ```verse
 Some:?int = option{7}
-for(Some?) { 1 }        # array{1} - filter succeeded, body ran once
+for(Some?) { 1 } = array{1}   # Filter succeeded, body ran once
 
 None:?int = false
-for(None?) { 1 }        # array{} - filter failed, body never ran
+for(None?) { 1 } = array{}    # Filter failed, body never ran
 ```
-<!-- #> -->
 
 ### Failable Filters Before a Generator
 
@@ -892,23 +908,15 @@ generator is never evaluated:
 <!--versetest
 GetThing()<transacts><decides>:int = 2
 PassesFilter()<transacts><decides>:void = {}
-assert:
-    List:[]int = for(PassesFilter[], I:=1..3) { I }
-    List = array{1,2,3}
-assert:
-    List:[]int = for(Thing := GetThing[], I:=Thing..Thing+2) { Thing*10+I }
-    List = array{22,23,24}
-<#
 -->
-<!-- 41 -->
+<!-- 40 -->
 ```verse
 # A failable call used purely as a guard
-for(PassesFilter[], I:=1..3) { I }          # array{1,2,3}
+for(PassesFilter[], N:=1..3) { N } = array{1,2,3}
 
 # A failable binding that feeds the generator
-for(Thing := GetThing[], I:=Thing..Thing+2) { Thing*10+I }   # array{22,23,24}
+for(Thing := GetThing[], N:=Thing..Thing+2) { Thing*10+N } = array{22,23,24}
 ```
-<!-- #> -->
 
 ## First Expressions
 
@@ -920,36 +928,45 @@ for that single iteration. If no iteration reaches the body, `first`
 fails, so it requires a `<decides>` context.
 
 <!--versetest
-player:=struct{ Name:string }
-GetScore(P:player)<computes><decides>:int=0
+player:=struct{ Name:string, Score:int }
+GetScore(P:player)<computes><decides>:int = P.Score
 -->
-<!-- 42 -->
+<!-- 41 -->
 ```verse
 # Find the first player with a score above the threshold
-FindTopScorer(Players:[]player, Threshold:int)<decides>:player =
+FindTopScorer(Players:[]player, Threshold:int)<transacts><decides>:player =
     first (Player : Players; GetScore[Player] > Threshold):
         Player
+
+Roster := array{player{Name:="Ada", Score:=10}, player{Name:="Bo", Score:=99}}
+FindTopScorer[Roster, 50].Name = "Bo"
+not FindTopScorer[Roster, 100]
 ```
 
 Like `for`, the `first` expression supports three syntax forms.
 The block form uses `do:` to separate the iteration clauses from
 the body:
 
-<!--NoCompile-->
-<!-- 43 -->
+<!--versetest
+Collection:[]int = array{1, 2, 3}
+Predicate(X:int)<computes><decides>:void = { X > 1 }
+Process(X:int)<computes>:int = X * 10
+-->
+<!-- 42 -->
 ```verse
 # Block form with do:
-first:
+FirstMatch := first:
     X : Collection
     Predicate[X]
 do:
     Process(X)
+FirstMatch = 20
 
 # Braces form
-first(X : Collection; Predicate[X]){ Process(X) }
+first(X : Collection; Predicate[X]){ Process(X) } = 20
 
 # Dot form for single expressions
-first(X : Collection; Predicate[X]). Process(X)
+first(X : Collection; Predicate[X]). Process(X) = 20
 ```
 
 The `first` expression uses the same binding syntax as `for`. You
@@ -958,11 +975,14 @@ pairs with the `->` syntax, chain multiple filters, and nest multiple
 iteration sources:
 
 <!--versetest-->
-<!-- 44 -->
+<!-- 43 -->
 ```verse
 # Find the index of an element using index -> value binding
-IndexOf(Arr:[]int, Target:int)<decides>:int =
+IndexOf(Arr:[]int, Target:int)<transacts><decides>:int =
     first(I -> V : Arr, V = Target). I
+
+IndexOf[array{5, 6, 7}, 7] = 2
+not IndexOf[array{5, 6, 7}, 9]
 ```
 
 Note that `first` yields the value of the **body** expression, not the
@@ -970,7 +990,7 @@ iteration variable. This is what makes it possible to search for one
 thing and yield another: finding an index by matching a
 value.
 
-**First vs For:**
+Here is how the two constructs compare:
 
 | | `for` | `first` |
 |-|-------|---------|
@@ -978,32 +998,26 @@ value.
 | On no match | Empty array | **Fails** (requires `<decides>`) |
 | Stops | After all iterations | After the first iteration |
 
-**Common Patterns:**
-
 Since `first` requires `<decides>`, a common way to use it is to wrap
 it in an `if` or an `option` to handle the case where no match is found:
 
 <!--versetest-->
-<!-- 45 -->
+<!-- 44 -->
 ```verse
 # Find with fallback using if
-FindOrDefault(Arr:[]int, Target:int):int =
+FindOrDefault(Arr:[]int, Target:int)<transacts>:int =
     if (Index := first(I -> V : Arr, V = Target). I):
         Index
     else:
         -1
-```
 
-Or:
-
-<!--versetest-->
-<!-- 46 -->
-```verse
-# Find with fallback using if
-FindOptional(Arr:[]int, Target:int):?int =
+# Find with fallback using option
+FindOptional(Arr:[]int, Target:int)<transacts>:?int =
     option:
-        Index := first(I -> V : Arr, V = Target). I
-            Index
+        first(I -> V : Arr, V = Target). I
+
+FindOrDefault(array{5, 6, 7}, 9) = -1
+FindOptional(array{5, 6, 7}, 7)? = 2
 ```
 
 ### First With Failable Filters
@@ -1013,25 +1027,19 @@ difference is the outcome when a binding fails: `for` yields an empty array,
 whereas `first` *fails*.
 
 <!--versetest
-FirstGetThing()<transacts><decides>:int = 2
-FirstGetNoThing()<transacts><decides>:int =
+GetThing()<transacts><decides>:int = 2
+GetNoThing()<transacts><decides>:int =
     0 = 1
     0
-assert:
-    22 = first(Thing := FirstGetThing[], I:=Thing..Thing+2) { Thing*10+I }
-assert:
-    not first(Thing := FirstGetNoThing[]; I:=Thing..Thing+2) { Thing*10+I }
-<#
 -->
-<!-- 47 -->
+<!-- 45 -->
 ```verse
 # Binding succeeds - first yields the first body value
-first(Thing := GetThing[], I:=Thing..Thing+2) { Thing*10+I }     # 22
+first(Thing := GetThing[], N:=Thing..Thing+2) { Thing*10+N } = 22
 
 # Binding fails - the whole `first` fails
-first(Thing := GetNoThing[]; I:=Thing..Thing+2) { Thing*10+I }   # fails
+not first(Thing := GetNoThing[]; N:=Thing..Thing+2) { Thing*10+N }
 ```
-<!-- #> -->
 
 ## Return Statements
 
@@ -1040,7 +1048,7 @@ allowing you to terminate execution and return a value before reaching
 the end of the function body:
 
 <!--versetest-->
-<!-- 48 -->
+<!-- 46 -->
 ```verse
 ValidateInput(Value:int):string =
     if (Value < 0):
@@ -1050,6 +1058,10 @@ ValidateInput(Value:int):string =
         return "Error: Value too large"
 
     "Valid"     # Implicit return
+
+ValidateInput(-1) = "Error: Negative value"
+ValidateInput(5000) = "Error: Value too large"
+ValidateInput(50) = "Valid"
 ```
 
 Return statements can only appear in specific positions within your
@@ -1059,9 +1071,9 @@ ensures predictable control flow:
 
 <!--versetest
 GetOrder(:int)<transacts><decides>:order=order{}
-order := class<allocates>{ IsValid()<decides><transacts>:logic=false }
+order := class<allocates>{ IsValid()<decides><transacts>:void={} }
 -->
-<!-- 49 -->
+<!-- 47 -->
 ```verse
 # Valid: return is last operation
 ProcessOrder(OrderId:int)<transacts>:string =
@@ -1076,29 +1088,13 @@ GetStatus(Value:int):string =
         return "Positive"
     else:
         return "Non-positive"
+
+ProcessOrder(1) = "Processed"
+GetStatus(-1) = "Non-positive"
 ```
 
 Verse functions implicitly return the value of their last expression,
-so `return` is only needed for early exits:
-
-<!--versetest
-CalculateBonus(Score:int):int={
-    if(Score<100)then{return 0}
-    Score*10
-}
--->
-<!-- 50 -->
-```verse
-# Implicit return
-GetValue():int = 42  # Returns 42
-
-# Explicit early return
-GetDiscount(Price:float):float =
-    if (Price < 10.0):
-        return 0.0  # Early exit with no discount
-
-    Price * 0.1  # Implicit return with 10% discount
-```
+so `return` is only needed for early exits.
 
 The `return` statement allows you to provide successful values from early
 exits, while still allowing other paths to fail:
@@ -1108,7 +1104,7 @@ config:=struct{MaxRetries:int}
 GetConfig()<transacts><decides>:config=config{MaxRetries:=3}
 AttemptOperation(Retry:int)<computes><decides>:string="success"
 -->
-<!-- 51 -->
+<!-- 48 -->
 ```verse
 RetryableOperation()<transacts>:string =
     if (Config := GetConfig[]):
@@ -1116,6 +1112,8 @@ RetryableOperation()<transacts>:string =
             if (Result := AttemptOperation[Retry]):
                 return Result  # Success - exit immediately
     "Failed" # All retries exhausted
+
+RetryableOperation() = "success"
 ```
 
 This pattern is common for search operations where you want to return
@@ -1163,13 +1161,13 @@ when leaving the scope that directly contains it, including:
 Here is a basic example:
 
 <!--versetest
-OpenFile(P:string)<computes>:?int=false
+OpenFile(P:string)<computes>:?int=option{1}
 CloseFile(P:int)<computes>:void={}
-ReadFile(P:int)<computes>:?string=false
+ReadFile(P:int)<computes>:?string=option{"data"}
 ProcessContents(P:string)<computes><decides>:void={}
 SaveResults()<computes><decides>:void={}
 -->
-<!-- 52 -->
+<!-- 49 -->
 ```verse
 ProcessFile(FileName:string)<transacts><decides>:void =
     File := OpenFile(FileName)?
@@ -1179,48 +1177,31 @@ ProcessFile(FileName:string)<transacts><decides>:void =
     Contents := ReadFile(File)?
     ProcessContents[Contents]
     SaveResults[]
+
+ProcessFile["save.dat"]
 ```
 
 Deferred code executes when the scope exits successfully or through
 explicit control flow like `return`:
 
-<!--versetest
-OpenConnection()<transacts>:int=0
-CloseConnection(Id:int)<transacts>:void={}
-Query(Id:int)<decides><transacts>:string="result"
-ProcessResult(R:string)<transacts>:void={}
-
-ProcessQuery()<transacts>:void =
-    ConnId := OpenConnection()
-    defer:
-        CloseConnection(ConnId)  # Cleanup always needed
-
-    for (Attempt := 1..5):
-        if (Result := Query[ConnId]):
-            ProcessResult(Result)
-            return  # defer executes after return being called
-
-    # defer executes before leaving the function scope on success
-
-assert:
-    # ProcessQuery is defined and demonstrates defer with return
-<#
--->
-<!-- 53 -->
+<!--versetest-->
+<!-- 50 -->
 ```verse
-ProcessQuery()<transacts>:void =
-    ConnId := OpenConnection()
+var Closed:logic = false
+
+Lookup(Values:[]int, Target:int)<transacts>:string =
     defer:
-        CloseConnection(ConnId)  # Cleanup always needed
+        set Closed = true  # Cleanup always needed
 
-    for (Attempt := 1..5):
-        if (Result := Query[ConnId]):
-            ProcessResult(Result)
-            return  # defer executes after return being called
+    for (Index -> V : Values):
+        if (V = Target):
+            return "found"  # defer executes after return being called
 
-    # defer executes before leaving the function scope on success
+    "missing"  # defer executes before leaving the function scope on success
+
+Lookup(array{1, 2, 3}, 2) = "found"
+Closed?
 ```
-<!-- #> -->
 
 This is a subtle but crucial point: if a function fails due to
 speculative execution, deferred code does **not** execute. This is
@@ -1232,7 +1213,7 @@ AcquireResource()<transacts><decides>:int=0
 ReleaseResource(Id:int)<transacts>:void={}
 RiskyOperation(Id:int)<transacts><decides>:void={}
 -->
-<!-- 54 -->
+<!-- 51 -->
 ```verse
 ExampleWithFailure()<transacts><decides>:void =
     ResourceId := AcquireResource[]
@@ -1251,35 +1232,24 @@ acquisition itself is rolled back.
 This behavior ensures consistency: if a function fails, it is as if it
 never ran, including any cleanup code that was scheduled.
 
-**Execution Order:**
-
 When multiple `defer`s exist in the same scope, they execute in
 reverse order of definition (last-in, first-out), mimicking the
 stack-based cleanup of nested resources:
 
-<!--versetest
-OpenDatabase()<transacts>:int=0
-CloseDatabase(Id:int)<transacts>:void={}
-BeginTransaction(Id:int)<decides><transacts>:int=0
-CommitTransaction(Id:int)<transacts>:void={}
-DoWork()<transacts><decides>:void={}
--->
-<!-- 55 -->
+<!--versetest-->
+<!-- 52 -->
 ```verse
-DatabaseTransaction()<transacts><decides>:void =
-    DbId := OpenDatabase()
-    defer:
-        CloseDatabase(DbId)  # Executes second (outer resource)
+DeferOrder()<transacts>:[]string =
+    var Order:[]string = array{}
+    block:
+        defer:
+            set Order += array{"outer"}   # Declared first, executes second
+        defer:
+            set Order += array{"inner"}   # Declared second, executes first
+    Order
 
-    TxnId := BeginTransaction[DbId]
-    defer:
-        CommitTransaction(TxnId)  # Executes first (inner resource)
-
-    DoWork[]  # Work happens with both resources active
-    # Defers execute: CommitTransaction, then CloseDatabase
+DeferOrder() = array{"inner", "outer"}
 ```
-
-**Defers and Async Cancellation:**
 
 Deferred code also executes when async operations are cancelled, such
 as when a `race` completes or a `spawn` is interrupted:
@@ -1288,25 +1258,8 @@ as when a `race` completes or a `spawn` is interrupted:
 AcquireResource()<transacts>:int=0
 ReleaseResource(Resource:int)<transacts>:void={}
 LongRunningTask(Resource:int)<suspends><transacts>:void={}
-
-ProcessWithTimeout()<suspends><transacts>:void =
-    race:
-        block:
-            Resource := AcquireResource()
-            defer:
-                ReleaseResource(Resource)  # Runs if cancelled
-
-            LongRunningTask(Resource)
-
-        block:
-            Sleep(10.0)  # Timeout
-    # If timeout wins, first block is cancelled and defer runs
-
-assert:
-    # ProcessWithTimeout demonstrates defer with async cancellation
-<#
 -->
-<!-- 56 -->
+<!-- 53 -->
 ```verse
 ProcessWithTimeout()<suspends><transacts>:void =
     race:
@@ -1321,21 +1274,21 @@ ProcessWithTimeout()<suspends><transacts>:void =
             Sleep(10.0)  # Timeout
     # If timeout wins, first block is cancelled and defer runs
 ```
-<!-- #> -->
 
 This ensures cleanup happens even when concurrency control interrupts your code.
-
-**Nested Defers:**
 
 Defer statements can be nested within other defer blocks, creating a
 cascade of cleanup operations:
 
-<!--versetest
-Log(S:string)<transacts>:void={}
--->
-<!-- 57 -->
+<!--versetest-->
+<!-- 54 -->
 ```verse
-ProcessWithCleanup():void =
+var Trace:string = ""
+
+Log(S:string)<transacts>:void =
+    set Trace += S
+
+ProcessWithCleanup()<transacts>:void =
     Log("A")
     defer:
         Log("B")
@@ -1343,29 +1296,30 @@ ProcessWithCleanup():void =
             Log("inner")  # Runs after B
         Log("C")
     Log("D")
-    # Output: A D B C inner
+
+ProcessWithCleanup()
+Trace = "ADBCinner"
 ```
 
 The execution order follows the LIFO principle at each nesting
 level: inner defers execute after the outer defer's code, maintaining
 the stack-like cleanup order.
 
-**Defers in Control Flow:**
-
 Defers work correctly within all control flow constructs:
 
 <!--versetest
 Log(S:string)<transacts>:void={}
 -->
-<!-- 58 -->
+<!-- 55 -->
 ```verse
-ProcessLoop():void =
-    for (I := 0..2):
+ProcessLoop()<transacts>:int =
+    var Cleanups:int = 0
+    for (N := 0..2):
         Log("Start")
         defer:
-            Log("Cleanup")  # Runs after each iteration
+            set Cleanups += 1  # Runs at the end of each iteration
         Log("End")
-    # Output: Start End Cleanup Start End Cleanup Start End Cleanup
+    Cleanups
 
 ProcessWithIf(Condition:logic):void =
     if (Condition?):
@@ -1376,11 +1330,13 @@ ProcessWithIf(Condition:logic):void =
         defer:
             Log("Else cleanup")
         Log("Else body")
+
+ProcessLoop() = 3
 ```
 
 Each control flow path executes its own defers independently.
 
-**Defer Restrictions.** The defer statement has important restrictions
+The defer statement has important restrictions
 to ensure predictable behavior:
 
 1. **Cannot be empty:** Defer blocks must contain at least one
@@ -1408,7 +1364,7 @@ Understanding how your code performs is crucial for optimization, and
 the `profile` expression measures execution time:
 
 <!--versetest-->
-<!-- 59 -->
+<!-- 56 -->
 ```verse
 OptimizedCalculation():float =
     profile("Complex Math"):
@@ -1432,7 +1388,7 @@ BaseDamage:float = 50.0
 GetMultiplier()<computes>:float = 1.5
 GetCriticalBonus()<computes>:float = 2.0
 -->
-<!-- 60 -->
+<!-- 57 -->
 ```verse
 PlayerDamage := profile("Damage Calculation"):
     BaseDamage * GetMultiplier() * GetCriticalBonus()

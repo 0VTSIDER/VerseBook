@@ -46,20 +46,13 @@ A failable expression is one that can either succeed and produce a value, or fai
 
 Many operations are naturally failable. Array indexing fails when the index is out of bounds. Map lookups fail when the key does not exist. Comparisons fail when the values are not equal. Division fails when dividing by zero. Even simple literals can be made to fail:
 
-<!--versetest
-M()<decides>:void =
-    42
-    false?
-    true?
-<#
--->
+<!--versetest-->
 <!-- 03 -->
 ```verse
-42      # Always succeeds with value 42
-false?  # Always fails - the query of false
-true?   # Always succeeds - the query of true
+42          # Always succeeds with value 42
+not false?  # false? always fails - the query of false
+true?       # Always succeeds - the query of true
 ```
-<!-- #> -->
 
 The query operator `?` turns any value into a failable expression. When applied to `false`, it always fails. When applied to any other value, it succeeds with that value. This simple mechanism provides immense power for controlling program flow.
 
@@ -73,7 +66,7 @@ ValidateAge(Age:int)<decides>:int =
     Age <= 150  # Fails if age is unrealistic
     Age         # Returns the age if both checks pass
 ```
-<!-- ValidateAge[10] -->
+<!-- ValidateAge[10] = 10 -->
 
 This function does not just check conditions - it embodies them. If the age is invalid, the function fails. If it is valid, it succeeds with the age value. The validation and the value are inseparable.
 
@@ -122,6 +115,8 @@ GetDamage(:int)<computes><decides>:int=1
 ```verse
 PowerfulWeapon := option. first(Item : Inventory, IsWeapon[Item], Damage := GetDamage[Item], Damage > 50). Item
 ```
+<!-- not PowerfulWeapon? -->
+
 Unlike `for`, if there are no successful iterations, `first` itself will fail, and so must be used in a failure context. In the above example, `option` is used to handle failure of the `first`.
 
 Functions marked with `<decides>` create a failure context for their entire body:
@@ -151,16 +146,18 @@ The function body is a failure context, allowing failable expressions throughout
 
 When you execute code in a failure context, changes to mutable variables are provisional—they only become permanent if the entire context succeeds. Functions that modify state in failure contexts must use the `<transacts>`  or the `<writes>` effect specifier (see [Effects](13_effects.md)):
 
-<!--NoCompile-->
+<!--versetest-->
 <!-- 09 -->
 ```verse
-m:=module:
-    buyer := class:
-        var PlayerGold:int
-        AttemptPurchase(Cost:int)<transacts><decides>:void =
-           set PlayerGold = PlayerGold - Cost  # Provisional change
-           PlayerGold >= 0                     # Check if still valid
-           # If this fails, PlayerGold reverts to original value
+buyer := class:
+    var PlayerGold:int = 100
+    AttemptPurchase(Cost:int)<transacts><decides>:void =
+        set PlayerGold = PlayerGold - Cost  # Provisional change
+        PlayerGold >= 0                     # Check if still valid
+
+Wallet := buyer{}
+not Wallet.AttemptPurchase[150]  # Fails: the purchase is too expensive
+Wallet.PlayerGold = 100          # ...and the subtraction was rolled back
 ```
 
 If the check fails, the subtraction is automatically rolled back. You
@@ -171,37 +168,11 @@ This transactional behavior makes complex state updates safe and
 predictable. Either everything succeeds and all changes are committed,
 or something fails and nothing changes.
 
-<!--versetest
-game_state := struct{}
-game := class:
-    var State:game_state = game_state{}
-    ModifyHealth()<transacts>:void = {}
-    UpdateInventory()<transacts>:void = {}
-    ChargeResources()<transacts>:void = {}
-    ValidateFinalState()<transacts><decides>:void = {}
-    ComplexOperation()<transacts><decides>:void =
-       ModifyHealth()
-       UpdateInventory()
-       ChargeResources()
-       ValidateFinalState[]
-<#
--->
-<!-- 10 -->
-```verse
-game := class:
-    var State:game_state
-    ComplexOperation()<transacts><decides>:void =
-       ModifyHealth()       # All these operations
-       UpdateInventory()    # are provisional
-       ChargeResources()    # until all succeed
-       ValidateFinalState[] # If this fails, everything rolls back
-```
-<!-- #> -->
-
-The `game` class has multiple methods that update the `game_state`,
-before returning `ComplexOperation` validates that the object is in a
-valid state, if it is not, all changes performed in the method are
-rolled back.
+The guarantee extends across method calls. A `ComplexOperation` that
+calls `ModifyHealth`, `UpdateInventory` and `ChargeResources` in
+sequence, then validates the result with `ValidateFinalState[]`, leaves
+the object untouched if that final check fails: every change any of
+those methods performed is rolled back with it.
 
 ## The Logic of Failure
 
@@ -214,8 +185,14 @@ The `not` operator inverts success and failure:
 <!--versetest
 Score:int=10
 GetNearestEnemy()<decides><computes>:int=0
+assert_semantic_error(3506):
+    GetNearestEnemy57()<transacts><decides>:int = 1
+    Attack57(X:int)<transacts>:void = {}
+    Check57()<transacts><decides>:void =
+        if (not (Enemy := GetNearestEnemy57[])):
+            Attack57(Enemy)
 -->
-<!-- 11 -->
+<!-- 10 -->
 ```verse
 if (not (Enemy := GetNearestEnemy[]) and Score > 0):
     Print("Coast is clear!")  # Executes when GetNearestEnemy fails
@@ -231,10 +208,11 @@ DefaultWeapon:?string=false
 PrimaryWeapon()<decides><computes>:string="primary"
 SecondaryWeapon()<decides><computes>:string="sword"
 -->
-<!-- 12 -->
+<!-- 11 -->
 ```verse
 Weapon := PrimaryWeapon[] or SecondaryWeapon[] or DefaultWeapon?
 ```
+<!-- Weapon = "primary" -->
 
 This tries each option in order, stopping at the first success. It's
 not evaluating boolean conditions - it is attempting computations and
@@ -249,7 +227,7 @@ IsStunned(P:player)<computes><decides>:void = {}
 HasAmmunition(P:player)<computes><decides>:void = {}
 HasMeleeWeapon(P:player)<computes><decides>:void = {}
 -->
-<!-- 13 -->
+<!-- 12 -->
 ```verse
 ValidatePlayer(Player:player)<decides>:void =
     IsAlive[Player]
@@ -275,7 +253,7 @@ specifically it returns its left-hand side. So `X>0` returns `X` and
 in decides contexts:
 
 <!--versetest-->
-<!-- 14 -->
+<!-- 13 -->
 ```verse
 GetIfNotEqual(X:int, Y:int)<decides>:int =
     X <> Y  # Returns X when X ≠ Y, fails when X = Y
@@ -287,9 +265,9 @@ GetIfGreaterThan(X:int, Threshold:int)<decides>:int =
     X > Threshold  # Returns X when X > Threshold, fails otherwise
 ```
 <!--
-GetIfNotEqual[1,2]
-GetIfGreaterThan[11,2]
-GetIfLessOrEqual[1,2]
+GetIfNotEqual[1,2] = 1
+GetIfGreaterThan[11,2] = 11
+GetIfLessOrEqual[1,2] = 1
 -->
 
 Comparison expressions of the form `A op B` return `A` when the
@@ -298,12 +276,12 @@ comparison succeeds, and fail when the comparison is false.
 This creates concise validation functions that either return `Value` or fail:
 
 <!--versetest-->
-<!-- 15 -->
+<!-- 14 -->
 ```verse
 ValidateInRange(Value:int, LwrBnd:int, UprBnd:int)<decides>:int =
     Value >= LwrBnd and Value <= UprBnd
 ```
-<!-- ValidateInRange[5,0,10] -->
+<!-- ValidateInRange[5,0,10] = 5 -->
 
 ## Option Types
 
@@ -312,14 +290,13 @@ contains a value or is empty (represented by `false`). The query
 operator `?` converts between options and failure:
 
 <!--versetest-->
-<!-- 16 -->
+<!-- 15 -->
 ```verse
-M()<decides>:void=
-    MaybeValue:?int = option{42}  # An optional int
-    Value := MaybeValue?          # Succeeds with 42
+MaybeValue:?int = option{42}  # An optional int
+MaybeValue? = 42              # The query succeeds with 42
 
-    Empty:?int = false            # An empty value
-    Other := Empty?               # Failure
+Empty:?int = false            # An empty option
+not Empty?                    # The query fails - there is nothing to unwrap
 ```
 
 The `option{}` constructor works in reverse, converting failure to an empty option:
@@ -327,66 +304,39 @@ The `option{}` constructor works in reverse, converting failure to an empty opti
 <!--versetest
 RiskyComputation()<computes><decides>:int=1
 -->
-<!-- 17 -->
+<!-- 16 -->
 ```verse
 Result := option{RiskyComputation[]} # option{value} if computation succeeds
                                      # otherwise false
 ```
-<!-- Result -->
+<!-- Result? = 1 -->
 
 This bidirectional conversion makes options and failure
 interchangeable, allowing you to choose the most appropriate
 representation for your specific use case.
 
 The option type `?T` represents values that may or may not be present.
-The question mark appears *before* the type, not after:
-
-<!--versetest-->
-<!-- 18 -->
-```verse
-ValidSyntax:?int = option{42}      # Correct
-```
-<!-- ValidSyntax? -->
-
-The `?` prefix applies to any type:
+The question mark appears *before* the type, not after. The `?` prefix
+applies to any type, and the `option{}` constructor wraps a value:
 
 <!--versetest
 player := struct{}
 -->
-<!-- 19 -->
+<!-- 17 -->
 ```verse
 MaybeNumber:?int = option{42}
 MaybeText:?string = option{"hello"}
 MaybePlayer:?player = option{player{}}
 ```
 
-Use the `option{}` constructor to wrap a value:
-
-<!--versetest
-RiskyComputation()<computes><decides>:int=1
--->
-<!-- 20 -->
-```verse
-Filled:?int = option{42}
-Empty:?int  = false
-Result:?int = option{RiskyComputation[]}  # false if computation fails
-```
-
-Empty options and `false` are equivalent—an empty option *is* `false`:
-
-<!--versetest-->
-<!-- 21 -->
-```verse
-EmptyOption:?int = false
-EmptyOption = false  # This comparison succeeds
-```
+Empty options and `false` are equivalent—an empty option *is* `false`.
 
 Verse has a rich and flexible syntax which can also sometimes cause
 subtle bugs. A comma gives rise to a tuple in an `option` whereas a
 semicolon evaluates all values but retain only the last one:
 
 <!--versetest-->
-<!-- 22 -->
+<!-- 18 -->
 ```verse
 # Comma creates tuple
 option{1, 2}? = (1, 2)
@@ -397,38 +347,29 @@ option{1; 2}? = 2
 
 ### Unwrapping
 
-The query operator `?` extracts values from options, failing if the option is empty:
-
-<!--versetest-->
-<!-- 23 -->
-```verse
-M()<decides>:void=
-    MaybeValue:?int = option{42}
-    Value := MaybeValue?  # Succeeds with 42
-
-    Empty:?int = false
-    Other := Empty?  # Fails - cannot unwrap empty option
-```
-
-Unwrapping is only allowed in failure contexts:
+The query operator `?` extracts values from options, failing if the
+option is empty. Unwrapping is only allowed in failure contexts:
 
 <!--versetest
 MaybeInt:?int = option{42}
 UseItem(I:int):void={}
 ProcessItem(I:int)<computes>:?int=option{3}
 Items:[]int = array{1,2,3}
+assert_semantic_error(3512):
+    GetRequired57(Maybe:?int):int =
+        Maybe?
 -->
-<!-- 24 -->
+<!-- 19 -->
 ```verse
-# Valid: In if condition (failure context)
+# In an if condition
 if (Value := MaybeInt?):
     Print("Got {Value}")
 
-# Valid: In for loop (failure context)
+# In a for domain
 for (Item : Items, ValidItem := ProcessItem(Item)?):
     UseItem(Item)
 
-# Valid: In <decides> function body (failure context)
+# In a <decides> function body
 GetRequired(Maybe:?int)<decides>:int =
     Maybe?  # Fails if Maybe is empty
 ```
@@ -438,24 +379,26 @@ GetRequired(Maybe:?int)<decides>:int =
 Options can be nested to represent multiple layers of absence:
 
 <!--versetest-->
-<!-- 25 -->
+<!-- 20 -->
 ```verse
 # Double-nested option
 Double:??int = option{option{42}}
 
-# Single unwrap gets outer option
-if (Inner := Double?):
-    if (TheValue := Inner?):
-        # TheValue has type int, equals 42
+# A single unwrap yields the inner option
+Inner := Double?
+Inner? = 42
 
-# Double unwrap gets the value directly
-Value := Double??  # Fails if either layer is empty
+# A double unwrap yields the value directly
+Double?? = 42
+
+Outer:??int = false
+not Outer??  # Fails if either layer is empty
 ```
 
 Helper functions also work with nested options:
 
 <!--versetest-->
-<!-- 26 -->
+<!-- 21 -->
 ```verse
 UnpackNested(MaybeValue:??int):?int =
     if (Inner := MaybeValue?):
@@ -470,29 +413,32 @@ DirectUnpack(MaybeValue:??int):int =
         -1  # Default for any level empty
 ```
 <!--
-UnpackNested(option{option{1}})
-DirectUnpack(option{option{2}})
+UnpackNested(option{option{1}})? = 1
+UnpackNested(false)? = -1
+DirectUnpack(option{option{2}}) = 2
+DirectUnpack(option{false}) = -1
 -->
 
 ### Chained Access
 
 The `?.` operator provides safe member access on optional values:
 
-<!--NoCompile-->
-<!-- 27 -->
+<!--versetest-->
+<!-- 22 -->
 ```verse
 entity := class:
     Name:string = "Unknown"
-    Health:int = 100
+    var Health:int = 100
+    TakeDamage(D:int)<transacts>:void = set Health = Health - D
 
 MaybeEntity:?entity = option{entity{}}
 
 # Safe field access
-if (Name := MaybeEntity?.Name):
-    Print("Entity: {Name}")  # Succeeds
+MaybeEntity?.Name = "Unknown"
 
-# Safe method call
-MaybeEntity?.TakeDamage(10)  # Only calls if entity present
+# Safe method call - only runs if the entity is present
+MaybeEntity?.TakeDamage(10)
+MaybeEntity?.Health = 90
 
 # Chaining through multiple optionals
 linked_list := class:
@@ -500,7 +446,7 @@ linked_list := class:
     Next:?linked_list = false
 
 Head:?linked_list = option{linked_list{Value := 1}}
-SecondValue := Head?.Next?.Value  # Fails if any link is empty
+not Head?.Next?.Value  # Fails because the second link is empty
 ```
 
 The `?.` operator short-circuits—if the option is empty, the entire
@@ -511,7 +457,7 @@ expression fails without evaluating the member access.
 Use the `or` operator to provide fallback values for empty options:
 
 <!--versetest-->
-<!-- 28 -->
+<!-- 23 -->
 ```verse
 MaybeValue:?int = false
 Value := MaybeValue? or 42  # Yields 42
@@ -523,12 +469,17 @@ Default:string = "default"
 
 Result := Primary? or Secondary? or Default
 ```
+<!--
+Value = 42
+Result = "backup"
+-->
+
 ### Comparison
 
 Empty options equal `false`, and filled options equal their unwrapped values when compared properly:
 
 <!--versetest-->
-<!-- 29 -->
+<!-- 24 -->
 ```verse
 EmptyOption:?int = false
 EmptyOption = false  # Succeeds
@@ -537,17 +488,16 @@ FilledOption:?int = option{1}
 FilledOption? = 1  # Succeeds - unwrap then compare
 ```
 
-However, you cannot directly compare optional and non-optional values without unwrapping:
+However, you cannot directly compare optional and non-optional values without unwrapping. The comparison is accepted by the compiler, but it never succeeds:
 
 <!--versetest-->
-<!-- 30 -->
+<!-- 25 -->
 ```verse
 Opt:?int = option{42}
 Regular:int = 42
 
-# Must unwrap to compare
-if (Opt? = Regular):
-    Print("Equal")
+not (Opt = Regular)  # Compiles, but an option never equals a bare int
+Opt? = Regular       # Unwrap first, then compare
 ```
 
 ## Failure with Optionals
@@ -566,7 +516,7 @@ player := string
 IsActive(S:string)<transacts><decides>:string=""
 LookupPlayer(S:string)<transacts><decides>:string="player"
 -->
-<!-- 31 -->
+<!-- 26 -->
 ```verse
 FindEligiblePlayer(Name:string)<decides>:?player =
     Name <> ""           # Layer 1: Fail if name is empty
@@ -584,33 +534,38 @@ This function has three possible outcomes:
 Calling this function demonstrates the layered failure:
 
 <!--versetest
-FindEligiblePlayer(S:string)<transacts><decides>:?string=option{S}
+IsActive(S:string)<transacts><decides>:string =
+    S = "ActiveUser"
+LookupPlayer(S:string)<transacts><decides>:string = S
+FindEligiblePlayer(Name:string)<transacts><decides>:?string =
+    Name <> ""
+    Player := LookupPlayer[Name]
+    option{IsActive[Player]}
 -->
-<!-- 32 -->
+<!-- 27 -->
 ```verse
-# Function-level failure
-Result1 := FindEligiblePlayer[""]  # Fails, Result1 never assigned
+# Function-level failure: nothing is bound
+not FindEligiblePlayer[""]
 
-# Function succeeds, returns empty option
-if (Player := FindEligiblePlayer["InactiveUser"]?):
-    # Won't execute - function succeeds but ? query fails
-else:
-    # Executes here
+# Function succeeds, returns an empty option
+Inactive := FindEligiblePlayer["InactiveUser"]
+not Inactive?
 
-# Function succeeds, returns filled option
-if (Player := FindEligiblePlayer["ActiveUser"]?):
-    # Executes with Player bound to the active player
+# Function succeeds, returns a filled option
+Active := FindEligiblePlayer["ActiveUser"]
+Active? = "ActiveUser"
 ```
 
 This pattern is particularly powerful for validation with different failure modes:
 
 <!--versetest-->
-<!-- 33 -->
+<!-- 28 -->
 ```verse
 ValidateScore(Score:int)<decides>:?int =
     Score >= 0           # Layer 1: Reject negative scores (invalid input)
     option{Score <= 100} # Layer 2: Reject high scores (out of range)
 ```
+<!-- ValidateScore[50]? = 50 -->
 
 The distinction between function-level and value-level failure lets
 you express different kinds of errors. Function-level failure
@@ -627,18 +582,8 @@ fails if unsuccessful.
 
 This is also works with user defined types which must specify `<castable>`:
 
-<!--versetest
-component := class<castable>:
-    Name:string = "Component"
-
-physics_component := class<castable>(component):
-    Velocity:float = 0.0
-
-TryGetPhysics(Comp:component)<decides>:physics_component =
-    physics_component[Comp]
-<#
--->
-<!-- 34 -->
+<!--versetest-->
+<!-- 29 -->
 ```verse
 component := class<castable>:
     Name:string = "Component"
@@ -649,8 +594,10 @@ physics_component := class<castable>(component):
 # Casting as a decides operation
 TryGetPhysics(Comp:component)<decides>:physics_component =
     physics_component[Comp]  # Succeeds if Comp is actually a physics_component
+
+physics_component[physics_component{}].Velocity = 0.0  # The cast succeeds
+not physics_component[component{}]                     # ...and here it fails
 ```
-<!-- #> -->
 
 This makes type-based dispatch easily expressible:
 
@@ -665,7 +612,7 @@ UpdatePhysics(P:physics_component):void={}
 UpdateRendering(R:render_component):void={}
 UpdateGeneric(G:component):void={}
 -->
-<!-- 35 -->
+<!-- 30 -->
 ```verse
 ProcessComponent(Comp:component):void =
     if (Physics := physics_component[Comp]):
@@ -697,7 +644,7 @@ entity := class:
         component{}
 IsActive(c:component)<transacts><decides>:logic=true
 -->
-<!-- 36 -->
+<!-- 31 -->
 ```verse
 GetActivePhysicsComponent(Entity:entity)<decides>:physics_component =
     Comp := Entity.GetComponent[]  # Fails if no component
@@ -719,29 +666,17 @@ trigger_component := class<castable>(component):
     Trigger:float = 0.0
 scripted_component := class<castable>(component):
     Scripted:string = "Something"
-UpdatePhysics(P:physics_component):void=return
-UpdateGeneric(G:component):void=return
-entity := class:
-    GetComponent()<transacts><decides>:component=
-        component{}
-IsActive(c:component)<transacts><decides>:logic=true
-GetInteractable(Entity:entity)<decides><transacts>:component =
-    physics_component[Entity] or
-    trigger_component[Entity] or
-    scripted_component[Entity]
-<#
 -->
-<!-- 37 -->
+<!-- 32 -->
 ```verse
-GetInteractable(Entity:entity)<decides>:component =
-    physics_component[Entity] or
-    trigger_component[Entity] or
-    scripted_component[Entity]
+GetInteractable(Comp:component)<transacts><decides>:component =
+    physics_component[Comp] or
+    trigger_component[Comp] or
+    scripted_component[Comp]
+
+GetInteractable[trigger_component{}].Name = "Component"
+not GetInteractable[component{}]
 ```
-<!--
-#>
-GetInteractable[entity{}]
--->
 
 This tries each cast in order, returning the first successful one. It's type-safe because all options share the common `component` base type.
 
@@ -764,7 +699,7 @@ GetTargetLocation(A:action)<transacts><decides>:location = location{}
 IsValidLocation(L:location)<computes><decides>:void = {}
 ExecuteAction(A:action)<transacts><decides>:void = {}
 -->
-<!-- 38 -->
+<!-- 33 -->
 ```verse
 ProcessAction(Action:action)<decides>:void =
     Player := GetActingPlayer[Action]
@@ -786,7 +721,7 @@ DirectPath(S:location, E:location)<transacts><decides>:path = path{}
 PathAroundObstacles(S:location, E:location)<transacts><decides>:path = path{}
 ComplexPathfinding(S:location, E:location)<transacts><decides>:path = path{}
 -->
-<!-- 39 -->
+<!-- 34 -->
 ```verse
 FindPath(Start:location, End:location)<decides>:path =
     DirectPath[Start, End] or
@@ -802,7 +737,7 @@ The filtering pattern uses failure to select items:
 enemy := struct{}
 GetLevel(E:enemy)<computes><decides>:int = 10
 -->
-<!-- 40 -->
+<!-- 35 -->
 ```verse
 GetEliteEnemies(Enemies:[]enemy):[]enemy =
     for (Enemy : Enemies, Level := GetLevel[Enemy], Level >= 10):
@@ -821,7 +756,7 @@ RemoveItem(P:player, I:item)<transacts><decides>:void = {}
 AddItem(P:player, I:item)<transacts>:void = {}
 ValidateTrade(P1:player, P2:player)<computes><decides>:void = {}
 -->
-<!-- 41 -->
+<!-- 36 -->
 ```verse
 TradeItems(PlayerA:player, PlayerB:player, ItemA:item, ItemB:item)<transacts><decides>:void =
     RemoveItem[PlayerA, ItemA]
@@ -833,7 +768,7 @@ TradeItems(PlayerA:player, PlayerB:player, ItemA:item, ItemB:item)<transacts><de
 
 Either the entire trade succeeds, or nothing changes.
 
-**Optional Indexing**
+### Optional Indexing
 
 When working with optional containers, you can access their contents
 using specialized query syntax that combines optional checking with
@@ -841,19 +776,17 @@ element access.  Optional tuples support direct element access through
 the query operator:
 
 <!--versetest-->
-<!-- 42 -->
+<!-- 37 -->
 ```verse
 MaybePair:?tuple(int, string) = option{(42, "answer")}
 
-# Access first element
-if (FirstValue := MaybePair?(0)):
-    # FirstValue is 42 (type: int)
-    Print("First: {FirstValue}")
+FirstValue := MaybePair?(0)   # 42 (type: int)
+SecondValue := MaybePair?(1)  # "answer" (type: string)
+FirstValue = 42
+SecondValue = "answer"
 
-# Access second element
-if (SecondValue := MaybePair?(1)):
-    # SecondValue is "answer" (type: string)
-    Print("Second: {SecondValue}")
+Nothing:?tuple(int, string) = false
+not Nothing?(0)               # Fails because the option is empty
 ```
 
 The syntax `Option?(index)` simultaneously:
@@ -862,14 +795,14 @@ The syntax `Option?(index)` simultaneously:
 - Accesses the tuple element at the given index
 - Binds the element value if both succeed
 
-**Composition and Call Chains**
+### Composition and Call Chains
 
 Decides functions compose naturally, allowing complex operations to be
 built from simple, reusable pieces. When a decides function calls
 another decides function, failures propagate automatically.
 
 <!--versetest-->
-<!-- 43 -->
+<!-- 38 -->
 ```verse
 ValidatePositive(X:int)<decides>:int =
     X > 0
@@ -878,13 +811,11 @@ Double(X:int)<decides>:int =
     Validated := ValidatePositive[X]  # Fails if X ≤ 0
     Validated * 2
 ```
-<!-- Double[2] -->
+<!-- Double[2] = 4 -->
 
 If `ValidatePositive` fails, `Double` fails immediately. The validated value flows through the chain.
 
-**Preserving failure context:**
-
-When calling decides functions in non-decides contexts, you must handle failure explicitly:
+The failure context has to be preserved. When calling decides functions in non-decides contexts, you must handle failure explicitly:
 
 <!--versetest
 FindPlayer(Name:string)<transacts><decides>:string=Name
@@ -896,9 +827,9 @@ assert_semantic_error(3512):
     Bad57(Name:string):void =
         Player := FindPlayer57[Name]
 -->
-<!-- 44 -->
+<!-- 39 -->
 ```verse
-# This will not compile - ProcessPlayer does not have <decides>
+# This will not compile - BadProcessPlayer does not have <decides>
 # BadProcessPlayer(Name:string):void =
 #    Player := FindPlayer[Name]  # ERROR: Unhandled failure
 
@@ -932,13 +863,14 @@ recovered within Verse code.
 The `Err()` function explicitly triggers a runtime error with an optional message:
 
 <!--versetest-->
-<!-- 45 -->
+<!-- 40 -->
 ```verse
 ValidateInput(Value:int):int =
     if (Value < 0):
         Err("Negative values not allowed")
     Value
 ```
+<!-- ValidateInput(5) = 5 -->
 
 When a runtime error occurs, execution unwinds through the call stack,
 terminating the current operation:
@@ -946,27 +878,20 @@ terminating the current operation:
 <!--versetest
 Log(Message:string)<transacts>:void = {}
 -->
-<!-- 46 -->
+<!-- 41 -->
 ```verse
 DeepFunction()<transacts>:int =
-    Log("C")
-    Err("Fatal error")  # Runtime error here
-    Log("D")            # Never executes
-    return 1
-
-MiddleFunction():int =
     Log("B")
-    Result := DeepFunction()  # Error propagates through here
-    Log("E")                  # Never executes
-    return Result
+    Err("Fatal error")  # Runtime error here
+    Log("C")            # Never executes
+    return 1
 
 TopFunction():void =
     Log("A")
-    Value := MiddleFunction()  # Error propagates to here
-    Log("F")                   # Never executes
+    Value := DeepFunction()  # Error propagates to here
+    Log("D")                 # Never executes
 
-# Execution order: A, B, C, then terminates
-# Output: "ABC"
+# Execution order: A, B, then the program terminates
 ```
 
 The runtime error propagates immediately, bypassing all subsequent code in the call chain.
@@ -977,7 +902,7 @@ Runtime errors propagate through asynchronous operations, terminating spawned ta
 Log(Message:string)<transacts>:void = {}
 WaitTicks(Count:int)<suspends>:void = {}
 -->
-<!-- 47 -->
+<!-- 42 -->
 ```verse
 AsyncOperation()<suspends>:int =
     Log("Start")
@@ -989,7 +914,6 @@ AsyncOperation()<suspends>:int =
 KickOff()<suspends>:void=
     # Error propagates out of spawned task
     spawn{ AsyncOperation() }
-
 ```
 
 When a spawned task encounters a runtime error, that specific task
@@ -1017,7 +941,7 @@ InitialState()<transacts>:solution = solution{}
 ApplyConstraint(S:solution, C:constraint)<transacts>:void = {}
 ValidateSolution(S:solution)<computes><decides>:void = {}
 -->
-<!-- 48 -->
+<!-- 43 -->
 ```verse
 SolvePuzzle(Constraints:[]constraint)<decides>:solution =
     var State:solution = InitialState()

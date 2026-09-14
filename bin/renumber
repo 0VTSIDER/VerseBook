@@ -1,0 +1,53 @@
+// Renumber the snippet ids in each chapter so that they run 1..N in document
+// order, one id per ```verse block. Blocks whose id was malformed (`06b`) or
+// missing altogether are given a proper number, which is also what makes them
+// visible to bin/extract.
+const fs = require('fs');
+
+const ID_LINE = /^<!--\s*(\d+)[a-z]?\s*-->\s*$/;
+const FAILURE_OPEN = /^(<!--\s*)(\d+)(\s+FAILURE\b)/;
+
+for (const file of process.argv.slice(2)) {
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+
+  // Locate every ```verse fence, and for each work out whether it already has
+  // an id line, a multi-line FAILURE id, or nothing at all
+  const blocks = [];
+  let inFence = false;
+  for (let k = 0; k < lines.length; k++) {
+    const t = lines[k].trim();
+    if (inFence) { if (t === '```') inFence = false; continue; }
+    if (!/^```/.test(t)) continue;
+    inFence = true;
+    if (t !== '```verse') continue;
+
+    let j = k - 1;
+    while (j >= 0 && lines[j].trim() === '') j--;
+
+    if (j >= 0 && ID_LINE.test(lines[j])) {
+      blocks.push({ kind: 'replace', at: j });
+    } else if (j >= 0 && lines[j].trim() === '-->') {
+      // Either the close of a versetest harness or of a multi-line FAILURE id
+      let o = j;
+      while (o >= 0 && !/^<!--/.test(lines[o])) o--;
+      if (o >= 0 && FAILURE_OPEN.test(lines[o])) blocks.push({ kind: 'failure', at: o });
+      else blocks.push({ kind: 'insert', at: k });
+    } else {
+      blocks.push({ kind: 'insert', at: k });
+    }
+  }
+
+  const width = Math.max(2, String(blocks.length).length);
+  blocks.forEach((b, n) => { b.id = String(n + 1).padStart(width, '0'); });
+
+  // Apply back to front so that insertions do not shift later positions
+  let inserted = 0;
+  for (const b of blocks.slice().reverse()) {
+    if (b.kind === 'replace') lines[b.at] = `<!-- ${b.id} -->`;
+    else if (b.kind === 'failure') lines[b.at] = lines[b.at].replace(FAILURE_OPEN, `$1${b.id}$3`);
+    else { lines.splice(b.at, 0, `<!-- ${b.id} -->`); inserted++; }
+  }
+
+  fs.writeFileSync(file, lines.join('\n'));
+  console.log(`${file}: ${blocks.length} blocks, ${inserted} new id(s)`);
+}

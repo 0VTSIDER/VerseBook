@@ -101,6 +101,8 @@ one named in `fortniteMain/JanInfo/README.md`, which is out of date.
 
 - `bin/verse_api` - Summarise the Verse runtime's intrinsic and native functions
   from the fortniteMain checkout into Markdown or a browsable HTML page
+- `bin/build_api` - Build step: regenerate the HTML reference into `docs/api/`,
+  skipping quietly when no engine checkout is available
 
 See "Summarising the runtime API" below.
 
@@ -120,17 +122,19 @@ hand-written chapter in this book:
 
 `bin/verse_api` reads both out of the engine tree — reconstructing intrinsic
 signatures from the compiler source and parsing the `.native.verse`
-declarations together with their `@doc` comments — and writes a Markdown
-summary. The output is meant to be reviewed and then folded into the book by
-hand, so it lands in `build/` (gitignored) rather than in `docs/`:
+declarations together with their `@doc` comments — and writes either a Markdown
+summary or a browsable HTML page. Run by hand it writes into `build/`, which is
+gitignored:
 
 ```bash
 bin/verse_api                       # build/verse_runtime_api.md
 bin/verse_api --format html         # build/verse_runtime_api.html
 ```
 
-The Markdown is the form to fold into `docs/`; it uses only extensions already
-enabled in `mkdocs.yml` (`admonition`, `def_list`, `tables`).
+The HTML is also generated into `docs/` as part of the site build; see "How it
+reaches the site" below. The Markdown is for folding into a chapter by hand, and
+uses only extensions already enabled in `mkdocs.yml` (`admonition`, `def_list`,
+`tables`).
 
 The HTML is a single self-contained file for reading in a browser — no network,
 no npm, no build step. It gives you:
@@ -149,6 +153,31 @@ no npm, no build step. It gives you:
   became available in.
 - A sticky sidebar of contents that tracks the section you are reading, and
   permalinks on every heading.
+
+### How it reaches the site
+
+`setup_and_build.sh` and `setup_and_build.bat` call `bin/build_api` just before
+`mkdocs build`. That writes `docs/api/verse_runtime_api.html`, which MkDocs copies
+into the site verbatim, and the nav entry **⚙ Runtime API** points straight at
+it. MkDocs accepts a nav entry naming a non-Markdown file in `docs/`, so no
+intermediate page is needed.
+
+The reference is a page of its own rather than something framed by the Material
+theme, because it brings its own sidebar, filter and theme toggle. Its colours
+follow the system light/dark setting, so it does not look foreign next to the
+book. A nav entry cannot ask for a new tab, so it replaces the current page and
+the browser's Back button is the way home.
+
+Two things make this safe for someone who is only editing prose:
+
+- Generating the reference needs Node and a `fortniteMain` checkout, and the
+  book has to build without either. `bin/build_api` treats a missing checkout as
+  a notice and exits zero; the build scripts skip it entirely when Node is
+  absent. A site built that way simply has a nav entry that 404s, and every
+  chapter still builds.
+- `docs/api/` is gitignored, so the megabyte of generated HTML never lands in a
+  commit.
+
 
 ### Overriding weak doc comments
 

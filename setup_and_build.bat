@@ -25,13 +25,26 @@ SET NC=%ESC%[0m
 ECHO %GREEN%=== Verse Documentation Setup ^& Build Script ===%NC%
 
 :CheckPythonInstallation
-REM This will find the Install path from the registry key for python
-FOR /f "delims=" %%a IN ('REG QUERY "HKLM\SOFTWARE\Python\PythonCore" /s ^| FINDSTR InstallPath') DO  (
+REM Find the install path from the registry. Machine-wide installs land in HKLM,
+REM but a per-user install — which is what winget does by default, including the
+REM winget command this script itself suggests — lands in HKCU, so both have to
+REM be checked or an installed Python looks missing.
+SET Key=
+
+FOR /f "delims=" %%a IN ('REG QUERY "HKLM\SOFTWARE\Python\PythonCore" /s 2^>nul ^| FINDSTR InstallPath') DO  (
   SET Key=%%a
 )
 
+IF NOT DEFINED Key (
+  FOR /f "delims=" %%a IN ('REG QUERY "HKCU\SOFTWARE\Python\PythonCore" /s 2^>nul ^| FINDSTR InstallPath') DO  (
+    SET Key=%%a
+  )
+)
+
 REM This will give the actual path for Python
-FOR /f "tokens=2*" %%a IN ('REG QUERY %Key% /ve') DO SET "PY_PATH=%%bpython.exe"
+IF DEFINED Key (
+  FOR /f "tokens=2*" %%a IN ('REG QUERY "!Key!" /ve 2^>nul') DO SET "PY_PATH=%%bpython.exe"
+)
 
 IF NOT DEFINED PY_PATH (
   ECHO %Yellow%No Python Installation Found%NC%
@@ -131,6 +144,17 @@ IF EXIST setup.py (
   ECHO %GREEN%Custom Verse lexer installed%NC%
 ) else (
   ECHO %YELLOW%setup.py not found, skipping Verse lexer installation...%NC%
+)
+
+REM Regenerate the runtime API reference into docs\api\. This needs Node and a
+REM fortniteMain checkout; without either the site still builds, just without a
+REM refreshed reference.
+ECHO %YELLOW%Generating runtime API reference...%NC%
+WHERE /Q node
+IF !ERRORLEVEL! EQU 0 (
+  CALL node bin\build_api
+) ELSE (
+  ECHO %YELLOW%Node.js not found, skipping the runtime API reference.%NC%
 )
 
 REM Build the documentation

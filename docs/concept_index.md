@@ -163,7 +163,8 @@ This index provides quick access to key concepts, language features, and importa
 
 ### Method Specifiers
 - **`<override>`** - replace parent method: [Classes - Method Overriding](10_classes_interfaces.md#method-overriding), [Access Specifiers](12_access.md)
-- **`<native>`** - implemented in C++: [Access Specifiers](12_access.md)
+- **`<native>`** - implemented in C++: [Runtime API Reference](api/verse_runtime_api.html)
+- **intrinsics** - synthesised by the compiler: [Primitives - Intrinsics](02_primitives.md#intrinsics), [Runtime API Reference](api/verse_runtime_api.html)
 
 ## Operators
 

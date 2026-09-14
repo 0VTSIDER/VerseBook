@@ -38,6 +38,9 @@ MANIFEST
 
 # MkDocs
 site/
+
+# Generated at build time by bin/build_api
+docs/api/
 .mkdocs/
 
 # IDE

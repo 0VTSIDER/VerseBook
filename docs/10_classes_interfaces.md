@@ -3040,12 +3040,13 @@ FilterByType(
     for:
         Item : Items
         Specific := TargetType[Item]  # Use type variable for cast
-    then:
+    do:
         Specific
 
 # Can pass different types at runtime
 AllComponents:[]component = array{physics_component{}, render_component{}}
 PhysicsOnly := FilterByType(AllComponents, physics_component)
+PhysicsOnly.Length = 1
 ```
 
 #### Fallible and Infallible Casts

@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+
+// Build step: regenerate the runtime API reference into docs/ so that MkDocs
+// copies it into the site.
+//
+// This is deliberately forgiving. Generating the reference needs a fortniteMain
+// checkout, which someone editing prose has no reason to have, and the book has
+// to keep building without it. So a missing engine is a notice and a zero exit,
+// not a failure — the site is built with the reference page explaining that it
+// was not generated.
+
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const REPO_ROOT = path.resolve(__dirname, '..');
+const OUTPUT = path.join('docs', 'api', 'verse_runtime_api.html');
+
+function engineRoot() {
+  const candidates = [
+    process.env.FORTNITE_MAIN,
+    path.join(REPO_ROOT, '..', 'fortniteMain'),
+  ].filter(Boolean);
+  return candidates.map(c => path.resolve(c)).find(c => fs.existsSync(path.join(c, 'Engine')));
+}
+
+const engine = engineRoot();
+if (!engine) {
+  console.log('build_api: no fortniteMain checkout found, so the runtime API');
+  console.log('build_api: reference will not be regenerated. Set $FORTNITE_MAIN');
+  console.log('build_api: to include it. Continuing.');
+  process.exit(0);
+}
+
+const result = spawnSync(process.execPath, [
+  path.join(__dirname, 'verse_api'),
+  '--format', 'html',
+  '--out', OUTPUT,
+], { cwd: REPO_ROOT, stdio: 'inherit' });
+
+if (result.status !== 0) {
+  console.error('build_api: generation failed; the site will be built without a');
+  console.error('build_api: refreshed reference. Run bin/verse_api to investigate.');
+  process.exit(0);   // still not a reason to fail the whole build
+}

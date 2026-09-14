@@ -8,22 +8,9 @@ The distinction reaches further than whether a value can change. It also determi
 
 In Verse's pure fragment, computation happens without side effects. Values are created but never modified. Functions transform inputs into outputs without changing anything along the way. This is not a limitation — it is a powerful foundation that makes code predictable and composable.
 
-<!--versetest
-point := struct{X:float, Y:float}
-Distance(P1:point, P2:point)<reads>:float =
-    DX := P2.X - P1.X
-    DY := P2.Y - P1.Y
-    Sqrt(DX * DX + DY * DY)
-
-assert:
-    Origin := point{X:=0.0, Y:=0.0}
-    UnitX := point{X := 1.0, Y:=0.0}
-    UnitY := point{X:=0.0, Y := 1.0}
-<#
--->
+<!--versetest-->
 <!-- 01 -->
 ```verse
-# Immutable values and structures
 point := struct<computes>:
     X:float = 0.0
     Y:float = 0.0
@@ -37,15 +24,16 @@ Distance(P1:point, P2:point)<reads>:float =
     DX := P2.X - P1.X
     DY := P2.Y - P1.Y
     Sqrt(DX * DX + DY * DY)
+
+Distance(Origin, UnitX) = 1.0
 ```
-<!-- #> -->
 
 In this pure world, equality means structural equality — two values are equal if they have the same shape and content. For primitive types and structs, this happens automatically. For classes, which have identity beyond their content, equality requires more careful consideration.
 
 <!--versetest-->
 <!-- 02 -->
 ```verse
-# Recursive data structures using classes
+# A recursive class needs an explicit structural comparison
 linked_list := class:
     Value:int = 0
     Next:?linked_list = false
@@ -64,7 +52,8 @@ linked_list := class:
 List1 := linked_list{Value := 1, Next := option{linked_list{Value := 2}}}
 List2 := linked_list{Value := 1, Next := option{linked_list{Value := 2}}}
 
-List1.Equals[List2] # This succeeds
+List1.Equals[List2]                        # Same shape and content
+not List1.Equals[linked_list{Value := 1}]  # A shorter list is not equal
 ```
 
 A function marked `<computes>` always produces the same output for the same input, with no hidden dependencies. That is what makes it safe to cache, reorder, or run in parallel.
@@ -76,10 +65,10 @@ Mutation enters through two keywords: `var` and `set`. The `var` annotation decl
 <!--versetest-->
 <!-- 03 -->
 ```verse
-Score:int = 100   # Immutable variable - cannot be reassigned
-                  # Mutable variable - can be reassigned 
-var Health:float = 100.0       # type annotation is required
-set Health = 75.0              # Allowed
+Score:int = 100            # Immutable: cannot be reassigned
+var Health:float = 100.0   # Mutable: the type annotation is required
+set Health = 75.0
+Health = 75.0
 ```
 
 Every use of `var` and `set` has implications for effects. Reading from a `var` variable requires the `<reads>` effect. Using `set` requires both `<reads>` and `<writes>` effects. This is not bureaucracy — it is transparency. The effects make mutation visible in function signatures, so callers know when functions might observe or modify state.
@@ -88,83 +77,61 @@ Every use of `var` and `set` has implications for effects. Reading from a `var` 
 
 Mutable variable declarations have strict requirements that prevent common errors:
 
-**Must provide explicit type:**
-
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3515, 3601, 3502, 3549):
+    NoType()<transacts>:void =
+        var A := 0
+    NoValue()<transacts>:void =
+        var B:int
+    NoTypeNoValue()<transacts>:void =
+        var C
+    NestedVar()<transacts>:void =
+        var (var D):int = 0
+-->
 <!-- 04 -->
 ```verse
-# Valid - explicit type
-var X:int = 0
+var Health:float = 100.0    # A var needs both an explicit type and a value
 
-# Invalid - cannot use := syntax with var
-# var X := 0  # Error
+# var Health := 100.0       # ERROR: := cannot be used with var
+# var Health:float          # ERROR: no initial value in a local scope
+# var Health                # ERROR: neither a type nor a value
+# var (var Health):int = 0  # ERROR: var cannot be nested inside var
+Health = 100.0
 ```
 
 The type inference syntax `:=` cannot be used with `var`. You must explicitly declare the type.
 
-**Must provide initial value (in local scope):**
-
-<!--versetest-->
-<!-- 05 -->
-```verse
-# Valid - initialized
-var Health:float = 100.0
-
-# Invalid - no initial value in local scope
-# var Score:int  # Error
-```
-
 In local scopes (functions, control flow blocks), every `var` declaration requires an initial value. However, when declaring mutable fields in classes or interfaces, the initial value can be omitted and provided during instantiation (see the Classes and Interfaces chapter for details).
 
-**Cannot be completely untyped:**
-
-<!--versetest
-assert_semantic_error(3502):
-    F():void=
-        var X
-<#
--->
-<!-- 06 -->
-```verse
-# Invalid - neither type nor value
-# var X  
-```
-<!-- #> -->
+A declaration that supplies neither a type nor a value is not a declaration at all, and the `var` keyword cannot be nested within itself.
 
 ### var Declarations as Expressions
 
 Variable declarations with `var` can be used as expressions, evaluating to their initial value:
 
-<!--versetest-->
-<!-- 07 -->
-```verse
-X := (var Y:int = 42)  # X = 42, Y declared and mutable
-X = 42
-```
-
-However, `var` declarations **cannot be the target of `set`**:
-
 <!--versetest
 assert_semantic_error(3509):
-    F():void=
+    SetOnDeclaration()<transacts>:void =
         set (var Z:int = 0) = 1
-<#
 -->
-<!-- 08 -->
+<!-- 05 -->
 ```verse
-# Invalid - var declarations evaluate to values, not variables
-# set (var Z:int = 0) = 1  # Error: cannot use set on a value
-```
-<!-- #> -->
+X := (var Y:int = 42)      # X is 42, and Y is declared and mutable
+X = 42
+set Y = 43
+Y = 43
 
-Since `var` declarations return their initial value as an expression result, you cannot use `set` on them - `set` requires a mutable variable, not a value.
+# set (var Z:int = 0) = 1  # ERROR: cannot use set on a value
+```
+
+A `var` declaration cannot be the target of `set`. Since `var` declarations return their initial value as an expression result, you cannot use `set` on them - `set` requires a mutable variable, not a value.
 
 ### set with Block Expressions
 
 The `set` statement can use block expressions, which allows complex computations and side effects:
 
 <!--versetest-->
-<!-- 09 -->
+<!-- 06 -->
 ```verse
 var X:int = 0
 var Y:int = 1
@@ -178,10 +145,10 @@ X = 2 and Y = 0
 
 This pattern is useful when the new value requires intermediate computations or when you need multiple side effects during assignment.
 
-**Important:** Verse evaluates the left-hand side of `set` before the block executes, and assigns the block's return value. This can lead to confusing behavior in certain cases:
+Verse evaluates the left-hand side of `set` before the block executes, and assigns the block's return value. This can lead to confusing behavior in certain cases:
 
 <!--versetest-->
-<!-- 10 -->
+<!-- 07 -->
 ```verse
 # Confusing: Setting the same variable inside the block
 var X:int = 0
@@ -204,74 +171,39 @@ To avoid confusion, it is best to avoid modifying the target variable or any var
 
 ### Scope and Redeclaration Restrictions
 
-**No Variable Shadowing:**
-
 Verse does not allow variable shadowing. Once an identifier is declared, you cannot redeclare it with `:=` anywhere in the same scope or any nested scope. This is more restrictive than many languages that allow inner scopes to shadow outer scope variables.
 
-<!--versetest-->
-<!-- 11 -->
-```verse
-var X:int = 0
-
-# Invalid - X already exists in current scope
-# X := 1  # Error
-```
-
-Unlike many languages, you cannot shadow variables even in nested blocks:
-
 <!--versetest
-SomeCondition:logic=false
+SomeCondition:logic = false
+assert_semantic_error(3653, 3653, 3532):
+    SameScope()<transacts>:void =
+        var Count:int = 0
+        Count := 1
+    NestedScope()<transacts>:void =
+        var Count:int = 0
+        if (false?):
+            Count := 2
+    NestedVarScope()<transacts>:void =
+        var Count:int = 0
+        if (false?):
+            var Count:int = 2
 -->
-<!-- 12 -->
+<!-- 08 -->
 ```verse
-var A:int = 1
+var Count:int = 0
+Step:int = 1
+
+# Count := 1             # ERROR: Count exists; write `set Count = 1` instead
+# Count := Step          # ERROR: the same, though it looks like an assignment
 
 if (SomeCondition?):
-    # Invalid - A already declared in outer scope
-    # A := 2  # Error: cannot shadow A
-
-block:
-    # Also invalid - cannot shadow here either
-    # var A:int = 2  # Error: ambiguous identifier
+    set Count += Step
+    # Count := 2         # ERROR: no shadowing, not even in a nested scope
+    # var Count:int = 2  # ERROR: nor with a nested var declaration
+Count = 0
 ```
 
-If you need multiple identifiers with similar purposes, use descriptive names (e.g., `InitialHealth`, `CurrentHealth`) or use qualified names to create separate scopes (see the [Modules and Paths](16_modules.md) chapter for details on qualified names and disambiguation).
-
-**Cannot redeclare with assignment syntax:**
-
-<!--versetest
-assert_semantic_error(3653):
-    G13()<transacts>:void =
-        var A13:int = 1
-        var B13:int = 2
-        A13 := B13
--->
-<!-- 13 -->
-```verse
-var A:int = 1
-var B:int = 2
-
-# Invalid - looks like assignment but A already exists
-# A := B  # ERROR
-```
-
-Use `set A = B` instead to assign to existing mutable variables.
-
-**Cannot nest var declarations:**
-
-<!--versetest
-assert_semantic_error(3549):
-    var (var X):int = 0
-<#
--->
-<!-- 14 -->
-```verse
-# Invalid
-# var (var X):int = 0  # ERROR
-```
-<!-- #> -->
-
-The `var` keyword cannot be nested within itself.
+Use `set Count = Step` to assign to an existing mutable variable. If you need multiple identifiers with similar purposes, use descriptive names (e.g., `InitialHealth`, `CurrentHealth`) or use qualified names to create separate scopes (see the [Modules and Paths](16_modules.md) chapter for details on qualified names and disambiguation).
 
 ## Deep vs Shallow Mutability
 
@@ -282,32 +214,14 @@ Verse's approach to mutability differs significantly between structs and classes
 When you declare a struct variable with `var`, you are declaring the entire structure as mutable — the variable itself and all its nested fields, recursively. This deep mutability means you can modify any part of the structure tree.
 
 <!--versetest
-point:=struct<computes>{X:float, Y:float}
-player_stats := struct<computes>:
-    Level:int = 1
-    Position:point = point{X:=0.0, Y:=0.0}
-    Inventory:[]string = array{}
-
-assert:
-    Stats1:player_stats = player_stats{}
-    var Stats2:player_stats = player_stats{}
-    set Stats2.Level = 2
-    Stats2.Level = 2
-    set Stats2.Position.X = 100.0
-    Stats2.Position.X = 100.0
-    set Stats2.Inventory = Stats2.Inventory + array{"Sword"}
-    Stats2.Inventory = array{"Sword"}
+point := struct<computes>{X:float = 0.0, Y:float = 0.0}
 assert_semantic_error(3509):
-    pt15 := struct<computes>{X:float = 0.0}
-    stats15 := struct<computes>:
-        Level:int = 1
-        Position:pt15 = pt15{}
-    G15()<transacts>:void =
-        Stats1:stats15 = stats15{}
-        set Stats1.Level = 2
-<#
+    stats15 := struct<computes>{Level:int = 1}
+    ImmutableStruct()<transacts>:void =
+        Stats:stats15 = stats15{}
+        set Stats.Level = 2
 -->
-<!-- 15 -->
+<!-- 09 -->
 ```verse
 player_stats := struct<computes>:
     Level:int = 1
@@ -316,15 +230,18 @@ player_stats := struct<computes>:
 
 # Immutable struct variable - nothing can change
 Stats1:player_stats = player_stats{}
-# set Stats1.Level = 2  # ERROR: Cannot modify immutable struct
+# set Stats1.Level = 2  # ERROR: cannot modify an immutable struct
 
-# Mutable struct variable - everything can change
+# Mutable struct variable - everything can change, however deeply nested
 var Stats2:player_stats = player_stats{}
-set Stats2.Level = 2  # OK
-set Stats2.Position.X = 100.0  # OK - nested fields are mutable
-set Stats2.Inventory = Stats2.Inventory + array{"Sword"}  # OK
+set Stats2.Level = 2
+set Stats2.Position.X = 100.0
+set Stats2.Inventory += array{"Sword"}
+
+Stats2.Level = 2
+Stats2.Position.X = 100.0
+Stats2.Inventory = array{"Sword"}
 ```
-<!-- #> -->
 
 When you assign one struct variable to another, Verse performs a deep copy. The two variables become independent, each with their own copy of the data. Changes to one do not affect the other.
 
@@ -336,7 +253,7 @@ player_stats := struct<computes>:
     Inventory:[]string = array{}
 
 -->
-<!-- 16 -->
+<!-- 10 -->
 ```verse
 var Original:player_stats = player_stats{Level := 5}
 var Copy:player_stats = Original
@@ -348,7 +265,7 @@ Original.Level = 5   # unchanged, they are independent copies
 This deep-copy semantics extends to all value types: structs, arrays, maps, and tuples. When you pass a struct to a function, the function receives its own copy. When you store a struct in a container, the container holds a copy. This prevents aliasing and makes reasoning about struct mutations local and predictable.
 
 <!--versetest-->
-<!-- 17 -->
+<!-- 11 -->
 ```verse
 # Arrays also have value semantics - assignments create copies
 var Original:[]int = array{1, 2, 3}
@@ -364,30 +281,18 @@ Copy[0] = 999
 Classes behave differently. They have reference semantics — when you assign a class instance, you are sharing a reference to the same object, not creating a copy. The `var` annotation on a class variable only affects whether that variable can be reassigned to reference a different object. It does not affect the mutability of the object's fields.
 
 <!--versetest
-game_character := class:
-    Name:string = "Hero"
-    var Health:float = 100.0
-    MaxHealth:float = 100.0
-
-assert:
-    Player1:game_character = game_character{}
-    set Player1.Health = 50.0
-    Player1.Health = 50.0
-    var Player2:game_character = Player1
-    set Player2 = game_character{Name := "Villain"}
-    Player2.Name = "Villain"
-    set Player2.Health = 75.0
-    Player2.Health = 75.0
-assert_semantic_error(3509):
+assert_semantic_error(3509, 3509):
     gc18 := class:
-        Name:string = "Hero"
         var Health:float = 100.0
-    G18()<transacts>:void =
-        Player1:gc18 = gc18{}
-        set Player1 = gc18{}
-<#
+        MaxHealth:float = 100.0
+    ReassignNonVar()<transacts>:void =
+        Player:gc18 = gc18{}
+        set Player = gc18{}
+    SetNonVarField()<transacts>:void =
+        var Player:gc18 = gc18{}
+        set Player.MaxHealth = 200.0
 -->
-<!-- 18 -->
+<!-- 12 -->
 ```verse
 game_character := class:
     Name:string = "Hero"
@@ -396,52 +301,21 @@ game_character := class:
 
 # Immutable variable, but mutable fields can still change
 Player1:game_character = game_character{}
-# set Player1 = game_character{}  # ERROR: Cannot reassign non-var variable
-set Player1.Health = 50.0  # OK: Health field is mutable
+# set Player1 = game_character{}  # ERROR: cannot reassign a non-var variable
+set Player1.Health = 50.0
 
-# Mutable variable allows reassignment
+# Mutable variable allows reassignment, but not more field mutation
 var Player2:game_character = Player1  # Same object
-set Player2 = game_character{Name := "Villain"}  # OK: Can reassign
-set Player2.Health = 75.0  # OK: Modifies the new object
+set Player2 = game_character{Name := "Villain"}
+set Player2.Health = 75.0
+# set Player2.MaxHealth = 200.0   # ERROR: MaxHealth is still not var
 
-# Player1 and the original Player2 reference were the same object
-# After reassignment, Player2 references a different object
+Player2.Name = "Villain"
+Player2.Health = 75.0
+Player1.Health = 50.0   # Untouched: Player2 now refers to another object
 ```
-<!-- #> -->
 
 The key insight: for classes, the class definition determines field mutability at definition time, not at variable declaration time. A `var` field is always mutable, regardless of how you access it. A non-`var` field is always immutable, even if accessed through a `var` variable.
-
-<!--versetest
-point:=struct<computes>{X:float}
-container := class:
-    ImmutableData:point= point{X:=1.0}
-    var MutableData:int = 0
-assert:
-    Box:container = container{}
-    set Box.MutableData = 42
-    Box.MutableData = 42
-assert_semantic_error(3509):
-    pt19 := struct<computes>{X:float = 0.0}
-    container19 := class:
-        ImmutableData:pt19 = pt19{}
-        var MutableData:int = 0
-    G19()<transacts>:void =
-        Box:container19 = container19{}
-        set Box.ImmutableData = pt19{X := 1.0}
-<#
--->
-<!-- 19 -->
-```verse
-container := class:
-    ImmutableData:point= point{}  # Always immutable
-    var MutableData:int = 0       # Always mutable
-
-# Even through an immutable variable, mutable fields can change
-Box:container = container{}
-set Box.MutableData = 42         # Allowed
-# set Box.ImmutableData = Point{X := 1.0}  # ERROR: Field is immutable
-```
-<!-- #> -->
 
 ### Collection Mutability: Arrays and Maps
 
@@ -452,25 +326,19 @@ Arrays and maps follow struct semantics—they are values, not references. When 
 Mutable arrays allow element replacement:
 
 <!--versetest-->
-<!-- 20 -->
+<!-- 13 -->
 ```verse
 var Nums:[]int = array{0, 1}
-Nums[0] = 0
-Nums[1] = 1
 
 set Nums[0] = 42
 Nums[0] = 42
 Nums[1] = 1  # Unchanged
-
-set Nums[1] = 666
-Nums[0] = 42
-Nums[1] = 666
 ```
 
 You cannot add elements beyond the array's current length:
 
 <!--versetest-->
-<!-- 21 -->
+<!-- 14 -->
 ```verse
 var A:[]int = array{0}
 not (set A[1] = 1)  # Fails - index out of bounds
@@ -482,37 +350,31 @@ not (set A[1] = 1)  # Fails - index out of bounds
 Mutable maps allow both updating existing keys and adding new keys:
 
 <!--versetest-->
-<!-- 22 -->
+<!-- 15 -->
 ```verse
-var Scores:[int]int = map{0 => 1, 1 => 2}
-set Scores[1] = 42
-Scores[1] = 42
+var Scores:[string]int = map{"Alice" => 1}
 
-# Adding new keys
-set Scores[2] = 100
-Scores[2] = 100
-
-# Map with string keys
-var Config:[string]int = map{"volume" => 50}
-set Config["brightness"] = 75
+set Scores["Alice"] = 42   # Updates the existing key
+set Scores["Bob"] = 100    # Adds a new key
+Scores = map{"Alice" => 42, "Bob" => 100}
 ```
 
 Looking up a non-existent key does not add it:
 
 <!--versetest-->
-<!-- 23 -->
+<!-- 16 -->
 ```verse
-M:[int]int := map{}
+M:[int]int = map{}
 not (M[0] = 0)  # Key does not exist, comparison fails
-# M is still empty - lookup didn't add the key
+M = map{}       # M is still empty, the lookup did not add the key
 ```
 
-**Deleting keys from maps:**
+#### Deleting Keys from Maps
 
 Verse does not have a direct "delete" or "remove" operation for maps. To remove keys, create a new map that excludes the unwanted keys by iterating over the original map:
 
 <!--versetest-->
-<!-- 24 -->
+<!-- 17 -->
 ```verse
 var Scores:[string]int = map{"Alice" => 100, "Bob" => 85, "Charlie" => 92}
 
@@ -535,73 +397,38 @@ This pattern can be wrapped in a helper function for reusability. See the [Contr
 
 Collections can be nested, and `set` works through multiple levels:
 
-**Map of arrays:**
-
 <!--versetest-->
-<!-- 25 -->
+<!-- 18 -->
 ```verse
+# A map of arrays
 var Data:[int][]int = map{}
-set Data[666] = array{42}
-Data[666] = array{42}
-
-# Mutate nested array element
-set Data[666][0] = 1234
+set Data[666] = array{42}      # Sets a whole array as the value of a key
+set Data[666][0] = 1234        # Reaches into the nested array
 Data = map{666 => array{1234}}
-Data[666] = array{1234}
-```
 
-**Array of maps:**
-
-<!--versetest-->
-<!-- 26 -->
-```verse
+# An array of maps
 var Grid:[][int]int = array{map{}}
+set Grid[0][1234] = 4321       # Adds a key to the nested map
+Grid[0] = map{1234 => 4321}
 
-# Replace entire map at index
-set Grid[0] = map{42 => 666}
-Grid[0] = map{42 => 666}
-Grid[0][42] = 666
-
-# Add new key to nested map
-set Grid[0][1234] = 4321
-Grid[0] = map{42 => 666, 1234 => 4321}
-Grid[0][42] = 666
-Grid[0][1234] = 4321
-
-# Update existing key in nested map
-set Grid[0][42] = 1122
-Grid[0][42] = 1122
-```
-
-**Array of arrays:**
-
-<!--versetest-->
-<!-- 27 -->
-```verse
+# An array of arrays
 var Matrix:[][]int = array{array{1234}}
 set Matrix[0][0] = 42
 Matrix = array{array{42}}
-Matrix[0] = array{42}
-Matrix[0][0] = 42
-
-# Replace inner array
-set Matrix[0] = array{666}
-Matrix[0] = array{666}
-Matrix[0][0] = 666
 ```
 
 All nested levels should exist to use `set`, if any of the higher levels do not exist, the entire set will fail.
 
 <!--versetest-->
-<!-- 28 -->
+<!-- 19 -->
 ```verse
-var Grid:[string][]int = map{"apples"=>array{1,2,3,4}}
+var Grid:[string][]int = map{"apples" => array{1, 2, 3, 4}}
 
-set Grid["bananas"] = array{}  # OK - no nesting, just adds new key
-set Grid["apples"][2] = 7      # OK - changes nested array element "3" to "7"
+set Grid["bananas"] = array{}      # OK - no nesting, just adds a new key
+set Grid["apples"][2] = 7          # OK - changes nested element 3 to 7
+not (set Grid["oranges"][0] = 10)  # Fails - the "oranges" key does not exist
 
-# This would fail: set Grid["oranges"][0] = 10
-# Error: "oranges" key does not exist, so Grid["oranges"] fails
+Grid["apples"] = array{1, 2, 7, 4}
 ```
 
 #### Value Semantics for Collections
@@ -609,23 +436,19 @@ set Grid["apples"][2] = 7      # OK - changes nested array element "3" to "7"
 Extracting a value from a mutable collection creates an independent copy:
 
 <!--versetest-->
-<!-- 29 -->
+<!-- 20 -->
 ```verse
-var X:[][int]int = array{map{42 => 1122, 1234 => 4321}}
+var X:[][int]int = array{map{42 => 1122}}
 
 # Y gets a copy of the map, not a reference
 Y := X[0]
-Y = map{42 => 1122, 1234 => 4321}
 
-# Mutating X does not affect Y
 set X[0][0] = 111
-X[0] = map{42 => 1122, 1234 => 4321, 0 => 111}
-Y = map{42 => 1122, 1234 => 4321}  # Unchanged
+X[0] = map{42 => 1122, 0 => 111}
+Y = map{42 => 1122}    # Unchanged
 
-# Replacing entire element does not affect Y
-set X[0] = map{42 => 4242}
-X[0] = map{42 => 4242}
-Y = map{42 => 1122, 1234 => 4321}  # Still unchanged
+set X[0] = map{42 => 4242}  # Replacing the element does not affect Y either
+Y = map{42 => 1122}
 ```
 
 This is different from class reference semantics—collections copy, classes share.
@@ -638,32 +461,21 @@ When collections contain classes or structs with mutable fields, you can mutate 
 my_class := class:
     var X:[]int = array{0}
 -->
-<!-- 30 -->
+<!-- 21 -->
 ```verse
 C := my_class{}
-set C.X[0] = 4266642
-C.X[0] = 4266642
+set C.X[0] = 42        # Through a var field that is itself a collection
+C.X[0] = 42
+
+var M:[int]my_class = map{0 => C}
+set M[0].X[0] = 99     # Through a collection, into a var field
+C.X[0] = 99            # The map holds the same object, not a copy of it
 ```
 
-**Map values with mutable members:**
-
-<!--versetest
-my_class := class{  var X:int = 0 }
--->
-<!-- 31 -->
-```verse
-var M:[int]my_class = map{0 => my_class{}}
-M[0].X = 0
-
-# Mutate class field through map
-set M[0].X = 30
-M[0].X = 30
-```
-
-The map constructed from a `var` does not track changes to the source variable:
+A map of a value type behaves differently: constructed from a `var`, it does not track changes to the source variable:
 
 <!--versetest-->
-<!-- 32 -->
+<!-- 22 -->
 ```verse
 var I:int = 42
 M:[int]int = map{0 => I}
@@ -681,21 +493,16 @@ When you store structs in an array, each element is an independent copy:
 my_struct := struct<computes>:
     I:int = 10
 -->
-<!-- 33 -->
+<!-- 23 -->
 ```verse
 S := my_struct{I := 88}
-var A : []my_struct = array{S, S}
-
-# All three have the value 88, but are independent
-S.I = 88
-A[0].I = 88
-A[1].I = 88
+var A:[]my_struct = array{S, S}   # All three start out at 88
 
 # Mutating one does not affect the others
 set A[0].I = 99
-S.I = 88     # Unchanged
 A[0].I = 99  # Changed
 A[1].I = 88  # Unchanged
+S.I = 88     # Unchanged
 ```
 
 ### Arrays of Classes: Shared References
@@ -706,32 +513,20 @@ Arrays of classes behave very differently—all references to the same object sh
 my_class := class:
     var I:int = 20
 -->
-<!-- 34 -->
+<!-- 24 -->
 ```verse
 C := my_class{}
-var A:[]my_class = array{C, C, C}
+var A:[]my_class = array{C, C}   # Both elements reference the same object
 
-# All three array elements reference the same object
-A[0].I = 20
-A[1].I = 20
-A[2].I = 20
-
-# Mutating through one affects all references
+# Mutating through one affects every reference
 set A[0].I = 30
-A[0].I = 30
 A[1].I = 30  # Changed!
-A[2].I = 30  # Changed!
-
-set A[1].I = 40
-A[0].I = 40  # All three see the change
-A[1].I = 40
-A[2].I = 40
+C.I = 30     # Changed here too
 
 # Replacing an element breaks the sharing for that element
 set A[1] = my_class{}
-A[0].I = 40  # Still references original
-A[1].I = 20  # New object with default value
-A[2].I = 40  # Still references original
+A[0].I = 30  # Still the original object
+A[1].I = 20  # A new object with the default value
 ```
 
 This is a critical distinction: **structs in collections are copies, classes in collections are shared references**.
@@ -744,7 +539,7 @@ Verse supports compound assignment operators that combine arithmetic with mutati
 my_struct:= struct<computes>:
     A:int = 10
 -->
-<!-- 35 -->
+<!-- 25 -->
 ```verse
 var S:my_struct = my_struct{}
 
@@ -770,11 +565,12 @@ Do note that `set /=` does not work with integers because integer division is fa
 Compound assignments work anywhere regular assignment does:
 
 <!--versetest-->
-<!-- 36 -->
+<!-- 26 -->
 ```verse
 var Score:int = 100
 set Score += 50
 set Score *= 2
+Score = 300
 
 var Data:[]int = array{1, 2, 3}
 set Data += array{4, 5}  # Array concatenation
@@ -789,7 +585,7 @@ Array concatenation with `+=` works on struct fields, nested fields,
 and collection values, just like regular `set` does:
 
 <!--versetest-->
-<!-- 37 -->
+<!-- 27 -->
 ```verse
 my_struct := struct<computes>:
     X:[]int = array{}
@@ -813,12 +609,6 @@ set M[42] = array{}
 set M[42] += array{1}
 set M[42] += array{2}
 M[42] = array{1, 2}
-
-# Append to a nested array value
-var A:[][]int = array{array{}}
-set A[0] += array{1}
-set A[0] += array{2}
-A[0] = array{1, 2}
 ```
 
 ### Mutating Parametric Containers
@@ -826,25 +616,8 @@ A[0] = array{1, 2}
 Compound assignment works when the element type is a class type parameter, so
 generic containers can be written without special-casing:
 
-<!--versetest
-queue(t:type) := class:
-    var Contents<private>:[]t = ()
-    Push<public>(Arg:t)<transacts>:void =
-        set Contents += array. Arg
-    Pop<public>()<transacts><decides>:t =
-        Result := Contents[Contents.Length - 1]
-        set Contents = for (Key->Val:Contents; Key <> Contents.Length - 1). Val
-        Result
-assert:
-    Q := queue(int){}
-    Q.Push(1)
-    Q.Push(2)
-    Q.Pop[] = 2
-    Q.Pop[] = 1
-    not Q.Pop[]
-<#
--->
-<!-- 38 -->
+<!--versetest-->
+<!-- 28 -->
 ```verse
 queue(t:type) := class:
     var Contents<private>:[]t = ()
@@ -860,9 +633,10 @@ queue(t:type) := class:
 Q := queue(int){}
 Q.Push(1)
 Q.Push(2)
-Q.Pop[]      # 2
+Q.Pop[] = 2
+Q.Pop[] = 1
+not Q.Pop[]   # the queue is empty again
 ```
-<!-- #> -->
 
 Assignment into an element of a parametric container also works:
 `set X.Contents[0] = ...`.
@@ -871,34 +645,23 @@ Assignment into an element of a parametric container also works:
 
 Tuples can be replaced entirely but individual elements cannot be mutated:
 
-<!--versetest-->
-<!-- 39 -->
-```verse
-var T0:tuple(int, int) = (10, 20)
-T0(0) = 10
-T0(1) = 20
-
-# Can replace entire tuple
-set T0 = (30, 40)
-T0(0) = 30
-T0(1) = 40
-```
-
-**Cannot mutate elements:**
-
 <!--versetest
 assert_semantic_error(3509):
-    TestTupleMutation()<transacts>:void =
-        var T0:tuple(int, int) = (50, 60)
-        set T0(0) = 70
-<#
+    MutateTupleElement()<transacts>:void =
+        var T:tuple(int, int) = (10, 20)
+        set T(0) = 70
 -->
-<!-- 40 -->
+<!-- 29 -->
 ```verse
-var T0:tuple(int, int) = (50, 60)
-set T0(0) = 70  # ERROR: Cannot mutate tuple elements
+var T:tuple(int, int) = (10, 20)
+
+# The whole tuple can be replaced
+set T = (30, 40)
+T(0) = 30
+T(1) = 40
+
+# set T(0) = 70  # ERROR: tuple elements cannot be mutated
 ```
-<!-- #> -->
 
 This restriction applies even when the tuple is mutable. You must replace the entire tuple to change its contents.
 
@@ -909,54 +672,33 @@ Maps preserve **insertion order**, and this order is maintained through mutation
 #### New Keys Append to End
 
 <!--versetest-->
-<!-- 41 -->
+<!-- 30 -->
 ```verse
 var M:[int]int = map{2 => 2}
 
 set M[1] = 1  # Appends to end
 set M[0] = 0  # Appends to end
 
-# Iteration order is insertion order: 2, 1, 0
-Keys := array{2, 1, 0}
-var Index:int = 0
-for (Key->Value : M):
-    Keys[Index] = Key
-    set Index += 1
-
-M = map{2 => 2, 1 => 1, 0 => 0}
+# Iteration follows insertion order, not key order
+Keys := for (Key->Value : M). Key
+Keys = array{2, 1, 0}
 ```
 
 #### Updating Existing Keys Preserves Position
 
+Map equality considers both keys/values **and order**, which is what makes the
+position of an updated key observable:
+
 <!--versetest-->
-<!-- 42 -->
+<!-- 31 -->
 ```verse
 var M:[string]int = map{"a" => 3, "b" => 1, "c" => 2}
 
-# Mutating value keeps key position
+# Mutating a value keeps the key in place
 set M["a"] = 0
-M = map{"a" => 0, "b" => 1, "c" => 2}  # Same order
+M = map{"a" => 0, "b" => 1, "c" => 2}   # Same keys, values and order: equal
 
-# Another update
-set M["c"] = 0
-set M["a"] = 2
-M = map{"a" => 2, "b" => 1, "c" => 0}  # Still same order
-```
-
-#### Order Matters for Equality
-
-Map equality considers both keys/values **and order**:
-
-<!--versetest-->
-<!-- 43 -->
-```verse
-var M:[string]int = map{"a" => 3, "b" => 1, "c" => 2}
-set M["a"] = 0
-
-# Same keys and values, same order = equal
-M = map{"a" => 0, "b" => 1, "c" => 2}
-
-# Same keys and values, different order = not equal
+# The same pairs in another order are a different map
 M <> map{"b" => 1, "c" => 2, "a" => 0}
 ```
 
@@ -970,24 +712,21 @@ Classes might contain unique pointers or other resources that cannot be safely c
 
 <!--versetest
 assert_semantic_error(3509):
-    classX := class:
-        AI:int = 20
-
-    F()<transacts>:void=
-        CX:classX = classX{}
-        set CX.AI = 30
-<#
+    classX := class{X:int = 20}
+    MutateImmutableField()<transacts>:void =
+        var C:classX = classX{}
+        set C.X = 30
 -->
-<!-- 44 -->
+<!-- 32 -->
 ```verse
 classX := class:
-    X:int = 20  # Immutable field
+    X:int = 20         # No var, so immutable for the life of the object
 
-C:= classX{}
+var C:classX = classX{}
+set C = classX{}       # OK: the variable can be pointed at another instance
+# set C.X = 30         # ERROR: the field itself still cannot be mutated
 C.X = 20
-set C.X = 30  # Error: Cannot mutate immutable class field
 ```
-<!-- #> -->
 
 This restriction applies even when the class instance itself is mutable. Only `var` fields of classes can be mutated.
 
@@ -995,24 +734,29 @@ This restriction applies even when the class instance itself is mutable. Only `v
 
 Only structs marked `<computes>` (pure structs) allow field mutation through a variable:
 
-<!--versetest-->
-<!-- 45 -->
+<!--versetest
+assert_semantic_error(3509):
+    effectful_struct := struct{M:int = 0}
+    MutateEffectfulStruct()<transacts>:void =
+        var S:effectful_struct = effectful_struct{}
+        set S.M = 1
+-->
+<!-- 33 -->
 ```verse
-# OK: <computes> struct allows field mutation
 my_mutable_struct := struct<computes>{M:int = 0, J:float = 3.0}
+# my_mutable_struct := struct{M:int = 0}  # ERROR on the set below: not <computes>
 
 var S:my_mutable_struct = my_mutable_struct{}
+Old := S      # Makes a copy of the struct
 
-Old := S # makes a copy of the struct
+set S.M = 1   # Makes a copy of the struct, but updates `M` in the process
 
-set S.M = 1 # makes a copy of the struct, but updates `M` in the process
-
-S.M = 1 # Succeeds
+S.M = 1
 not (Old = S) # Structs do not pass as references
 ```
 
 When a new struct is constructed, Verse assigns it the updated value and copies other fields.
-If there is other places referencing the old struct, they will not have the updated values (unlike classes)
+If there are other places referencing the old struct, they will not have the updated values (unlike classes).
 
 This restriction ensures that only predictable, effect-free structs can be mutated.
 
@@ -1022,82 +766,64 @@ When mutating nested structures, you cannot mutate through an immutable field of
 
 <!--versetest
 assert_semantic_error(3509):
-    inner_struct := struct<computes>{Value:int = 0}
-    immutable_class := class:
-        Field:inner_struct = inner_struct{}
-    outer_struct := struct<computes>:
-        C:immutable_class
-
-    F()<transacts>:void=
-        var S:outer_struct = outer_struct{C := immutable_class{}}
-        set S.C.Field.Value = 10
-<#
+    inner46 := struct<computes>{Value:int = 0}
+    locked46 := class{Data:inner46 = inner46{}}
+    box46 := struct<computes>{L:locked46}
+    MutateThroughImmutableField()<transacts>:void =
+        var B:box46 = box46{L := locked46{}}
+        set B.L.Data.Value = 10
 -->
-<!-- 46 -->
+<!-- 34 -->
 ```verse
-struct0 := struct<computes>{A:int = 10}
-struct1 := struct<computes>{S0:struct0 = struct0{}}
-class0 := class{CI:struct1 = struct1{}}  # Class with immutable field CI
-struct2 := struct<computes>{C0:class0 = class0{}}
-struct3 := struct<computes>{S2:struct2 = struct2{}}
+inner := struct<computes>{Value:int = 0}
+locked := class{Data:inner = inner{}}        # Immutable field
+unlocked := class{var Data:inner = inner{}}  # Mutable field
+box := struct<computes>{L:locked, U:unlocked}
 
-var S3:[]struct3 = array{struct3{}, struct3{}}
-set S3[1].S2.C0.CI.S0.A = 7  # ERROR: Cannot mutate through immutable field CI
-```
-<!-- #> -->
-
-The error occurs because `CI` is an immutable field (not declared with `var`). **However**, you CAN mutate through `var` fields of a class in the mutation path.
-
-Even with a mutable index, you cannot mutate an immutable array:
-
-<!--NoCompile-->
-<!-- 47 -->
-```verse
-var I:int = 2  # Mutable index
-A:[]int = array{5, 6, 7}  # Immutable array
-set A[I] = 2  # ERROR: A is not var - mutability of I does not matter
+var B:box = box{L := locked{}, U := unlocked{}}
+set B.U.Data.Value = 10       # OK: the path runs through a var field
+# set B.L.Data.Value = 10     # ERROR: L.Data is not declared with var
+B.U.Data.Value = 10
 ```
 
-The array itself must be declared `var` to allow element mutation:
+The error occurs because `L.Data` is an immutable field (not declared with `var`). The mutation path must be `var` all the way down, however deeply nested it is.
 
-<!--versetest-->
-<!-- 48 -->
+Mutability of the index is a separate matter, and does not help: it is the array that must be `var` to allow element mutation.
+
+<!--versetest
+assert_semantic_error(3509):
+    MutateImmutableArray()<transacts><decides>:void =
+        var I:int = 2
+        A:[]int = array{5, 6, 7}
+        set A[I] = 2
+-->
+<!-- 35 -->
 ```verse
-I:int = 2
+var I:int = 2                 # A mutable index changes nothing
 var A:[]int = array{5, 6, 7}
-set A[I] = 2  # OK: A is var
+set A[I] = 42
+A[2] = 42
+
+# B:[]int = array{5, 6, 7}
+# set B[I] = 42  # ERROR: B is not var, so no element of it can be mutated
 ```
 
 ## Identity and Uniqueness
 
 The `<unique>` specifier gives classes identity-based equality. Without it, classes can't be compared for equality at all (you'd need to write custom comparison methods). With it, equality means identity — two references are equal only if they refer to the exact same object.
 
-<!--versetest
-unique_item := class<unique>:
-    var Count:int = 0
-assert:
-    Item1:unique_item = unique_item{}
-    Item2:unique_item = Item1
-    Item3:unique_item = unique_item{}
-    Item1 = Item2
-    not (Item1 = Item3)
-<#
--->
-<!-- 49 -->
+<!--versetest-->
+<!-- 36 -->
 ```verse
 unique_item := class<unique>:
     var Count:int = 0
 
 Item1:unique_item = unique_item{}
-Item2:unique_item = Item1  # Same object
-Item3:unique_item = unique_item{}  # Different object
+Item2:unique_item = Item1          # Same object
+Item3:unique_item = unique_item{}  # Different object, identical contents
 
-if (Item1 = Item2):
-    Print("Same object")  # This prints
-
-if (Item1 = Item3):
-    Print("Same object")  # This does not print - different objects
+Item1 = Item2
+not (Item1 = Item3)
 ```
-<!-- #> -->
 
 This identity-based equality is crucial for game objects that need distinct identities even when their data is identical. Two monsters might have the same stats, but they are still different monsters.

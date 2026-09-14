@@ -6,7 +6,7 @@ Operators are functions that perform actions on their operands. They provide con
 
 Verse operators come in three formats based on their position relative to their operands:
 
-**Prefix Operators**
+### Prefix Operators
 
 Prefix operators appear before their single operand:
 
@@ -14,7 +14,7 @@ Prefix operators appear before their single operand:
 - `-Value` - Numeric negation
 - `+Value` - Numeric positive (for alignment)
 
-**Infix Operators**
+### Infix Operators
 
 Infix operators appear between their two operands:
 
@@ -23,7 +23,7 @@ Infix operators appear between their two operands:
 - `A = B` - Equality comparison
 - `A and B` - Logical AND
 
-**Postfix Operators**
+### Postfix Operators
 
 Postfix operators bind to the expression on their left. While some (like `.`) appear between two elements, they are classified as postfix because they operate on the left-hand expression:
 
@@ -33,7 +33,7 @@ Postfix operators bind to the expression on their left. While some (like `.`) ap
 - `Function()` - Function call (the `()` operates on the function to its left)
 - `Constructor{}` - Object construction (the `{}` operates on the type to its left)
 
-Although `.` appears *between* `Player` and `Respawn` in `Player.Respawn()`, it is considered postfix because it binds to `Player` and selects a member from it. The right side (`Respawn`) is not a separate operand but a member selector
+Although `.` appears *between* `Player` and `Respawn` in `Player.Respawn()`, it is considered postfix because it binds to `Player` and selects a member from it. The right side (`Respawn`) is not a separate operand but a member selector.
 
 ## Precedence
 
@@ -77,22 +77,20 @@ Arithmetic operators perform mathematical operations on numeric values. They wor
 <!-- 01 -->
 ```verse
 # Basic arithmetic
-Sum := 10 + 20      # 30
-Diff := 50 - 15     # 35
-Prod := 6 * 7       # 42
-Quot := 20.0 / 4.0  # 5.0
+10 + 20 = 30
+50 - 15 = 35
+6 * 7 = 42
+20.0 / 4.0 = 5.0
 
 # Unary operators
-Negative := -42     # -42
-Positive := +42     # 42 (for alignment)
+Delta := 5 - 12
+-Delta = 7    # negation
++Delta = -7   # unary plus, purely for alignment
 
-# Integer division (failable, returns rational)
-if (Result := 10 / 3):
-    IntResult := Floor(Result)  # 3
-
-# Type conversion through multiplication
-IntValue:int = 42
-FloatValue:float = IntValue * 1.0  # Converts to 42.0
+# Integer division is failable and yields a rational
+9 / 3 = 3         # a rational compares equal to an int
+Floor(10 / 3) = 3
+not (10 / 0 = 0)  # division by zero fails rather than erroring
 ```
 
 ### Compound Assignments
@@ -110,21 +108,26 @@ Compound assignment operators combine an arithmetic operation with assignment:
 <!-- 02 -->
 ```verse
 var Score:int = 100
-set Score += 50    # Score is now 150
-set Score -= 25    # Score is now 125
-set Score *= 2     # Score is now 250
+set Score += 50
+Score = 150
+set Score -= 25
+Score = 125
+set Score *= 2
+Score = 250
 
 var Health:float = 100.0
-set Health /= 2.0  # Health is now 50.0
+set Health /= 2.0
+Health = 50.0
 
 # Arrays can use += with both arrays and tuples
 var Items:[]int = array{1, 2, 3}
-set Items += array{4, 5}  # Items is now array{1, 2, 3, 4, 5}
-set Items += (6, 7)       # Items is now array{1, 2, 3, 4, 5, 6, 7}
+set Items += array{4, 5}
+set Items += (6, 7)
+Items = array{1, 2, 3, 4, 5, 6, 7}
 
-# Note: set /= does not work with integers due to failable division
-# var IntValue:int = 10
-# set IntValue /= 2  # Compile error!
+# set /= does not work with integers, because integer division is failable
+# var Count:int = 10
+# set Count /= 2  # Compile error!
 ```
 
 ### Bitwise Operations
@@ -136,31 +139,27 @@ the two's complement binary representation of integers.
 <!--versetest-->
 <!-- 03 -->
 ```verse
-# Bitwise AND - sets bit only if both inputs have it set
+# Bitwise AND - sets a bit only if both inputs have it set
 BitAnd(12, 10) = 8      # 1100 & 1010 = 1000
-BitAnd(0, 12345) = 0    # All bits cleared by zero
-BitAnd(-1, 42) = 42     # -1 has all bits set (identity)
+BitAnd(-1, 42) = 42     # -1 has all bits set, so it acts as the identity
 
-# Bitwise OR - sets bit if either input has it set
+# Bitwise OR - sets a bit if either input has it set
 BitOr(12, 10) = 14      # 1100 | 1010 = 1110
-BitOr(0, 12345) = 12345 # Identity with zero
-BitOr(-1, 42) = -1      # -1 has all bits set
+BitOr(-1, 42) = -1      # -1 absorbs everything
 
-# Bitwise XOR - sets bit if inputs differ
+# Bitwise XOR - sets a bit if the inputs differ
 BitXor(12, 10) = 6      # 1100 ^ 1010 = 0110
-BitXor(42, 42) = 0      # Same values cancel out
-BitXor(-1, 0) = -1      # Flips all bits of zero
+BitXor(42, 42) = 0      # same values cancel out
 
-# Bitwise NOT - inverts all bits: ~X = -X - 1
-BitNot(0) = -1          # All bits flip
-BitNot(-1) = 0          # All bits flip back
-BitNot(12) = -13        # -(12 + 1) = -13
+# Bitwise NOT - inverts all bits: BitNot(X) = -X - 1
+BitNot(0) = -1
+BitNot(12) = -13        # -(12 + 1)
 ```
 
-**Important:** Bitwise operations work only with `int` type, not
-`float` or `rational`. The operations follow two's complement
-arithmetic, where negative numbers are represented with the sign bit
-set and remaining bits inverted plus one.
+Bitwise operations work only with the `int` type, not `float` or
+`rational`. They follow two's complement arithmetic, where negative
+numbers are represented with the sign bit set and remaining bits
+inverted plus one.
 
 Common patterns using bitwise operations:
 
@@ -172,17 +171,17 @@ Flags := 10                         # 10 = binary 1010: bits 1 and 3 set
 BitAnd(Flags, 2) = 2                # Bit 1 is set (2 = binary 0010)
 BitAnd(Flags, 4) = 0                # Bit 2 is clear (4 = binary 0100)
 
-# Set a bit (turn on bit at position N)
-BitOr(Flags, 1) = 11                # Result: 11 (binary 1011)
+# Set a bit
+BitOr(Flags, 1) = 11                # 1011: bit 0 turned on
 
-# Clear a bit (turn off bit at position N)
-BitAnd(Flags, BitNot(8)) = 2        # Result: 2 (binary 0010)
+# Clear a bit
+BitAnd(Flags, BitNot(8)) = 2        # 0010: bit 3 turned off
 
-# Toggle a bit (flip bit at position N)
-BitXor(Flags, 1) = 11               # Result: 11 (binary 1011)
+# Toggle a bit
+BitXor(Flags, 2) = 8                # 1000: bit 1 was set, so it flipped off
 
-# Test even/odd (check if lowest bit is set)
-BitAnd(Flags, 1) = 0                # Even (lowest bit clear)
+# Test even/odd (check if the lowest bit is set)
+BitAnd(Flags, 1) = 0                # even (lowest bit clear)
 ```
 
 De Morgan's laws apply to bitwise operations:
@@ -223,14 +222,12 @@ Comparison operators test relationships between values and are failable expressi
 
 <!--versetest
 HandlePlayerDeath():void={}
-EnableAdminMode():void={}
 ShowMenu():void={}
 UnlockAchievement():void={}
 game_state := enum{Playing, Paused}
 Score:int = 1500
 HighScore:int = 1000
 Health:float = 0.0
-PlayerName:string = "Admin"
 CurrentState:game_state = game_state.Paused
 Level:int = 15
 -->
@@ -243,10 +240,7 @@ if (Score > HighScore):
 if (Health <= 0.0):
     HandlePlayerDeath()
 
-# Example with other comparable types
-if (PlayerName = "Admin"):
-    EnableAdminMode()
-
+# Enums, and every other comparable type, support = and <>
 if (CurrentState <> game_state.Playing):
     ShowMenu()
 
@@ -265,20 +259,14 @@ The following types support equality comparison operations (`=` and `<>`):
 - Structs: If all fields are comparable
 - Unique classes: Classes marked with `<unique>` (identity equality only)
 
-Comparisons between different types generally fail:
+Comparisons between different types still compile, but they always fail:
 
-<!--versetest
-assert:
-    not (0 = 0.0)
-    not ("5" = 5)
-<#
--->
+<!--versetest-->
 <!-- 07 -->
 ```verse
-0 = 0.0  # Fails: int vs float
-"5" = 5  # Fails: string vs int
+not (0 = 0.0)   # int is never equal to float
+not ("5" = 5)   # string is never equal to int
 ```
-<!-- #>-->
 
 ## Logical Operators
 
@@ -293,14 +281,13 @@ StartGame():void={}
 -->
 <!-- 08 -->
 ```verse
-var IsReady:logic = true
+IsReady:logic = true
 
 if (IsReady?):
     StartGame()
 
-# Equivalent to:
-if (IsReady = true):
-    StartGame()
+# `IsReady?` is equivalent to comparing against true
+IsReady = true
 ```
 
 ### Not Operator
@@ -309,18 +296,18 @@ The `not` operator negates the success or failure of an expression:
 
 <!--versetest
 ContinuePlaying()<computes>:void={}
-IsGameOver:?int = option{1}
 -->
 <!-- 09 -->
 ```verse
+IsGameOver:logic = false
+
 if (not IsGameOver?):
     ContinuePlaying()
 
-# Effects are not committed with not
+# The effects of a failing expression are rolled back
 var X:int = 0
 if (not (set X = 5, IsGameOver?)):
-    # X is still 0 here, even though the assignment "tried" to happen
-    Print("X is {X}")  # Prints "X is 0"
+    X = 0  # the assignment was undone when IsGameOver? failed
 ```
 
 ### And Operator
@@ -329,17 +316,14 @@ The `and` operator succeeds only if both operands succeed:
 
 <!--versetest
 EnterRoom()<computes>:void={}
-AllowQuestAccess()<computes>:void={}
 ProcessResult()<computes>:void={}
 HasKey:?int = option{1}
 DoorUnlocked:?int = option{1}
-player := struct{Level:int, HasItem:?int}
 QuickCheck()<computes><decides>:void = {}
 ExpensiveCheck()<computes><decides>:void = {}
 -->
 <!-- 10 -->
 ```verse
-Player:player = player{Level:=10, HasItem:=option{1}}
 if (HasKey? and DoorUnlocked?):
     EnterRoom()
 
@@ -422,61 +406,46 @@ set Position = vector3{X := 10.0, Y := 20.0, Z := 0.0}
 
 The square bracket operator is used for multiple purposes in Verse:
 
-1. **Array/Map indexing** - Access elements in collections
-2. **Function calls** - Call functions which may fail
+1. Indexing arrays, maps, and strings to access their elements
+2. Calling functions which may fail
 
 <!--versetest
-MyFunction1(X:int, Y:int)<decides>:void={}
-MyFunction2(?X:int=0, ?Y:int=0)<decides>:void={}
-Arg1:int = 0
-Arg2:int = 0
-<#
+Damage(Base:int, ?Bonus:int = 0)<computes><decides>:int = Base + Bonus
 -->
 <!-- 14 -->
 ```verse
 # Array indexing (failable)
-MyArray := array{10, 20, 30}
-if (Element := MyArray[1]):
-    Print("Element at index 1: {Element}")  # Prints 20
+Scores := array{10, 20, 30}
+Scores[1] = 20
+not (Scores[9] = 0)  # out of bounds fails
 
 # Map lookup (failable)
-Scores:[string]int = map{"Alice" => 100, "Bob" => 85}
-if (AliceScore := Scores["Alice"]):
-    Print("Alice's score: {AliceScore}")
+Ranks := map{"Alice" => 100, "Bob" => 85}
+Ranks["Alice"] = 100
 
-# String indexing (failable)
+# String indexing (failable), yielding a char
 Name:string = "Verse"
-if (FirstChar := Name[0]):
-    Print("First character: {FirstChar}")  # Prints 'V'
+Name[0] = 'V'
 
-# Function call that can fail
-Result1 := MyFunction1[Arg1, Arg2]          # Can fail
-Result2 := MyFunction2[?X:=Arg1, ?Y:=Arg2]  # Named arguments
-EmptyCall := MyFunction2[]                  # and optional values
+# Calling a function that can fail
+Damage[10] = 10                # optional argument omitted
+Damage[10, ?Bonus := 5] = 15   # named argument
 ```
-<!-- #>-->
 
 ### Member Access
 
 The dot operator accesses fields and methods of objects:
 
-<!--versetest
-player := class<computes>{Health:float = 100.0, GetName()<computes>:string = "Hero"}
-vector3 := struct<computes>{X:float, Y:float, Z:float}
-config_settings := struct<computes>{MaxPlayers:int = 10}
-config := struct<computes>{Settings:config_settings = config_settings{}}
-Player:player = player{}
-MyVector:vector3 = vector3{X:=1.0, Y:=2.0, Z:=3.0}
-Config:config = config{}
--->
+<!--versetest-->
 <!-- 15 -->
 ```verse
-Player.Health
-Player.GetName()
-MyVector.X
-Config.Settings.MaxPlayers
-```
+weapon := class<computes>{Damage:float = 25.0}
+player := class<computes>{Weapon:weapon = weapon{}, GetName()<computes>:string = "Hero"}
 
+Player := player{}
+Player.GetName() = "Hero"    # method call
+Player.Weapon.Damage = 25.0  # member access chains left to right
+```
 
 ### Range
 
@@ -485,54 +454,44 @@ The range operator creates ranges for iteration:
 <!--versetest-->
 <!-- 16 -->
 ```verse
-# Inclusive range
-for (I := 0..4):
-    Print("{I}")  # Prints 0, 1, 2, 3, 4
+# Ranges are inclusive at both ends
+Indices := for (I := 0..4) { I }
+Indices = array{0, 1, 2, 3, 4}
 ```
 
 ### Object Construction
 
 Verse provides multiple syntaxes for constructing objects. All of the following are equivalent:
 
-<!--versetest
-point:=struct{X:int = 0, Y:int = 0}
-player_data:=struct{Name:string,Level:int,Health:float}
-game_config:=struct{MaxPlayers:int,EnablePvP:logic}
--->
+<!--versetest-->
 <!-- 17 -->
 ```verse
+point := struct{X:int = 0, Y:int = 0}
+
 # Curly braces with commas
-Point1 := point{X:= 10, Y:= 20}
+Point1 := point{X := 10, Y := 20}
 
 # Curly braces with semicolons
-Point2 := point{X:= 10; Y:= 20}
+Point2 := point{X := 10; Y := 20}
 
-# Colon syntax with newlines (no braces)
-Point3 := point:
-    X:= 10
-    Y:= 20
+# Curly braces with newlines - no separator needed
+Point3 := point{
+    X := 10
+    Y := 20  # a trailing comma here would be an error
+}
 
-# Colon syntax with commas and newlines
+# Colon syntax with newlines and no braces
 Point4 := point:
-    X:= 10,
-    Y:= 20
+    X := 10
+    Y := 20
 
-# Fields can be separated by newlines inside braces
-Player := player_data {
-    Name := "Hero"
-    Level := 5
-    Health := 100.0
-}
+Point1 = Point2
+Point2 = Point3
+Point3 = Point4
 
-# Trailing commas are not allowed
-Config := game_config{
-    MaxPlayers := 100,
-    EnablePvP := true # ,  -- comma not allowed here
-}
-
-# Dot syntax for single field (requires defaults for other fields)
-Point5 := point . X:=10  # Y gets default value 0
-Point6 := point . Y:=20  # X gets default value 0
+# Dot syntax for a single field, the rest take their defaults
+Point5 := point . X := 10
+Point5 = point{X := 10, Y := 0}
 ```
 
 ### Tuple Access
@@ -543,8 +502,8 @@ Round braces when used with a single argument after a tuple expression, accesses
 <!-- 18 -->
 ```verse
 MyTuple := (10, 20, 30)
-FirstElement := MyTuple(0)  # Access first element
-SecondElement := MyTuple(1)  # Access second element
+MyTuple(0) = 10
+MyTuple(2) = 30
 ```
 
 ## Type Conversions
@@ -555,14 +514,16 @@ Verse has limited implicit type conversion. Most conversions must be explicit:
 <!-- 19 -->
 ```verse
 # No implicit int to float conversion
-MyInt:int = 42
-# MyFloat:float = MyInt  # Error!
-MyFloat:float = MyInt * 1.0  # OK: explicit conversion
+Count:int = 42
+# Ratio:float = Count        # Error!
+Ratio:float = Count * 1.0    # OK: explicit conversion
+Ratio = 42.0
 
 # No implicit numeric to string conversion
 Score:int = 100
 # Message:string = "Score: " + Score  # Error!
-Message:string = "Score: {Score}"  # OK: string interpolation
+Message:string = "Score: {Score}"     # OK: string interpolation
+Message = "Score: 100"
 ```
 
 When operators work with mixed types, specific rules apply:
@@ -570,11 +531,10 @@ When operators work with mixed types, specific rules apply:
 <!--versetest-->
 <!-- 20 -->
 ```verse
-# int * float -> float
-Result := 5 * 2.0  # Result is 10.0 (float)
+# int and float mix under *, and the result is a float
+5 * 2.0 = 10.0
+Result:float = 5 * 2.0
 
-# Comparisons must be same type
-if (5 = 5):     # OK
-if (5.0 = 5.0): # OK
-# if (5 = 5.0):   # Fails
+# but they do not mix under + or -
+# 5 + 2.0  # Error: no operator'+' overload takes (int, float)
 ```

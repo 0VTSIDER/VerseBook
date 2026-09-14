@@ -483,20 +483,15 @@ concurrency expression is abandoned, defers in arms that have already
 started execute, and arms that have not yet started are simply
 skipped.
 
-<!--versetest
-CoroUtils := module:
-    LogEvent(Msg:string):void = {}
-    GetEventLogString()<computes>:string = ""
-    WaitTicks(N:int)<suspends>:void = {}
-    Tick(N:int):void = {}
--->
+<!--versetest-->
 <!-- 09 -->
 ```verse
-Log(Msg:string):void = CoroUtils.LogEvent(Msg)
+Log(Msg:string):void = {}
+WaitTicks(N:int)<suspends>:void = {}
 
 MaybeReturn(Delay:int, Value:?string)<suspends>:string =
     defer { Log("a") }
-    CoroUtils.WaitTicks(Delay)
+    WaitTicks(Delay)
     if (V := Value?):
         return V         # Returns from MaybeReturn
     Log("done")
@@ -509,8 +504,7 @@ Wrapper(Value:?string)<suspends>:string =
             MaybeReturn(0, Value)   # Arm 1
         block:
             defer { Log("b") }
-            CoroUtils.WaitTicks(1)
-            Log("2")
+            WaitTicks(1)
             2
     "{R(0)}"
 ```

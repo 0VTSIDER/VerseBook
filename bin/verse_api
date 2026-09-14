@@ -1643,8 +1643,18 @@ function writeStubs(model, file) {
   const existing = fs.existsSync(file) ? parseOverrideFile(file) : null;
   const known = new Set((existing ?? []).map(e => e.selector));
 
+  // A selector may have been qualified by hand — `Math:Lerp(float,float,float)`
+  // rather than the shorter `Lerp` this would generate — so match on the
+  // declaration each existing section resolves to, not on the selector text.
+  const claimed = new Set();
+  for (const selector of known) {
+    const parsed = parseSelector(selector);
+    for (const decl of declarations) if (selectorMatches(parsed, decl)) claimed.add(decl);
+  }
+
   const additions = [];
   for (const decl of declarations) {
+    if (claimed.has(decl)) continue;
     const selector = uniqueSelector(decl, declarations);
     if (known.has(selector)) continue;
     const source = decl.doc ||
@@ -1704,6 +1714,11 @@ const DOC_INTRO = [
   'declarations are written in `.native.verse` files and marked `<native>`,',
   'with the implementation supplied in C++ through a generated binding;',
   '`<native_callable>` is the mirror image, a Verse body that C++ can call.',
+  '',
+  'Anything implemented in C++ is marked `C++`. A declaration without that mark',
+  'has an ordinary Verse body, even though it lives in a `.native.verse` file',
+  'alongside the native ones. A member of a native type is not marked',
+  'separately, since the type it belongs to already says so.',
 ];
 
 const TYPE_INTRO = [
@@ -1907,12 +1922,12 @@ function definition(term, bodyLines) {
 // a prose line and HTML as badges, so the two cannot disagree.
 function declFacts(decl) {
   const facts = [];
-  // `<native>`, `<native_callable>` and the access specifier are already spelled
-  // out in the signature printed right above, so repeating them buys nothing.
-  // Being written in Verse is the one implementation fact the signature does
-  // not show, since the body is stripped.
-  if (!decl.isNative && !decl.isNativeCallable && decl.hasBody) {
-    facts.push({ kind: 'verse', text: 'implemented in Verse', label: 'Verse' });
+  // The access specifier is already spelled out in the signature above, so
+  // repeating it buys nothing. Being implemented in C++ is called out, since
+  // that is the distinction the document exists to draw; everything unmarked
+  // has a Verse body.
+  if (decl.isNative) {
+    facts.push({ kind: 'cpp', text: 'implemented in C++', label: 'C++' });
   }
   for (const attribute of decl.attributes ?? []) {
     const available = /^@available\{[^:]*:=\s*(\d+)/.exec(attribute);
@@ -2254,7 +2269,9 @@ ${tokens('dark')}
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-html { scroll-behavior: smooth; }
+/* Not scroll-behavior: smooth — the browser scales its duration with the
+   distance travelled, which crawls on a document this long. Navigation is
+   animated in script instead, at a fixed short duration. */
 body {
   margin: 0;
   background: var(--bg);
@@ -2374,6 +2391,8 @@ dl.api dd ul { margin: 0.25rem 0 0.5rem; padding-left: 1.3rem; }
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
+/* A signature broken one parameter per line keeps those breaks. */
+.sig.wrapped { white-space: pre-wrap; }
 h4 .sig { font-size: 0.86rem; font-weight: 600; }
 
 /* A native type and its members read as one unit. */
@@ -2541,6 +2560,34 @@ toggle.addEventListener('click', () => {
   setTheme(next);
 });
 
+// Jump to a heading in a fixed 220ms regardless of how far away it is, which
+// is the whole point: the browser's own smooth scrolling takes seconds to
+// cross a document of this length.
+const SCROLL_MS = 220;
+function scrollToHash(hash) {
+  const target = document.getElementById(decodeURIComponent(hash.slice(1)));
+  if (!target) return false;
+  const from = window.scrollY;
+  const to = from + target.getBoundingClientRect().top - 12;
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / SCROLL_MS);
+    window.scrollTo(0, from + (to - from) * (1 - (1 - t) * (1 - t)));
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  return true;
+}
+
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('a[href^="#"]');
+  if (!link || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  if (scrollToHash(link.hash)) {
+    event.preventDefault();
+    history.replaceState(null, '', link.hash);
+  }
+});
+
 const links = new Map([...document.querySelectorAll('nav a')].map(a => [a.hash.slice(1), a]));
 const observer = new IntersectionObserver((records) => {
   for (const record of records) {
@@ -2610,8 +2657,37 @@ function badgesHtml(decl, parent) {
     `</div>`;
 }
 
-function sigHtml(signature) {
-  return `<code class="sig">${highlightVerse(signature)}</code>`;
+// A long parameter list is unreadable as one run-on line, especially when the
+// types are fully qualified. Past a threshold it is broken one parameter per
+// line, which is how the same declaration would be written in Verse.
+const SIGNATURE_WRAP_WIDTH = 88;
+
+function wrapSignature(signature) {
+  if (signature.length <= SIGNATURE_WRAP_WIDTH) return signature;
+
+  // The parameter list is the last top-level bracket group before the result:
+  // an extension method's receiver comes first and is left alone.
+  let open = -1;
+  let depth = 0;
+  for (let i = 0; i < signature.length; i++) {
+    const c = signature[i];
+    if (c === '(') { if (depth === 0) open = i; depth++; }
+    else if (c === ')') {
+      depth--;
+      if (depth === 0 && signature[i + 1] !== '.') {
+        const params = splitTopLevel(signature.slice(open + 1, i));
+        if (params.length < 2) return signature;
+        return signature.slice(0, open + 1) + '\n    ' +
+               params.join(',\n    ') + '\n' + signature.slice(i);
+      }
+    }
+  }
+  return signature;
+}
+
+function sigHtml(signature, { wrap = false } = {}) {
+  const text = wrap ? wrapSignature(signature) : signature;
+  return `<code class="sig${wrap ? ' wrapped' : ''}">${highlightVerse(text)}</code>`;
 }
 
 // Filtering matches on the signature, which is what a reader types when
@@ -2624,7 +2700,7 @@ function entryHtml(decl, parent) {
   const { doc } = declParts(decl);
   const body = (doc ? proseHtml(doc) : '') + badgesHtml(decl, parent);
   return `<div class="entry" data-search="${searchKey(decl.signature)}">` +
-         `<dt>${sigHtml(decl.signature)}</dt>` +
+         `<dt>${sigHtml(decl.signature, { wrap: true })}</dt>` +
          (body ? `<dd>${body}</dd>` : '') + `</div>`;
 }
 
@@ -2709,7 +2785,7 @@ function renderHtml(model, opts) {
           ? `<p class="notes">${inlineHtml(p.slice(1, -1))}</p>`
           : proseHtml(p)).join('');
         return `<div class="entry" data-search="${searchKey(signature)}">` +
-               `<dt>${sigHtml(signature)}</dt>` +
+               `<dt>${sigHtml(signature, { wrap: true })}</dt>` +
                (rendered ? `<dd>${rendered}</dd>` : '') + `</div>`;
       }).join('') + '</dl>');
       body.push('</section>');

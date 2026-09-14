@@ -95,6 +95,7 @@ nav:
   - Modules and Paths: 16_modules.md
   - Persistable Types: 17_persistable.md
   - Code Evolution: 18_evolution.md
+  - "⚙ Runtime API": api/verse_runtime_api.html
   - "📚 Concept Index": concept_index.md
   - Talks & Tutorials: talks.md
 

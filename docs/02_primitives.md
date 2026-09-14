@@ -8,17 +8,14 @@ given.
 
 ## Intrinsics
 
-*intrinsic functions* are built-in operations provided directly by the
-runtime that cannot be implemented in pure Verse code. These functions
-receive special compiler treatment and form the foundation for many
-language features. Intrinsic functions are special because they:
-
-- **Implemented by the runtime**: Written in C++ or other native code, not Verse
-- **Cannot be replicated in Verse**: Require access to runtime internals or low-level operations
-- **Receive compiler recognition**: The compiler knows about them and may optimize their use
-
-Examples include mathematical operations like `Abs()`, collection
-methods like `Find()`, and type conversions like `ToString()`.
+Some of what looks like ordinary Verse code is not written in Verse at
+all. *Intrinsic functions* are operations the compiler synthesises: the
+operators, container indexing, and functions such as `Abs`, `Floor`,
+and `Ceil`. They cannot be written in Verse because they need access to
+runtime internals, and because the compiler recognises each one by name
+it can also optimize the call. The [Runtime API
+Reference](api/verse_runtime_api.html) catalogues them, alongside the
+parts of the runtime that the engine implements in C++.
 
 Most intrinsic functions *cannot be referenced as first-class
 values*. This means you can call them directly, but you cannot store
@@ -200,10 +197,8 @@ Whole number rationals equal their integer equivalents:
 
 This enables seamless mixing of integer and rational values in calculations.
 
-Two functions convert rationals to integers:
-
-- **`Floor`** — rounds toward negative infinity (down on number line)
-- **`Ceil`** — rounds toward positive infinity (up on number line)
+Two functions convert rationals to integers: `Floor` rounds toward
+negative infinity, and `Ceil` toward positive infinity.
 
 <!--versetest-->
 <!-- 11 -->
@@ -225,10 +220,10 @@ Floor((-5) / -2) = 2    # 2.5 → 2
 Ceil((-5) / -2) = 3     # 2.5 → 3
 ```
 
-`Floor` rounds toward negative infinity, *not* toward zero. This
-matches mathematical convention but differs from truncation. When the
-argument is a rational, `Floor` does not fail, but if passed a `float`
-it is a `decides` function.
+Rounding toward negative infinity is *not* truncation: the two agree
+on positive values and part company on negative ones. On a rational
+argument neither function can fail; the `float` overloads are
+`<decides>`.
 
 When you apply `Floor` or `Ceil` to an integer-valued rational (one
 that reduces to a whole number), it returns that integer:
@@ -387,346 +382,117 @@ To convert an `int` to a `float`, multiply it by `1.0`: `MyFloat:=MyInt*1.0`.
 
 ## Mathematical Functions
 
-Verse provides intrinsic mathematical functions for common numerical
-operations. These functions are optimized by the runtime and work with
-both `int` and `float` types.
+The mathematical functions are intrinsics. The [Runtime API
+Reference](api/verse_runtime_api.html) lists every one of them with its
+signature, its effects, and how it behaves at the edges of its domain; this
+section pins down the behaviour that most often catches people out.
 
-The `Abs()` function returns the absolute value of a number—its
-distance from zero without regard to sign:
+`Abs`, `Min` and `Max` are defined for both `int` and `float`. On floats they
+follow Verse's rule that `NaN` is a value like any other rather than something
+that poisons a comparison, so it propagates out of `Min` and `Max` instead of
+being ignored:
 
-<!--NoCompile-->
+<!--versetest-->
 <!-- 19 -->
 ```verse
-# Signatures
-Abs(X:int):int
-Abs(X:float):float
+Abs(5) = 5
+Abs(-5) = 5
+Abs(3.14) = 3.14
+
+# NaN propagates through comparison
+Max(NaN, 5.0) = NaN
+Min(NaN, 5.0) = NaN
+
+# Infinity is ordered as you would expect
+Max(Inf, 100.0) = Inf
+Min(-Inf, 100.0) = -Inf
 ```
+
+`Ceil`, `Floor`, `Round` and `Int` convert a `float` to an `int`, and all four
+can fail: a non-finite argument has no integer to round to, which is why they
+are written with square brackets. `Round` breaks ties to even rather than away
+from zero, so a long run of rounded values does not drift upwards:
 
 <!--versetest-->
 <!-- 20 -->
 ```verse
-Abs(5) = 5
-Abs(-5) = 5
-Abs(0) = 0
-Abs(3.14) = 3.14
-```
-
-The `Min()` and `Max()` functions return the minimum or maximum of two values:
-
-<!--NoCompile-->
-<!-- 21 -->
-```verse
-# Signatures
-Min(A:int, B:int):int
-Min(A:float, B:float):float
-Max(A:int, B:int):int
-Max(A:float, B:float):float
-```
-
-<!--versetest-->
-<!-- 22 -->
-```verse
-# NaN propagates through comparison
-Max(NaN, 5.0) = NaN
-Min(NaN, 5.0) = NaN
-Max(NaN, NaN) = NaN
-
-# Infinity handling
-Max(Inf, 100.0) = Inf
-Min(-Inf, 100.0) = -Inf
-Max(-Inf, -Inf) = -Inf
-Min(Inf, Inf) = Inf
-```
-
-Verse provides multiple rounding functions that convert floats to integers with different rounding strategies:
-
-<!--NoCompile-->
-<!-- 23 -->
-```verse
-# Signatures
-Floor(X:float)<reads><decides>:int   # Round down
-Ceil(X:float)<reads><decides>:int    # Round up
-Round(X:float)<reads><decides>:int   # Round to nearest even (IEEE-754)
-Int(X:float)<reads><decides>:int     # Truncate toward zero
-```
-
-Round to nearest even (ties go to even):
-
-<!--versetest-->
-<!-- 24 -->
-```verse
 Round[1.5] = 2     # tie, rounds to even 2
-Round[0.5] = 0     # tie, rounds to even 0
 Round[2.5] = 2     # tie, rounds to even 2
 Round[-1.5] = -2   # tie, rounds to even -2
-Round[-0.5] = 0    # tie, rounds to even 0
+Round[0.5] = 0     # tie, rounds to even 0
 
 Round[1.4] = 1     # no tie, rounds down
 Round[1.6] = 2     # no tie, rounds up
 ```
 
-The "round to nearest even" strategy (also called banker's rounding)
-avoids bias when rounding many tie values.
-
-Some additional mathematical functions:
+The rest of the floating-point functions never fail. Where a mathematician
+would say the answer does not exist, they return `NaN` or an infinity and let
+it flow onwards:
 
 <!--versetest-->
-<!-- 25 -->
+<!-- 21 -->
 ```verse
-# Signature
-# Sqrt(X:float):float
-
 Sqrt(4.0) = 2.0
 Sqrt(-1.0) = NaN   # negative inputs have no real root
 Sqrt(Inf) = Inf
-Sqrt(NaN) = NaN
 
-# Signature
-# Pow(Base:float, Exponent:float):float
-
-Pow(2.0, 3.0) = 8.0
-Pow(10.0, 2.0) = 100.0
+Pow(2.0, 3.0) = 8.0     # Pow(Base, Exponent)
 Pow(4.0, 0.5) = 2.0     # square root
 Pow(2.0, -1.0) = 0.5    # reciprocal
 Pow(0.0, 0.0) = 1.0     # by convention
 Pow(NaN, 0.0) = 1.0     # a zero exponent always gives 1
 Pow(1.0, NaN) = 1.0     # 1 to any power is 1
 
-# Signature
-# Exp(X:float):float
-
 Exp(0.0) = 1.0
-Exp(1.0) > 2.718 and Exp(1.0) < 2.719   # e
 Exp(-Inf) = 0.0
-Exp(Inf) = Inf
-Exp(NaN) = NaN
-
-# Signature
-# Ln(X:float):float
-
 Ln(1.0) = 0.0
-Ln(Exp(1.0)) = 1.0                      # ln(e) = 1
-Ln(-1.0) = NaN                          # negative
+Ln(Exp(1.0)) = 1.0      # ln(e) = 1
 Ln(0.0) = -Inf
-Ln(Inf) = Inf
-Ln(NaN) = NaN
+Ln(-1.0) = NaN
 
-# Signature
-# Log(Base:float, Value:float):float
-
-Log(10.0, 100.0) = 2.0   # log₁₀(100)
-Log(2.0, 8.0) = 3.0      # log₂(8)
-Log(2.0, 2.0) = 1.0      # logₙ(n) = 1
+Log(10.0, 100.0) = 2.0  # log₁₀(100); the base comes first
+Log(2.0, 8.0) = 3.0     # log₂(8)
 ```
 
-Verse provides standard trigonometric functions operating on radians:
+The trigonometric functions work in radians, and `PiFloat` is the nearest
+`float` to π rather than π itself. That distinction is visible: angles which
+mathematically give exactly zero only come close.
 
 <!--versetest-->
-<!-- 26 -->
+<!-- 22 -->
 ```verse
-# Signatures
-# Sin(Angle:float):float
-# Cos(Angle:float):float
-# Tan(Angle:float):float
-
-# Common angles, using the PiFloat constant
 Sin(0.0) = 0.0
 Sin(PiFloat / 2.0) = 1.0
-Sin(-PiFloat / 2.0) = -1.0
-
 Cos(0.0) = 1.0
 Cos(PiFloat) = -1.0
 
-Tan(0.0) = 0.0
-
 Sin(NaN) = NaN
-Sin(Inf) = NaN
+Sin(Inf) = NaN          # no meaningful angle
 
-# PiFloat is the nearest float to π rather than π itself, so the angles
-# that mathematically give exactly 0.0 or 1.0 only come close
+# PiFloat is not π, so these are near zero rather than zero
 Sin(PiFloat) > 0.0 and Sin(PiFloat) < 0.000001
 Cos(PiFloat / 2.0) > 0.0 and Cos(PiFloat / 2.0) < 0.000001
-Tan(PiFloat / 4.0) < 1.0
-Tan(-PiFloat / 4.0) > -1.0
 
-# Signatures
-# ArcSin(X:float):float           # angle in [-π/2, π/2]
-# ArcCos(X:float):float           # angle in [0, π]
-# ArcTan(X:float):float           # angle in [-π/2, π/2]
-# ArcTan(Y:float, X:float):float  # two-argument arctangent
-
-ArcSin(0.0) = 0.0
+# The inverses answer an angle: ArcSin and ArcTan in [-π/2, π/2],
+# ArcCos in [0, π]
 ArcSin(1.0) = PiFloat / 2.0
-ArcSin(-1.0) = -PiFloat / 2.0
-
-ArcCos(1.0) = 0.0
-ArcCos(0.0) = PiFloat / 2.0
 ArcCos(-1.0) = PiFloat
-
-ArcTan(0.0) = 0.0
 ArcTan(1.0) = PiFloat / 4.0
-ArcTan(-1.0) = -PiFloat / 4.0
-
-# Each inverse undoes its function
-ArcSin(Sin(PiFloat / 6.0)) = PiFloat / 6.0
-
-# ArcTan(Y, X) gives the angle of the point (X, Y) from the origin
-ArcTan(1.0, 1.0) = PiFloat / 4.0          # 45 degrees
-ArcTan(1.0, 0.0) = PiFloat / 2.0          # 90 degrees
-ArcTan(0.0, 1.0) = 0.0                    # 0 degrees
-ArcTan(1.0, -1.0) = 3.0 * PiFloat / 4.0   # 135 degrees
-ArcTan(-1.0, -1.0) = -3.0 * PiFloat / 4.0
 ```
 
-Hyperbolic functions are analogs of trigonometric functions for
-hyperbolas. They are useful in physics simulations, catenary curves,
-and certain mathematical models.
+Beware that `ArcSin` and `ArcCos` do not fail outside `[-1, 1]`, and do not
+return `NaN` either: they clamp, so `ArcSin(2.0)` quietly answers π/2. The
+engine leaves that behaviour unspecified, so range-check the argument yourself
+when a bad input needs to be visible.
 
-<!--versetest-->
-<!-- 27 -->
-```verse
-# Signatures
-# Sinh(X:float):float    # Hyperbolic sine
-# Cosh(X:float):float    # Hyperbolic cosine
-# Tanh(X:float):float    # Hyperbolic tangent
-# ArSinh(X:float):float  # Inverse hyperbolic sine
-# ArCosh(X:float):float  # Inverse hyperbolic cosine
-# ArTanh(X:float):float  # Inverse hyperbolic tangent
-
-Sinh(0.0) = 0.0
-Cosh(0.0) = 1.0
-Tanh(0.0) = 0.0
-
-# Special values
-Sinh(-Inf) = -Inf
-Sinh(Inf) = Inf
-Cosh(-Inf) = Inf
-Cosh(Inf) = Inf
-Tanh(-Inf) = -1.0
-Tanh(Inf) = 1.0
-
-ArSinh(0.0) = 0.0
-ArCosh(1.0) = 0.0
-ArTanh(0.0) = 0.0
-
-# Special values
-ArSinh(-Inf) = -Inf
-ArSinh(Inf) = Inf
-ArCosh(Inf) = Inf
-ArCosh(-1.0) = NaN   # outside the domain
-```
-
-For integer division with remainder, Verse provides `Mod` and
-`Quotient`. Both functions are failable—they fail when the divisor is
-zero.
-
-<!--versetest-->
-<!-- 28 -->
-```verse
-# Signatures
-# Mod(Dividend:int, Divisor:int)<decides>:int
-# Quotient(Dividend:int, Divisor:int)<decides>:int
-
-# Positive operands, 15 = 3*4 + 3
-Mod[15, 4] = 3
-Quotient[15, 4] = 3
-
-# Negative dividend, -15 = -4*4 + 1
-Mod[-15, 4] = 1
-Quotient[-15, 4] = -4
-
-# Negative divisor
-Mod[-1, -2] = 1
-Quotient[-1, -2] = 1
-
-# Division by zero fails
-if (not Mod[10, 0]):
-    Print("Cannot mod by zero")
-if (not Quotient[10, 0]):
-    Print("Cannot divide by zero")
-```
-
-The modulo result always satisfies:
-
-<!--versetest
-assert:
-    Dividend:int = 15
-    Divisor:int = 4
-    Dividend = Quotient[Dividend, Divisor] * Divisor + Mod[Dividend, Divisor]
-
-assert:
-    Dividend:int = -15
-    Divisor:int = 4
-    Dividend = Quotient[Dividend, Divisor] * Divisor + Mod[Dividend, Divisor]
-
-assert:
-    Dividend:int = -1
-    Divisor:int = -2
-    Dividend = Quotient[Dividend, Divisor] * Divisor + Mod[Dividend, Divisor]
-<#
--->
-<!-- 29 -->
-```verse
-Dividend = Quotient[Dividend, Divisor] * Divisor + Mod[Dividend, Divisor]
-```
-<!-- #> -->
-
-The sign of the result follows specific rules:
-
-- `Mod` result is always non-negative, in the range `0 <= Result < |Divisor|` (Euclidean division)
-- `Quotient` adjusts accordingly to maintain the identity
-
-There are also some utility functions:
-
-<!--versetest-->
-<!-- 30 -->
-```verse
-# Signatures
-# Sgn(X:int):int
-# Sgn(X:float):float
-
-Sgn(10) = 1
-Sgn(0) = 0
-Sgn(-5) = -1
-
-Sgn(3.14) = 1.0
-Sgn(0.0) = 0.0
-Sgn(-2.71) = -1.0
-
-# Special float values
-Sgn(Inf) = 1.0
-Sgn(-Inf) = -1.0
-Sgn(NaN) = NaN
-```
-
-Lerp interpolates between two values:
-
-<!--versetest-->
-<!-- 31 -->
-```verse
-# Signature
-# Lerp(From:float, To:float, Parameter:float):float
-
-Lerp(0.0, 10.0, 0.0) = 0.0    # 0% is From
-Lerp(0.0, 10.0, 0.5) = 5.0
-Lerp(0.0, 10.0, 1.0) = 10.0   # 100% is To
-Lerp(0.0, 10.0, 2.0) = 20.0   # past 1.0 extrapolates
-Lerp(10.0, 20.0, 0.3) = 13.0
-
-# Works with negative ranges
-Lerp(-10.0, 10.0, 0.5) = 0.0
-```
-
-The formula is: `From + Parameter * (To - From)`
-
-`IsFinite` checks if a float is finite and suceeds if the value
-is not NaN, Inf, or -Inf. And fails otherwise:
+`IsFinite` is the guard for all of this. It fails for `Inf`, `-Inf` and `NaN`,
+and otherwise succeeds with the value itself, which lets it sit in the middle
+of a calculation:
 
 <!--versetest
 
 assert:
     (5.0).IsFinite[]
-    (0.0).IsFinite[]
     (-100.0).IsFinite[]
     not (Inf).IsFinite[]
     not (-Inf).IsFinite[]
@@ -741,23 +507,18 @@ SafeDivide(X:float, Y:float)<computes><decides>:float =
     Result
 <#
 -->
-<!-- 32 -->
+<!-- 23 -->
 ```verse
-# Method on float values
-# X.IsFinite()<computes><decides>:float
-
 (5.0).IsFinite[]      # succeeds
-(0.0).IsFinite[]      # succeeds
 (-100.0).IsFinite[]   # succeeds
 
 (Inf).IsFinite[]  # fails
-(-Inf).IsFinite[] # fails
 (NaN).IsFinite[]  # fails
 
-# Returns the same number if succeeds
-(15.16).IsFinite[] = 15.16 # succeeds, both are equal
+# Succeeds with the value, so it can be used inline
+(15.16).IsFinite[] = 15.16
 
-# Useful for validation: fails rather than returning Inf or NaN
+# Validation: fails rather than yielding Inf or NaN
 SafeDivide(X:float, Y:float)<computes><decides>:float =
     X.IsFinite[] and Y.IsFinite[]
     Result := X / Y
@@ -766,23 +527,22 @@ SafeDivide(X:float, Y:float)<computes><decides>:float =
 ```
 <!-- #> -->
 
-Verse provides constants for common mathematical values:
+Finally, the named constants:
 
-<!--versetest-->
-<!-- 33 -->
+<!--NoCompile-->
+<!-- 24 -->
 ```verse
 PiFloat # 3.14159265358979323846...
 Inf     # Positive infinity
 -Inf    # Negative infinity (negation of Inf)
 NaN     # Not a Number
 ```
-
 ## Booleans
 
 The `logic` type represents the Boolean values `true` and `false`.
 
 <!--versetest-->
-<!-- 34 -->
+<!-- 25 -->
 ```verse
 A:logic = true
 B := false
@@ -811,7 +571,7 @@ succeeds:
 ShowTargetLockedIcon():void={}
 TargetLocked:?int = option{42}
 -->
-<!-- 35 -->
+<!-- 26 -->
 ```verse
 if (TargetLocked?):
     ShowTargetLockedIcon()
@@ -826,7 +586,7 @@ F()<decides>:void=
     GotIt?
 <#
 -->
-<!-- 36 -->
+<!-- 27 -->
 ```verse
 GotIt := logic{5 > 3}    # the comparison succeeds, so GotIt is true
 GotIt?                   # so this succeeds
@@ -843,7 +603,7 @@ is therefore an array of characters, written as `[]char`. For
 convenience, Verse provides the type alias `string` for `[]char`:
 
 <!--versetest-->
-<!-- 37 -->
+<!-- 28 -->
 ```verse
 MyName :string = "Joseph"
 MyAlterEgo := "José"
@@ -870,7 +630,7 @@ is valid and fails otherwise.
 <!--versetest
 MyName:string="J"
 -->
-<!-- 38 -->
+<!-- 29 -->
 ```verse
 TheLetterJ := MyName[0]     # succeeds
 TheLetterJ = 'J'            # succeeds
@@ -882,7 +642,7 @@ accessed via `.Length`. Note that this is *not the same as the number
 of Unicode characters*:
 
 <!--versetest-->
-<!-- 39 -->
+<!-- 30 -->
 ```verse
 "José".Length = 5           # succeeds; 5 UTF-8 code units
 "Jose".Length = 4           # succeeds; 4 UTF-8 code units
@@ -891,7 +651,7 @@ of Unicode characters*:
 Because `string` is just `[]char`, strings declared as `var` can be mutated:
 
 <!--versetest-->
-<!-- 40 -->
+<!-- 31 -->
 ```verse
 var OuterSpaceFriend :string = "Glorblex"
 set OuterSpaceFriend[0] = 'F'
@@ -903,7 +663,7 @@ Strings can be concatenated using the `+` operator:
 MyName:string="Joe"
 MyAlterEgo:string="Jak"
 -->
-<!-- 41 -->
+<!-- 32 -->
 ```verse
 MyAttemptAtFormatting := "My name is " + MyName + " but my alter ego is " + MyAlterEgo + "."
 ```
@@ -914,7 +674,7 @@ Verse also supports string interpolation for more readable formatting:
 MyName:string="3"
 MyAlterEgo:string="asdsa"
 -->
-<!-- 42 -->
+<!-- 33 -->
 ```verse
 Formatting := "My name is {MyName} but my alter ego is {MyAlterEgo}."
 ```
@@ -929,7 +689,7 @@ or not:
 - `'é'` has type `char32`.
 
 <!--versetest-->
-<!-- 43 -->
+<!-- 34 -->
 ```verse
 A :char = 'e'                       # ok
 B :char32 = 'é'                     # ok
@@ -940,7 +700,7 @@ B :char32 = 'é'                     # ok
 Character literals can also be written using numeric escape sequences:
 
 <!--versetest-->
-<!-- 44 -->
+<!-- 35 -->
 ```verse
 E :char = 0o65                      # ok; same as 'e'
 F :char32 = 0u00E9                  # ok; same as 'é'
@@ -977,7 +737,7 @@ Unlike some languages, Verse does not allow implicit conversion between characte
 Examples:
 
 <!--versetest-->
-<!-- 45 -->
+<!-- 36 -->
 ```verse
 Tab := '\t'
 Newline := '\n'
@@ -997,7 +757,7 @@ they are not equal in Verse.
 Checking whether a player has selected the correct item:
 
 <!--versetest-->
-<!-- 46 -->
+<!-- 37 -->
 ```verse
 ExpectedItemInternalName :string = "RedPotion"
 SelectedItemInternalName :string = "BluePotion"
@@ -1011,7 +771,7 @@ else:
 Padding a timer with leading zeros:
 
 <!--versetest-->
-<!-- 47 -->
+<!-- 38 -->
 ```verse
 SecondsLeft :int = 30
 SecondsString :string = ToString(SecondsLeft)    # convert int to string
@@ -1030,7 +790,7 @@ String interpolation supports complex expressions, not just simple variables:
 <!--versetest
 Format(D:float, ?Decimals:int):string=""
 -->
-<!-- 48 -->
+<!-- 39 -->
 ```verse
 # Expression interpolation
 Age := 30
@@ -1044,7 +804,7 @@ Formatted := "Distance: {Format(Distance, ?Decimals:=2)}"
 Strings can span multiple lines using interpolation braces for continuation:
 
 <!--versetest-->
-<!-- 49 -->
+<!-- 40 -->
 ```verse
 LongMessage := "This is a multi-line {
 }string that continues across {
@@ -1063,7 +823,7 @@ continuation without adding content.
 Since `string` is `[]char`, strings and character arrays can be compared:
 
 <!--versetest-->
-<!-- 50 -->
+<!-- 41 -->
 ```verse
 "abc" = array{'a', 'b', 'c'}    # Succeeds
 "" = array{}                     # Succeeds - empty string equals empty array
@@ -1072,7 +832,7 @@ Since `string` is `[]char`, strings and character arrays can be compared:
 Block comments within strings are removed during parsing:
 
 <!--versetest-->
-<!-- 51 -->
+<!-- 42 -->
 ```verse
 Text := "abc<#this comment is removed#>def"    # Same as "abcdef"
 ```
@@ -1080,26 +840,14 @@ Text := "abc<#this comment is removed#>def"    # Same as "abcdef"
 ### ToString()
 
 The `ToString()` function converts values to their string
-representations. It's polymorphic—multiple overloads exist for
-different types:
-
-<!--versetest
-<#
--->
-<!-- 52 -->
-```verse
-# Signatures
-ToString(X:int):string
-ToString(X:float):string
-ToString(X:char):string
-ToString(X:string):string  # Identity function
-```
-<!-- #> -->
+representations. It is overloaded, with a version for `int`, for
+`float`, for `char`, and one for `string` that hands back what it was
+given.
 
 String interpolation implicitly calls `ToString()` on embedded values:
 
 <!--versetest-->
-<!-- 53 -->
+<!-- 43 -->
 ```verse
 Age := 25
 Score := 98.5
@@ -1118,18 +866,17 @@ structs do not have automatic string conversion.
 
 ### ToDiagnostic()
 
-The `ToDiagnostic()` function converts values to diagnostic string
-representations, useful for debugging and logging. While similar to
-`ToString()`, it may provide more detailed or implementation-specific
-information:
+The `ToDiagnostic()` function takes a value of any type and produces a
+`diagnostic`, useful for debugging and logging. Where `ToString()` is
+overloaded per type and refuses anything it has no overload for,
+`ToDiagnostic()` accepts everything and may report more detail:
 
 <!--versetest
 SomeValue:int=1
 -->
-<!-- 54 -->
+<!-- 44 -->
 ```verse
-# Usage (exact signature depends on type)
-DiagnosticText := ToDiagnostic(SomeValue)
+Diagnosis := ToDiagnostic(SomeValue)
 ```
 
 `ToDiagnostic()` is primarily used for debugging output rather than
@@ -1146,7 +893,7 @@ where types are parameters that can be passed around and constrained.
 You can create variables and parameters that hold type values:
 
 <!--versetest-->
-<!-- 55 -->
+<!-- 45 -->
 ```verse
 # A name can hold a type value
 IntType:type = int
@@ -1163,7 +910,7 @@ Any type at all can be named this way, using `:=` rather than `:type =`
 so that the name becomes usable in the positions where a type is expected:
 
 <!--versetest-->
-<!-- 56 -->
+<!-- 46 -->
 ```verse
 # User-defined types
 my_class := class {}
@@ -1197,7 +944,7 @@ The most common use of `type` is in **where clauses** to create
 parametric (generic) functions:
 
 <!--versetest-->
-<!-- 57 -->
+<!-- 47 -->
 ```verse
 # Identity function - works with any type
 Identity(X:t where t:type):t = X
@@ -1215,7 +962,7 @@ throughout the function.
 While `where t:type` accepts any type, you can use more specific
 constraints like `subtype` to limit which types are valid:
 
-<!-- 58 -->
+<!-- 48 -->
 ```verse
 # Only accepts types that are subtypes of comparable
 Sort(Items:[]t where t:subtype(comparable)):[]t =
@@ -1232,7 +979,7 @@ treats types as *first-class values* that can be computed, stored, and
 manipulated:
 
 <!--versetest-->
-<!-- 59 -->
+<!-- 49 -->
 ```verse
 # Function that returns a type value
 GetTypeForSize(Size:int):type =
@@ -1251,7 +998,7 @@ TypeRegistry:[string]type = map{
 
 Types can be passed between functions:
 
-<!-- 60 -->
+<!-- 50 -->
 ```verse
 # Helper function that takes a type parameter
 CreateArray(ElementType:type, Size:int):[]ElementType =
@@ -1277,7 +1024,7 @@ assert:
     Y:?float = MaybeValue(3.14, true)
 <#
 -->
-<!-- 61 -->
+<!-- 51 -->
 ```verse
 # return type `t` must be the same type as the `Value` param type
 MaybeValue(Value:t, Condition:logic where t:type):?t =
@@ -1307,7 +1054,7 @@ assert_semantic_error(3509):
         Z:?int = Maybe818(int, 3.14, true)
 <#
 -->
-<!-- 62 -->
+<!-- 52 -->
 ```verse
 # Alternative: explicitly pass the type parameter
 MaybeValueExplicit(T:type, Value:t, Condition:logic where t:subtype(T)):?T =
@@ -1333,7 +1080,7 @@ accepts any Verse type. For more specific requirements, Verse provides
 additional constraints:
 
 <!--versetest-->
-<!-- 63 -->
+<!-- 53 -->
 ```verse
 # Most permissive: any type
 Generic(X:t where t:type):t = X
@@ -1357,7 +1104,7 @@ While `type` enables powerful abstractions, there are some limitations:
 There is no way to construct a value of an arbitrary type:
 
 <!--NoCompile-->
-<!-- 64 -->
+<!-- 54 -->
 ```verse
 # Cannot do this - no way to construct a value of arbitrary type t
 MakeValue(T:type):T = ???  # What would this return for T=int? T=string?
@@ -1366,7 +1113,7 @@ MakeValue(T:type):T = ???  # What would this return for T=int? T=string?
 There is no runtime type introspection:
 
 <!--NoCompile-->
-<!-- 65 -->
+<!-- 55 -->
 ```verse
 # Cannot do this - no runtime type introspection
 GetFieldNames(T:type):string = ???
@@ -1384,7 +1131,7 @@ assert:
 assert_syntax_error(3100){"MakeDefault85(where t:type):t = false"}
 <#
 -->
-<!-- 66 -->
+<!-- 56 -->
 ```verse
 # Type parameter must be determinable from usage
 Identity(X:t where t:type):t = X
@@ -1420,7 +1167,7 @@ letters := enum:
 letter := class:
     Value : char
 -->
-<!-- 67 -->
+<!-- 57 -->
 ```verse
 Main(Arg : int) : void =
     X := if (Arg > 0) then:
@@ -1438,7 +1185,7 @@ required syntactically but not actually used. This pattern can arise
 when implementing interfaces that require a certain method signature.
 
 <!--versetest-->
-<!-- 68 -->
+<!-- 58 -->
 ```verse
 FirstInt(X:int, :any) : int = X
 ```
@@ -1450,7 +1197,7 @@ In more general code, the same idea can be expressed using *parametric
 types*, making the function flexible while still precise:
 
 <!--versetest-->
-<!-- 69 -->
+<!-- 59 -->
 ```verse
 First(X:t, :any where t:type) : t = X
 ```
@@ -1473,7 +1220,7 @@ A function whose purpose is to perform an effect, rather than compute
 a value, has return type `void`.
 
 <!--versetest-->
-<!-- 70 -->
+<!-- 60 -->
 ```verse
 LogMessage(Msg:string) : void =
     Print(Msg)
@@ -1499,7 +1246,7 @@ assert:
     Flag = false
 <#
 -->
-<!-- 71 -->
+<!-- 61 -->
 ```verse
 Nothing:void    = false
 Unit:tuple()    = false
@@ -1519,7 +1266,7 @@ assert:
     AsLogic:logic = Flag
 <#
 -->
-<!-- 72 -->
+<!-- 62 -->
 ```verse
 Flag:true = false
 AsLogic:logic = Flag
@@ -1536,7 +1283,7 @@ assert:
     Empty = false
 <#
 -->
-<!-- 73 -->
+<!-- 63 -->
 ```verse
 Empty:[]int = false
 Empty.Length = 0        # 0 - false is the empty array
@@ -1553,7 +1300,7 @@ assert:
     MaybeTrue?
 <#
 -->
-<!-- 74 -->
+<!-- 64 -->
 ```verse
 MaybeVoid:?void = option{0}
 MaybeTrue:?true = MaybeVoid     # ?void and ?true interchange
@@ -1593,7 +1340,7 @@ assert:
     Ignore(false) = 42
 <#
 -->
-<!-- 75 -->
+<!-- 65 -->
 ```verse
 Ignore(:void):int = 42
 
@@ -1642,7 +1389,7 @@ assert_semantic_error(3509):
         box([]void){}.Put(Y)
 <#
 -->
-<!-- 76 -->
+<!-- 66 -->
 ```verse
 X:void = 1              # OK - any value converts to void
 

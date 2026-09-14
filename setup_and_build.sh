@@ -129,6 +129,16 @@ else
     echo -e "${YELLOW}setup.py not found, skipping Verse lexer installation...${NC}"
 fi
 
+# Regenerate the runtime API reference into docs/api/. This needs Node and a
+# fortniteMain checkout; without either the site still builds, just without a
+# refreshed reference.
+echo -e "${YELLOW}Generating runtime API reference...${NC}"
+if command_exists node; then
+    node bin/build_api || echo -e "${YELLOW}Reference generation skipped.${NC}"
+else
+    echo -e "${YELLOW}Node.js not found, skipping the runtime API reference.${NC}"
+fi
+
 # Build the documentation
 echo -e "${YELLOW}Building documentation site...${NC}"
 mkdocs build --verbose
