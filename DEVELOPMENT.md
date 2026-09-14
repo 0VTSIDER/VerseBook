@@ -167,11 +167,28 @@ bin/verse_api --format html  # regenerate and read the result
 ```
 
 `--stubs` writes one heading per declaration in the output, with the engine's
-current text kept beside it as a comment so you can see what you are replacing.
-It never edits or removes a section that is already there, so it is safe to
-re-run after the engine grows a new function: it only appends the new ones.
-Pass the same `--module`/`--access` flags you generate with, if you have
-widened the scope.
+current text kept beside it in an `<!-- engine text: -->` comment. It never
+edits or removes a section that is already there, so it is safe to re-run after
+the engine grows a new function: it only appends the new ones. Pass the same
+`--module`/`--access` flags you generate with, if you have widened the scope.
+
+That recorded comment is not just for reference while you write. Every run
+compares it against what the engine says now, and reports any override whose
+engine text has changed underneath it:
+
+```
+Warning: the engine text changed under 2 override(s). Re-read them and update
+the "engine text" comment to acknowledge:
+  Sqrt
+  event.Signal
+```
+
+An override is written to answer a question the engine's own comment left open.
+When that comment changes, the override may now be redundant, or contradict it.
+Re-read both, then update the `<!-- engine text: -->` block to the new wording
+to silence the warning — which is a deliberate, manual acknowledgement rather
+than something a regeneration does behind your back. `--verbose` prints the old
+and new text side by side.
 
 A heading names one declaration, with only as much detail as it takes to be
 unambiguous:
@@ -195,14 +212,19 @@ something. Use `--no-overrides` to see the engine's own text again, or
 ### Other options
 
 It finds the engine through `--engine`, then `$FORTNITE_MAIN`, then
-`../fortniteMain`. By default it covers the core `/Verse.org/Verse` module and
-only the declarations that are actually part of the runtime surface, at
+`../fortniteMain`. By default it scans `Engine/Plugins`, which is everything
+Verse ships as a plugin, and covers every module it finds there: the core
+`/Verse.org/Verse`, plus `SceneGraph`, `Simulation`, `SpatialMath`, `Random`,
+`Assets` and the rest. Test-suite modules are skipped: they are Verse modules
+like any other, but they document a test harness rather than the runtime. Only
+declarations that are part of the native runtime surface are included, at
 `<public>` access. Useful variations:
 
 ```bash
-bin/verse_api --module all --access all      # every module under the scan root
-bin/verse_api --root Engine/Plugins          # widen the search (slow)
+bin/verse_api --module /Verse.org/Verse      # one module instead of all of them
+bin/verse_api --access all                   # include internal and epic_internal
 bin/verse_api --include-verse                # index the Verse-implemented API too
+bin/verse_api --include-tests                # include test-suite modules
 bin/verse_api --no-overrides                 # show the engine's own doc comments
 bin/verse_api --json build/api.json          # machine-readable model
 bin/verse_api --verbose                      # list anything that did not parse

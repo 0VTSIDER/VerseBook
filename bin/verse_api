@@ -48,6 +48,7 @@ Options:
   --include-verse    Also index the public declarations that are implemented
                      in Verse rather than natively. Off by default: they are
                      ordinary library code, not part of the runtime surface.
+  --include-tests    Also scan modules belonging to test suites.
   --no-intrinsics    Skip the compiler intrinsic table.
   --no-natives       Skip the .native.verse scan.
   --format <fmt>     md (default) for folding into docs/, or html for a
@@ -71,6 +72,7 @@ function parseArgs(argv) {
     modules: [],
     access: 'public',
     includeVerse: false,
+    includeTests: false,
     intrinsics: true,
     natives: true,
     format: 'md',
@@ -99,6 +101,7 @@ function parseArgs(argv) {
       case '--module':             opts.modules.push(value()); break;
       case '--access':             opts.access = value(); break;
       case '--include-verse':      opts.includeVerse = true; break;
+      case '--include-tests':      opts.includeTests = true; break;
       case '--no-intrinsics':      opts.intrinsics = false; break;
       case '--no-natives':         opts.natives = false; break;
       case '--format':             opts.format = value(); break;
@@ -248,7 +251,7 @@ function findFiles(dir, predicate, results = []) {
   return results;
 }
 
-function discoverModules(engineRoot, scanRoots) {
+function discoverModules(engineRoot, scanRoots, includeTests) {
   const modules = new Map(); // verse module path -> { path, dirs: Set }
 
   for (const scanRoot of scanRoots) {
@@ -256,6 +259,12 @@ function discoverModules(engineRoot, scanRoots) {
     const buildFiles = findFiles(absScanRoot, name => name.endsWith('.Build.cs'));
 
     for (const buildFile of buildFiles) {
+      // Test suites are Verse modules like any other, but they document a test
+      // harness rather than the runtime. Left out unless asked for.
+      if (!includeTests && /(^|[\\/])\w*Tests?(Suite)?[\\/]/i.test(
+            path.relative(engineRoot, buildFile))) {
+        continue;
+      }
       const setup = /SetupVerse\(\s*(?:"([^"]*)")?/.exec(readText(buildFile));
       if (!setup) continue;
       // SetupVerse() with no argument means the module has no Verse root path
@@ -670,6 +679,13 @@ function parseVerseFile(file, modulePath, engineRoot) {
       } else {
         pending.attributes.push(code);
       }
+      // An attribute can take an indented block of arguments, as in
+      //   @editable:
+      //       EpicOnly := true
+      // Those lines belong to the attribute, not to the enclosing class.
+      if (code.endsWith(':')) {
+        scopes.push({ indent: logical.indent, declScope: false, owner: null, prefix: '' });
+      }
       continue;
     }
 
@@ -749,12 +765,26 @@ function parseVerseFile(file, modulePath, engineRoot) {
 
 const ACCESS_RANK = { public: 3, epic_internal: 2, scoped: 2, protected: 2, internal: 1, private: 0 };
 
+// What a declaration's access actually is. Verse defaults to `<internal>` when
+// no specifier is given, which matters a great deal here: the generated
+// property accessors, replication notifies and internal hooks that fill out a
+// native class carry no specifier, and treating those as public buries the real
+// API under them. Two things genuinely do inherit their access and are returned
+// as null: an enumerator takes the enum's, and an override takes that of the
+// declaration it overrides.
+function effectiveAccess(decl) {
+  if (decl.access) return decl.access;
+  if (decl.kind === 'enumerator') return null;
+  if (decl.specifiers?.includes('override')) return null;
+  return 'internal';
+}
+
 function passesAccess(decl, level) {
   if (level === 'all') return true;
-  // A member without an explicit specifier inherits its container's access.
-  if (decl.access === null) return true;
+  const access = effectiveAccess(decl);
+  if (access === null) return true;
   const need = level === 'public' ? 3 : 2;
-  return (ACCESS_RANK[decl.access] ?? 0) >= need;
+  return (ACCESS_RANK[access] ?? 0) >= need;
 }
 
 // A declaration belongs in this summary if it is itself native, or if it is a
@@ -1371,12 +1401,40 @@ function parseOverrideFile(file) {
     if (current) current.lines.push(line);
   }
 
-  return overrides.map(entry => ({
-    selector: entry.selector,
-    // HTML comments carry the original engine text in a stub file, for
-    // reference while editing; they are not part of the replacement prose.
-    body: entry.lines.join('\n').replace(/<!--[\s\S]*?-->/g, '').trim(),
-  }));
+  return overrides.map(entry => {
+    const raw = entry.lines.join('\n');
+    return {
+      selector: entry.selector,
+      // HTML comments carry the engine's own text, for reference while editing;
+      // they are not part of the replacement prose.
+      body: raw.replace(/<!--[\s\S]*?-->/g, '').trim(),
+      // What the engine said when this section was written, so a later change
+      // on the engine side can be noticed. `undefined` means the section
+      // records nothing; `null` means the engine had no documentation.
+      recorded: recordedEngineText(raw),
+    };
+  });
+}
+
+const ENGINE_TEXT_MARKER = /<!--\s*engine text:\n([\s\S]*?)\n-->/;
+const NO_ENGINE_TEXT_MARKER = /<!--\s*no documentation in the engine source\s*-->/;
+
+function recordedEngineText(raw) {
+  const match = ENGINE_TEXT_MARKER.exec(raw);
+  if (match) return match[1].replace(/--&gt;/g, '-->').trim();
+  return NO_ENGINE_TEXT_MARKER.test(raw) ? null : undefined;
+}
+
+// The engine's own words for a declaration, which is what an override replaces.
+function engineText(decl) {
+  return decl.doc || (decl.comments?.length > 0 ? decl.comments.join(' ') : null);
+}
+
+// Compared with whitespace collapsed, so that rewrapping a comment in the
+// engine source does not read as a change of wording.
+function sameText(a, b) {
+  const normalize = t => t === null || t === undefined ? t : t.replace(/\s+/g, ' ').trim();
+  return normalize(a) === normalize(b);
 }
 
 // Splits a selector into its optional scope, the declaration name, and an
@@ -1493,8 +1551,10 @@ function allDeclarations(model) {
   return out;
 }
 
-function applyOverrides(model, overrides) {
+function applyOverrides(model, overrides, verbose) {
   const declarations = allDeclarations(model);
+  const unmatched = [];
+  const drifted = [];
   let applied = 0;
 
   for (const override of overrides) {
@@ -1505,11 +1565,7 @@ function applyOverrides(model, overrides) {
     // Reported straight away rather than through warn(): these are problems in
     // a hand-maintained file, and a stale override is exactly what the reader
     // needs to hear about, so they are not hidden behind --verbose.
-    if (matches.length === 0) {
-      console.error(`Warning: override "${override.selector}" matched no declaration ` +
-                    `in this output. It may be stale, or filtered out by --access/--module.`);
-      continue;
-    }
+    if (matches.length === 0) { unmatched.push(override.selector); continue; }
     if (matches.length > 1) {
       const hint = matches
         .map(m => `${displayFileName(m.file)}:${m.qualifiedName}(${declParamTypes(m) ?? ''})`)
@@ -1518,8 +1574,40 @@ function applyOverrides(model, overrides) {
                     `skipped. Use one of: ${hint}`);
       continue;
     }
+    // The override was written against a particular engine comment. If that
+    // comment has since changed, the override may be answering a question the
+    // engine now answers itself, or contradicting it.
+    if (override.recorded !== undefined &&
+        !sameText(override.recorded, engineText(matches[0]))) {
+      drifted.push({ selector: override.selector,
+                     was: override.recorded, now: engineText(matches[0]) });
+    }
+
     matches[0].docOverride = override.body;
     applied++;
+  }
+
+  // A handful of unmatched selectors means something went stale and is worth
+  // naming. A great many means the run is deliberately narrower than the
+  // worksheet, and listing them all would bury everything else.
+  if (unmatched.length > 0) {
+    const detail = unmatched.length <= 5 || verbose
+      ? `: ${unmatched.join(', ')}`
+      : `; rerun with --verbose to list them`;
+    console.error(`Warning: ${unmatched.length} override(s) matched no declaration in ` +
+                  `this output — stale, or filtered out by --access/--module${detail}`);
+  }
+
+  if (drifted.length > 0) {
+    console.error(`Warning: the engine text changed under ${drifted.length} override(s). ` +
+                  `Re-read them and update the "engine text" comment to acknowledge:`);
+    for (const d of drifted) {
+      console.error(`  ${d.selector}`);
+      if (verbose) {
+        console.error(`      was: ${d.was ?? '(no documentation)'}`);
+        console.error(`      now: ${d.now ?? '(no documentation)'}`);
+      }
+    }
   }
   return applied;
 }
@@ -1527,10 +1615,17 @@ function applyOverrides(model, overrides) {
 // The shortest selector that picks out exactly this declaration: its name, or
 // the name plus parameter types, or those narrowed to one file.
 function uniqueSelector(decl, declarations) {
+  // A parameter list only disambiguates something that has one; a struct and a
+  // constructor of the same name would otherwise both read as `name()`. File
+  // names repeat across modules — two plugins ship a Transform.native.verse —
+  // so the module path is the last resort.
+  const types = declParamTypes(decl);
+  const base = types === null ? decl.qualifiedName : `${decl.qualifiedName}(${types})`;
   const candidates = [
     decl.qualifiedName,
-    `${decl.qualifiedName}(${declParamTypes(decl) ?? ''})`,
-    `${displayFileName(decl.file)}:${decl.qualifiedName}(${declParamTypes(decl) ?? ''})`,
+    base,
+    `${displayFileName(decl.file)}:${base}`,
+    `${decl.module}:${base}`,
   ];
   for (const candidate of candidates) {
     const selector = parseSelector(candidate);
@@ -1611,6 +1706,14 @@ const DOC_INTRO = [
   '`<native_callable>` is the mirror image, a Verse body that C++ can call.',
 ];
 
+const TYPE_INTRO = [
+  'A type is shown as its name, a description, and then its definition: the',
+  'whole shape written as it would be written in Verse. Parameter defaults are',
+  'left out of those definitions to keep them readable, so a named parameter',
+  'shown as `?Radius:float` may well have one. Members with more to say than',
+  'their signature are described underneath.',
+];
+
 const INTRINSICS_INTRO = [
   'The compiler creates these in `PopulateCoreAPI()` and tags each with the',
   'private `intrinsic` attribute. They live in the synthetic `$BuiltIn`',
@@ -1637,17 +1740,28 @@ function provenanceLines(model) {
   ];
 }
 
-const INTRINSIC_TABLE_HEADERS = ['Signature', 'Verse syntax', 'Notes'];
-
-function intrinsicRow(intrinsic) {
+// An intrinsic reads like any other declaration: signature, then whatever there
+// is to say about it. What used to be separate "Verse syntax" and "Notes"
+// columns is prose in the body, which leaves room for a real description.
+function intrinsicBody(intrinsic) {
   const notes = [];
-  if (intrinsic.access && intrinsic.access !== 'public') notes.push(`\`<${intrinsic.access}>\``);
-  if (intrinsic.availableSince) notes.push(`from FN ${intrinsic.availableSince}`);
-  if (intrinsic.inVerseVM) notes.push('native procedure in VerseVM');
+  // The surface syntax is only worth stating when nothing else does: a written
+  // description introduces it far better than a trailing note can.
   const syntax = INTRINSIC_SYNTAX[intrinsic.member];
-  return ['`' + intrinsicSignature(intrinsic) + '`',
-          syntax ? '`' + syntax + '`' : '',
-          notes.join(', ')];
+  if (syntax && !intrinsic.docOverride) notes.push(`written as \`${syntax}\``);
+  if (intrinsic.access && intrinsic.access !== 'public') notes.push(`\`<${intrinsic.access}>\``);
+  if (intrinsic.availableSince) {
+    notes.push(`available from Fortnite version ${intrinsic.availableSince}`);
+  }
+  if (intrinsic.inVerseVM) notes.push('a native procedure in VerseVM');
+
+  const body = [];
+  if (intrinsic.docOverride) body.push(intrinsic.docOverride);
+  if (notes.length > 0) {
+    if (body.length > 0) body.push('');
+    body.push(`*${notes.join('. ')}.*`);
+  }
+  return body;
 }
 
 function moduleSummary(module) {
@@ -1673,6 +1787,77 @@ function displayFileName(filePath) {
   return path.basename(filePath).replace(/\.native\.verse$|\.verse$/, '');
 }
 
+// A declaration with nothing to say beyond its signature needs no prose and no
+// badges; printing "no documentation" under it would only take up room.
+function hasSomethingToSay(decl, parent) {
+  return !!declParts(decl).doc || declFactsWithin(decl, parent).length > 0;
+}
+
+// Parameter defaults dominate a signature without saying much — a single draw
+// call can carry six of them — so they are dropped from the synopsis. The full
+// signature is still shown wherever a member has an entry of its own.
+function withoutParameterDefaults(signature) {
+  let out = '';
+  let depth = 0;
+  let defaultAt = -1;   // bracket depth at which a default value began
+
+  for (let i = 0; i < signature.length; i++) {
+    const c = signature[i];
+
+    // A quoted region is consumed whole, whether it is being kept or skipped:
+    // a comma inside a string default must not look like the end of it.
+    if (c === '"' || c === "'") {
+      const quote = c;
+      let text = c;
+      for (i++; i < signature.length; i++) {
+        text += signature[i];
+        if (signature[i] === '\\') text += signature[++i] ?? '';
+        else if (signature[i] === quote) break;
+      }
+      if (defaultAt === -1) out += text;
+      continue;
+    }
+
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth--;
+
+    if (defaultAt !== -1) {
+      // A default value runs to the comma or the closing bracket of its level.
+      if (depth < defaultAt || (depth === defaultAt && c === ',')) defaultAt = -1;
+      else continue;
+    }
+
+    // Inside a parameter list, `=` starts a default — unless it is part of
+    // `<=`, `>=`, `<>`, `:=` or `==`.
+    if (c === '=' && depth > 0 &&
+        !'<>=!:'.includes(signature[i - 1] ?? '') && signature[i + 1] !== '=') {
+      defaultAt = depth;
+      out = out.replace(/\s+$/, '');
+      continue;
+    }
+
+    out += c;
+  }
+  return out;
+}
+
+// The whole shape of a type on as few lines as possible, written the way it
+// would be written in Verse. This is the synopsis; members worth saying more
+// about are elaborated underneath it.
+function definitionText(type) {
+  const head = withoutParameterDefaults(type.decl.signature);
+  const members = type.members.map(m => withoutParameterDefaults(m.signature));
+  if (members.length === 0) return head;
+
+  // Enumerators are bare names, and Verse accepts them braced on one line.
+  if (type.decl.kind === 'enum') {
+    const oneLine = `${head}{${members.join(', ')}}`;
+    if (oneLine.length <= 100) return oneLine;
+  }
+
+  return [`${head}:`, ...members.map(m => `    ${m}`)].join('\n');
+}
+
 // How one file's declarations are organised: its native functions first, then
 // each native type as a section of its own carrying its members. Types nest, so
 // a class declared inside a module becomes its own section too, headed by the
@@ -1693,7 +1878,6 @@ function fileStructure(file) {
     functions: native.filter(d => !isType(d)),
     types: types.map(type => ({
       decl: type,
-      heading: type.signature.replace(type.name, type.qualifiedName),
       members: type.members.filter(m => m.native && !isType(m)),
     })),
   };
@@ -1723,18 +1907,14 @@ function definition(term, bodyLines) {
 // a prose line and HTML as badges, so the two cannot disagree.
 function declFacts(decl) {
   const facts = [];
-  if (decl.isNative) {
-    facts.push({ kind: 'cpp', text: 'implemented in C++', label: 'C++' });
-  } else if (decl.isNativeCallable) {
-    facts.push({ kind: 'callable', text: 'implemented in Verse, callable from C++',
-                 label: 'Verse, callable from C++' });
-  } else if (decl.hasBody) {
+  // `<native>`, `<native_callable>` and the access specifier are already spelled
+  // out in the signature printed right above, so repeating them buys nothing.
+  // Being written in Verse is the one implementation fact the signature does
+  // not show, since the body is stripped.
+  if (!decl.isNative && !decl.isNativeCallable && decl.hasBody) {
     facts.push({ kind: 'verse', text: 'implemented in Verse', label: 'Verse' });
   }
-  if (decl.access && decl.access !== 'public') {
-    facts.push({ kind: 'access', text: `\`<${decl.access}>\``, label: `<${decl.access}>` });
-  }
-  for (const attribute of decl.attributes) {
+  for (const attribute of decl.attributes ?? []) {
     const available = /^@available\{[^:]*:=\s*(\d+)/.exec(attribute);
     if (available) {
       facts.push({ kind: 'version', text: `available from Fortnite version ${available[1]}`,
@@ -1757,22 +1937,66 @@ function declNotes(decl) {
   return declFacts(decl).map(fact => fact.text);
 }
 
+// Facts the enclosing type already states are not worth repeating on each
+// member: every field of a C++ struct is stored in C++, and saying so once per
+// field buries the ones that actually differ.
+function declFactsWithin(decl, parent) {
+  const facts = declFacts(decl);
+  if (!parent) return facts;
+  const inherited = new Set(declFacts(parent).map(f => `${f.kind} ${f.label}`));
+  return facts.filter(f => !inherited.has(`${f.kind} ${f.label}`));
+}
+
 // What there is to say about one declaration: its own doc comment, or the
 // plain comment above it as a fallback, plus the facts that live in specifiers
 // and attributes rather than in the comment.
+// Line breaks inside an engine `@doc` string are where the author happened to
+// wrap, not meaning, so they are ignored and the text reflowed. Two things do
+// carry meaning and survive: a blank line separates paragraphs, and a bulleted
+// list keeps one item per line. A line indented under a bullet continues it; an
+// unindented one after a bullet starts a new paragraph.
+function reflowDoc(text) {
+  const out = [];
+  let buffer = null;   // { kind: 'paragraph' | 'item', parts: [] }
+
+  const flush = () => {
+    if (!buffer) return;
+    out.push(buffer.kind === 'item' ? ` * ${buffer.parts.join(' ')}` : buffer.parts.join(' '));
+    buffer = null;
+  };
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line === '') { flush(); out.push(''); continue; }
+
+    const item = /^\*\s+(.*)$/.exec(line);
+    if (item) { flush(); buffer = { kind: 'item', parts: [item[1]] }; continue; }
+
+    // A paragraph following a list needs a blank line between them, or Markdown
+    // reads it as a continuation of the last item.
+    if (buffer?.kind === 'item' && !/^\s/.test(raw)) { flush(); out.push(''); }
+    if (buffer) buffer.parts.push(line);
+    else buffer = { kind: 'paragraph', parts: [line] };
+  }
+  flush();
+
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function declParts(decl) {
+  const fromSource = decl.doc || (decl.comments?.length > 0 ? decl.comments.join(' ') : null);
   return {
-    // A hand-written override wins over anything the engine source says.
-    doc: decl.docOverride ||
-         decl.doc ||
-         (decl.comments?.length > 0 ? decl.comments.join(' ') : null),
+    // A hand-written override wins over anything the engine source says, and
+    // keeps its own wrapping, since that wrapping was chosen deliberately.
+    doc: decl.docOverride || (fromSource === null ? null : reflowDoc(fromSource)),
     notes: declNotes(decl),
   };
 }
 
 // The same, flattened into Markdown paragraphs.
-function declBody(decl) {
-  const { doc, notes } = declParts(decl);
+function declBody(decl, parent) {
+  const doc = declParts(decl).doc;
+  const notes = declFactsWithin(decl, parent).map(fact => fact.text);
   const body = [];
   if (doc) body.push(doc);
   if (notes.length > 0) {
@@ -1802,13 +2026,25 @@ function renderFile(file, lines) {
     lines.push(definition('`' + decl.signature + '`', declBody(decl)));
   }
 
+  // Name, then description, then the definition — and only then the members
+  // that have something of their own to say.
   for (const type of structure.types) {
-    lines.push(`#### \`${type.heading}\``);
+    lines.push(`#### \`${type.decl.qualifiedName}\``);
     lines.push('');
     const body = declBody(type.decl);
     if (body.length > 0) { lines.push(body.join('\n')); lines.push(''); }
+
+    // Marked NoCompile because these are declarations lifted out of the engine,
+    // not snippets meant to compile on their own.
+    lines.push('<!--NoCompile-->');
+    lines.push('```verse');
+    lines.push(definitionText(type));
+    lines.push('```');
+    lines.push('');
+
     for (const member of type.members) {
-      lines.push(definition('`' + member.signature + '`', declBody(member)));
+      if (!hasSomethingToSay(member, type.decl)) continue;
+      lines.push(definition('`' + member.signature + '`', declBody(member, type.decl)));
     }
   }
 }
@@ -1824,6 +2060,8 @@ function renderMarkdown(model, opts) {
   lines.push('');
   lines.push(DOC_INTRO.join('\n'));
   lines.push('');
+  lines.push(TYPE_INTRO.join('\n'));
+  lines.push('');
 
   if (model.intrinsics.length > 0) {
     lines.push('## Intrinsic functions');
@@ -1834,17 +2072,9 @@ function renderMarkdown(model, opts) {
     for (const [category, list] of categorise(model.intrinsics)) {
       lines.push(`### ${category}`);
       lines.push('');
-      // A documented intrinsic gets a full entry; the rest stay in the compact
-      // table, which is all there is to say about them.
-      const documented = list.filter(i => i.docOverride);
-      for (const intrinsic of documented) {
+      for (const intrinsic of list) {
         lines.push(definition('`' + intrinsicSignature(intrinsic) + '`',
-                              [intrinsic.docOverride]));
-      }
-      const rest = list.filter(i => !i.docOverride);
-      if (rest.length > 0) {
-        lines.push(...markdownTable(INTRINSIC_TABLE_HEADERS, rest.map(intrinsicRow)));
-        lines.push('');
+                              intrinsicBody(intrinsic)));
       }
     }
   }
@@ -1932,7 +2162,14 @@ function highlightVerse(signature) {
     const rest = signature.slice(i);
 
     const space = /^\s+/.exec(rest);
-    if (space) { out.push(escapeHtml(space[0])); i += space[0].length; continue; }
+    if (space) {
+      // Each line of a multi-line definition declares something of its own, so
+      // the next identifier is a declared name again rather than a type.
+      if (space[0].includes('\n')) seenName = false;
+      out.push(escapeHtml(space[0]));
+      i += space[0].length;
+      continue;
+    }
 
     // An operator, prefix or postfix definition name: operator'+'
     const opName = /^(operator|prefix|postfix)'[^']*'/.exec(rest);
@@ -2125,7 +2362,9 @@ dl.api .entry {
 }
 dl.api .entry:hover { background: var(--bg-soft); border-color: var(--border); }
 dl.api dt { margin: 0; }
-dl.api dd { margin: 0.4rem 0 0 0.1rem; color: var(--fg); }
+/* Descriptions sit in from their signature, so the signatures form a column the
+   eye can run down. */
+dl.api dd { margin: 0.4rem 0 0 1.4rem; color: var(--fg); }
 dl.api dd p { margin: 0 0 0.35rem; }
 dl.api dd ul { margin: 0.25rem 0 0.5rem; padding-left: 1.3rem; }
 
@@ -2144,7 +2383,12 @@ section.type {
   border-left: 3px solid var(--accent);
 }
 section.type > h4 { margin-top: 0; }
-section.type > p { max-width: 46rem; }
+/* Everything belonging to a type sits in from its name, so the name stands
+   clear of its description, definition and members. */
+section.type > p, section.type > ul { margin-left: 1.4rem; max-width: 46rem; }
+section.type > .badges,
+section.type > .definition,
+section.type > dl.api { margin-left: 1.4rem; }
 
 .t-name     { color: var(--tok-name); font-weight: 600; }
 .t-keyword  { color: var(--tok-keyword); }
@@ -2185,6 +2429,23 @@ html[data-theme="dark"] .badge.experimental{ color: #dcb46a; border-color: #4e3f
 html[data-theme="dark"] .badge.deprecated  { color: #e59191; border-color: #522e2e; background: #2a1a1a; }
 
 .undocumented { color: var(--fg-dim); font-style: italic; font-size: 0.85rem; }
+
+/* The synopsis of a type: its whole shape as it would be written in Verse. */
+.definition {
+  margin: 0.45rem 0 1rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.definition code {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+/* A member sits one level in, and a line too long to fit wraps below that. */
+.definition code.member { padding-left: 3.4rem; text-indent: -1.6rem; }
 
 /* Tables -------------------------------------------------------------- */
 table { width: 100%; margin: 0 0 1.4rem; border-collapse: collapse; font-size: 0.8rem; }
@@ -2307,7 +2568,8 @@ function inlineHtml(text) {
   return escapeHtml(text).split('`')
     .map((part, i) => i % 2 === 1
       ? `<code>${part}</code>`
-      : part.replace(/\*([^*\s][^*]*?)\*/g, '<em>$1</em>'))
+      : part.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+             .replace(/\*([^*\s][^*]*?)\*/g, '<em>$1</em>'))
     .join('');
 }
 
@@ -2318,8 +2580,10 @@ function proseHtml(paragraph) {
   const out = [];
   let prose = [];
   let bullets = [];
+  // The paragraph is reassembled before inline markup is applied, because a
+  // hard-wrapped source line can split a `code span` or **emphasis** in two.
   const flushProse = () => {
-    if (prose.length > 0) { out.push(`<p>${prose.join(' ')}</p>`); prose = []; }
+    if (prose.length > 0) { out.push(`<p>${inlineHtml(prose.join(' '))}</p>`); prose = []; }
   };
   const flushBullets = () => {
     if (bullets.length > 0) { out.push(`<ul>${bullets.join('')}</ul>`); bullets = []; }
@@ -2328,17 +2592,18 @@ function proseHtml(paragraph) {
   for (const line of paragraph.split('\n')) {
     const bullet = /^\s*\*\s+(.*)$/.exec(line);
     if (bullet) { flushProse(); bullets.push(`<li>${inlineHtml(bullet[1])}</li>`); continue; }
-    if (line.trim() === '') continue;
+    // A blank line ends the paragraph, as it does in Markdown.
+    if (line.trim() === '') { flushBullets(); flushProse(); continue; }
     flushBullets();
-    prose.push(inlineHtml(line));
+    prose.push(line.trim());
   }
   flushBullets();
   flushProse();
   return out.join('');
 }
 
-function badgesHtml(decl) {
-  const facts = declFacts(decl);
+function badgesHtml(decl, parent) {
+  const facts = declFactsWithin(decl, parent);
   if (facts.length === 0) return '';
   return `<div class="badges">` +
     facts.map(f => `<span class="badge ${f.kind}">${escapeHtml(f.label)}</span>`).join('') +
@@ -2355,12 +2620,36 @@ function searchKey(text) {
   return escapeHtml(text.toLowerCase());
 }
 
-function entryHtml(decl) {
+function entryHtml(decl, parent) {
   const { doc } = declParts(decl);
-  const body = (doc ? proseHtml(doc) : '<span class="undocumented">No documentation.</span>') +
-               badgesHtml(decl);
+  const body = (doc ? proseHtml(doc) : '') + badgesHtml(decl, parent);
   return `<div class="entry" data-search="${searchKey(decl.signature)}">` +
-         `<dt>${sigHtml(decl.signature)}</dt><dd>${body}</dd></div>`;
+         `<dt>${sigHtml(decl.signature)}</dt>` +
+         (body ? `<dd>${body}</dd>` : '') + `</div>`;
+}
+
+// Runs of members that carry nothing but a signature are collapsed into one
+// block that reads like the body of the type, rather than a stack of near-empty
+// entries. Source order is kept by grouping consecutive members.
+// Only members that add something of their own; the rest are already visible in
+// the type's definition block.
+function membersHtml(members, parent) {
+  const documented = members.filter(m => hasSomethingToSay(m, parent));
+  if (documented.length === 0) return '';
+  return `<dl class="api">${documented.map(m => entryHtml(m, parent)).join('')}</dl>`;
+}
+
+// One element per line rather than a single <pre>, so that a signature too long
+// for the column wraps with a hanging indent instead of being clipped or forcing
+// the block to scroll sideways.
+function definitionHtml(type) {
+  const text = definitionText(type);
+  const lines = text.split('\n').map(line => {
+    const member = line.startsWith('    ');
+    return `<code class="${member ? 'member' : 'head'}">` +
+           `${highlightVerse(member ? line.slice(4) : line)}</code>`;
+  });
+  return `<div class="definition" data-search="${searchKey(text)}">${lines.join('')}</div>`;
 }
 
 function tableHtml(headers, rows, classes) {
@@ -2413,24 +2702,16 @@ function renderHtml(model, opts) {
     for (const [category, list] of categorise(model.intrinsics)) {
       body.push('<section>');
       heading(3, category);
-      // A documented intrinsic gets a full entry; the rest stay in the compact
-      // table, which is all there is to say about them.
-      const documented = list.filter(i => i.docOverride);
-      if (documented.length > 0) {
-        body.push('<dl class="api">' + documented.map(intrinsic => {
-          const signature = intrinsicSignature(intrinsic);
-          const syntax = INTRINSIC_SYNTAX[intrinsic.member];
-          return `<div class="entry" data-search="${searchKey(signature)}">` +
-                 `<dt>${sigHtml(signature)}</dt><dd>${proseHtml(intrinsic.docOverride)}` +
-                 (syntax ? `<p class="notes">Written as <code>${escapeHtml(syntax)}</code>.</p>` : '') +
-                 `</dd></div>`;
-        }).join('') + '</dl>');
-      }
-      const rest = list.filter(i => !i.docOverride);
-      if (rest.length > 0) {
-        body.push(tableHtml(INTRINSIC_TABLE_HEADERS, rest.map(intrinsicRow),
-                            ['', 'syntax', 'notes']));
-      }
+      body.push('<dl class="api">' + list.map(intrinsic => {
+        const signature = intrinsicSignature(intrinsic);
+        const paragraphs = intrinsicBody(intrinsic).filter(p => p !== '');
+        const rendered = paragraphs.map(p => /^\*.*\*$/.test(p)
+          ? `<p class="notes">${inlineHtml(p.slice(1, -1))}</p>`
+          : proseHtml(p)).join('');
+        return `<div class="entry" data-search="${searchKey(signature)}">` +
+               `<dt>${sigHtml(signature)}</dt>` +
+               (rendered ? `<dd>${rendered}</dd>` : '') + `</div>`;
+      }).join('') + '</dl>');
       body.push('</section>');
     }
     body.push('</section>');
@@ -2448,17 +2729,17 @@ function renderHtml(model, opts) {
 
       const structure = fileStructure(file);
       if (structure.functions.length > 0) {
-        body.push('<dl class="api">' + structure.functions.map(entryHtml).join('') + '</dl>');
+        body.push('<dl class="api">' +
+                  structure.functions.map(d => entryHtml(d)).join('') + '</dl>');
       }
       for (const type of structure.types) {
         body.push('<section class="type">');
-        heading(4, type.heading, { verse: true });
+        heading(4, `\`${type.decl.qualifiedName}\``);
         const { doc } = declParts(type.decl);
         if (doc) body.push(proseHtml(doc));
-        body.push(`<div data-search="${searchKey(type.heading)}">${badgesHtml(type.decl)}</div>`);
-        if (type.members.length > 0) {
-          body.push('<dl class="api">' + type.members.map(entryHtml).join('') + '</dl>');
-        }
+        body.push(badgesHtml(type.decl));
+        body.push(definitionHtml(type));
+        body.push(membersHtml(type.members, type.decl));
         body.push('</section>');
       }
       body.push('</section>');
@@ -2511,6 +2792,7 @@ ${screenCss()}
   <div class="note"><b>Generated file.</b>
   ${provenanceLines(model).map(inlineHtml).join(' ')}</div>
   <p class="intro">${DOC_INTRO.map(inlineHtml).join(' ')}</p>
+  <p class="intro">${TYPE_INTRO.map(inlineHtml).join(' ')}</p>
 ${body.join('\n')}
 </main>
 </div>
@@ -2570,7 +2852,7 @@ function main() {
   }
 
   if (opts.natives) {
-    const discovered = discoverModules(engineRoot, opts.roots);
+    const discovered = discoverModules(engineRoot, opts.roots, opts.includeTests);
     const wanted = opts.modules.includes('all')
       ? [...discovered.keys()].sort()
       : opts.modules.map(m => resolveModuleArg(m, discovered));
@@ -2619,7 +2901,7 @@ function main() {
 
   const overridePath = path.resolve(REPO_ROOT, opts.overrides || DEFAULT_OVERRIDES);
   if (opts.useOverrides && fs.existsSync(overridePath)) {
-    const applied = applyOverrides(model, parseOverrideFile(overridePath));
+    const applied = applyOverrides(model, parseOverrideFile(overridePath), opts.verbose);
     console.log(`Overrides: ${applied} applied from ` +
                 `${path.relative(REPO_ROOT, overridePath).split(path.sep).join('/')}`);
   } else if (opts.overrides && opts.useOverrides) {
@@ -2635,6 +2917,11 @@ function main() {
   report(outPath);
 
   if (opts.json) {
+    // The selector each declaration answers to, so that tooling built on the
+    // JSON can address the overrides file without re-deriving them.
+    const declarations = allDeclarations(model);
+    for (const decl of declarations) decl.selector = uniqueSelector(decl, declarations);
+
     const jsonPath = path.resolve(REPO_ROOT, opts.json);
     fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
     fs.writeFileSync(jsonPath, JSON.stringify(model, replacer, 2), 'utf8');

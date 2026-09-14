@@ -275,7 +275,18 @@ function separateTypeDefinitions(snippetLines) {
     // (class definitions are not allowed inside an assert block).
     const isTypeDef = /^[a-zA-Z_][a-zA-Z0-9_]*\s*(\([^()]*\))?\s*:=\s*(class|struct|module|interface|enum)/.test(trimmed);
 
-    if (isTypeDef && line.match(/^\S/)) {
+    // A type alias such as `ArrayType := []int` is also a type definition and
+    // so also module scope only. Only right-hand sides that cannot be anything
+    // but a type count, which keeps ordinary bindings like `X := 5` out; a call
+    // such as `generic_class(int)` is indistinguishable from a function call and
+    // is therefore left alone.
+    const isTypeAlias = /^[a-zA-Z_][a-zA-Z0-9_]*\s*:=\s*(\[|\?|tuple\(|subtype\(|type\{|\S+\s*->)/.test(trimmed);
+
+    if (isTypeAlias && line.match(/^\S/)) {
+      // An alias is a single line with no body to collect
+      typeDefLines.push(line);
+      i++;
+    } else if (isTypeDef && line.match(/^\S/)) {
       // This is a type definition at base indentation
       typeDefLines.push(line);
       i++;

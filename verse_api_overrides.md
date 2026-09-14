@@ -11,62 +11,6 @@ kept beside each heading for reference.
 Run `bin/verse_api --stubs` again after the engine changes: it appends
 headings for anything new and never touches what is already here.
 
-## cancelable
-
-<!-- engine text:
-Implemented by classes that allow users to cancel an operation. For example, calling `subscribable.Subscribe` with a callback returns a `cancelable` object. Calling `Cancel` on the return object unsubscribes the callback.
--->
-
-## cancelable.Cancel
-
-<!-- engine text:
-Prevents any current or future work from completing.
--->
-
-## classifiable_subset
-
-<!-- engine text:
-A `classifiable_subset` is a container that holds a set of elements. A classifiable_subset can hold multiple elements of the same type.
--->
-
-## classifiable_subset.GetDiagnostic
-
-<!-- no documentation in the engine source -->
-
-## MakeClassifiableSubset
-
-<!-- engine text:
-Constructs a `classifiable_subset` containing the `InElements`.
--->
-
-## operator'+'
-
-<!-- engine text:
-Returns a new set that is the union of all elements in `InSetL` set and `InSetR`.
--->
-
-## FilterByType
-
-<!-- engine text:
-Returns a new set that contains all the elements in `InSet` that are of type `element_type`.
--->
-
-## disposable
-
-<!-- engine text:
-Implemented by classes whose instances have limited lifetimes.
--->
-
-## disposable.Dispose
-
-<!-- engine text:
-Cleans up this object.
--->
-
-## Easing
-
-<!-- no documentation in the engine source -->
-
 ## Easing.CubicBezier
 
 Builds an easing function from the two interior control points of a cubic
@@ -91,7 +35,6 @@ that needs the exact root.
 <!-- engine text:
 Make a cubic bezier interpolation function.
 -->
-
 ## Easing.Linear
 
 Returns its argument unchanged: progress maps straight to output, so motion
@@ -101,7 +44,6 @@ the baseline the other curves are departures from.
 <!-- engine text:
 Linear interpolation function. `Linear` animations move at a constant speed.
 -->
-
 ## Easing.Ease
 
 The default easing, equivalent to CSS `ease` and to control points
@@ -113,7 +55,6 @@ and it is the right first choice when nothing else suggests itself.
 <!-- engine text:
 Ease interpolation function. `Ease` animations start slowly, speed up, then end slowly. The speed of the animation is slightly slower at the end than the start.
 -->
-
 ## Easing.EaseIn
 
 Equivalent to CSS `ease-in`, control points `(0.42, 0.0)` and `(1.0, 1.0)`.
@@ -124,7 +65,6 @@ on, since the abrupt stop is hidden by whatever follows.
 <!-- engine text:
 Ease-in interpolation function. `EaseIn` animations start slow, then speed up towards the end.
 -->
-
 ## Easing.EaseOut
 
 Equivalent to CSS `ease-out`, control points `(0.0, 0.0)` and `(0.58, 1.0)`.
@@ -135,7 +75,6 @@ to see it come to rest.
 <!-- engine text:
 Ease-out interpolation function. `EaseOut` animations start fast, then slow down towards the end.
 -->
-
 ## Easing.EaseInOut
 
 Equivalent to CSS `ease-in-out`, control points `(0.42, 0.0)` and
@@ -147,13 +86,6 @@ not favour either end.
 <!-- engine text:
 Ease-in-out interpolation function. `EaseInOut` animations are similar to `Ease` but the start and end animation speed is symmetric.
 -->
-
-## enableable
-
-<!-- engine text:
-Implemented by classes whose instances can be enabled and disabled.
--->
-
 ## enableable.Enable
 
 Puts the object into its enabled state, so that it takes part in simulation
@@ -162,7 +94,6 @@ again. Enabling an object that is already enabled has no effect.
 <!-- engine text:
 Enable this object.
 -->
-
 ## enableable.Disable
 
 Puts the object into its disabled state. A disabled object keeps its identity
@@ -172,13 +103,6 @@ again. Disabling an object that is already disabled has no effect.
 <!-- engine text:
 Disable this object.
 -->
-
-## enableable.IsEnabled
-
-<!-- engine text:
-Succeeds if the object is enabled, fails if it’s disabled.
--->
-
 ## Err
 
 Stops the program. The message is written to the runtime log as an error and
@@ -192,20 +116,6 @@ system's way of saying the call never comes back.
 <!-- engine text:
 Halts the Verse runtime with error `Message`.
 -->
-
-## event
-
-<!-- engine text:
-A *recurring*, successively signaled parametric `event` with a `payload` allowing a simple mechanism to coordinate between concurrent tasks.
--->
-
-## event.Await
-
-<!-- engine text:
-Suspends the current task until another task calls `Signal`.
-If called during another invocation of `Signal`, the the task will still suspend and resume during the next call to `Signal`.
--->
-
 ## event.Signal
 
 Wakes everything waiting on the event, handing each one `Val`.
@@ -228,7 +138,6 @@ Concurrently resumes the tasks that were suspended by `Await` calls before this 
 
 Tasks are resumed in the order they were suspended. Each task will perform as much work as it can until it encounters a blocking call, whereupon it will transfer control to the next suspended task.
 -->
-
 ## GetSecondsSinceEpoch
 
 Unix time: seconds elapsed since 1 January 1970 UTC, ignoring leap seconds.
@@ -246,56 +155,6 @@ two readings is never negative.
 <!-- engine text:
 Returns the number of seconds since January 1, 1970 UTC, ignoring leap seconds. I.e, this function implements Unix time. This function always returns the same value within the same transaction.
 -->
-
-## invalidatable
-
-<!-- engine text:
-Implemented by classes whose instances can become invalid at runtime.
--->
-
-## invalidatable.IsValid
-
-<!-- engine text:
-Succeeds if this object is still valid.
--->
-
-## listenable
-
-<!-- engine text:
-A parametric interface combining `awaitable` and `subscribable`.
--->
-
-## locale
-
-<!-- engine text:
-Used for message localization.
--->
-
-## message
-
-<!-- engine text:
-A localizable text message.
--->
-
-## Localize
-
-<!-- engine text:
-Makes a `string` by localizing `Message` based on the current `locale`.
--->
-
-## Join([]message,message)
-
-<!-- engine text:
-Makes a `message` by concatenating `Separator` between the elements of `Messages`.
--->
-
-## Clamp
-
-<!-- engine text:
-Constrains the value of `Val` between `A` and `B`. Robustly handles different argument orderings.
-Returns the median of `Val`, `A`, and `B`.
--->
-
 ## Sqrt
 
 Returns the square root of `X`. Unlike `Ceil` or `Floor`, this cannot fail: a
@@ -310,95 +169,6 @@ back `-0.0` for the negative zero.
 Returns the square root of `X` if `X >= 0.0`.
 Returns `NaN` if `X < 0.0`.
 -->
-
-## Sin
-
-<!-- engine text:
-Returns the sine of `X`, where `X` is interpreted as a value in radians, if `IsFinite[X]`.
-Returns `NaN` if `not IsFinite[X]`.
--->
-
-## Cos
-
-<!-- engine text:
-Returns the cosine of `X`, where `X` is interpreted as a value in radians, if `IsFinite[X]`.
-Returns `NaN` if `not IsFinite[X]`.
--->
-
-## Tan
-
-<!-- engine text:
-Returns the tangent of `X`, where `X` is interpreted as a value in radians, if `IsFinite[X]`.
-Returns `NaN` if `not IsFinite[X]`.
--->
-
-## ArcSin
-
-<!-- engine text:
-Returns the inverse sine (arcsine) of `X` as a value in radians if `-1.0 <= X <= 1.0`.
--->
-
-## ArcCos
-
-<!-- engine text:
-Returns the inverse cosine (arccosine) of `X` as a value in radians if `-1.0 <= X <= 1.0`.
--->
-
-## ArcTan(float)
-
-<!-- engine text:
-Returns the inverse tangent (arctangent) of `X` as a value in radians such that:`-PiFloat/2.0 <= ArcTan(x) <= PiFloat/2.0`.
--->
-
-## ArcTan(float,float)
-
-<!-- engine text:
-Returns the angle in radians at the origin between a ray pointing to `(X, Y)` and the positive `X` axis such that `-PiFloat < ArcTan(Y, X) <= PiFloat`.
-Returns `0.0` if `X=0.0 and Y=0.0`.
--->
-
-## Sinh
-
-<!-- engine text:
-Returns the hyperbolic sine of `X`.
--->
-
-## Cosh
-
-<!-- engine text:
-Returns the hyperbolic cosine of `X`.
--->
-
-## Tanh
-
-<!-- engine text:
-Returns the hyperbolic tangent of `X`.
--->
-
-## ArSinh
-
-<!-- engine text:
-Returns the inverse hyperbolic sine of `X` if `IsFinite(X)`.
--->
-
-## ArCosh
-
-<!-- engine text:
-Returns the inverse hyperbolic cosine of `X` if `1.0 <= X`.
--->
-
-## ArTanh
-
-<!-- engine text:
-Returns the inverse hyperbolic tangent of `X` if `IsFinite(X)`.
--->
-
-## Pow
-
-<!-- engine text:
-Returns `A` to the power of `B`.
--->
-
 ## Quotient
 
 Integer division, rounded so that `Quotient[X, Y] * Y + Mod[X, Y]` always
@@ -420,7 +190,6 @@ Returns the quotient `X/Y` as defined by Euclidean division, i.e.:
  * `Quotient[X/Y] * Y + Mod[X,Y] = X`
 Fails if `Y = 0`.
 -->
-
 ## Mod
 
 The remainder that pairs with `Quotient`, and the reason to prefer this
@@ -438,19 +207,6 @@ Returns the remainder of `X/Y` as defined by Euclidean division, i.e.:
  * `0 <= Mod[X,Y] < Abs(Y)`
 Fails if `Y=0`.
 -->
-
-## Exp
-
-<!-- engine text:
-Returns the natural exponent of `X`.
--->
-
-## Ln
-
-<!-- engine text:
-Returns the natural logarithm of `X`.
--->
-
 ## Lerp
 
 Blends between `From` at `Parameter = 0.0` and `To` at `Parameter = 1.0`, and
@@ -470,50 +226,6 @@ Expects finite arguments; an infinity or a `NaN` anywhere propagates.
 Used to linearly interpolate/extrapolate between `From` (when `Parameter = 0.0`) and `To` (when `Parameter = 1.0`). Expects that all arguments are finite.
 Returns `From*(1 - Parameter) + To*Parameter`.
 -->
-
-## result
-
-<!-- engine text:
-Implemented by classes that provide a result for an operation, which can fail or be successful
--->
-
-## result.GetSuccess
-
-<!-- engine text:
-Returns the success data of the specified type.
--->
-
-## result.GetError
-
-<!-- engine text:
-Returns the error data of the specified type.
--->
-
-## showable
-
-<!-- engine text:
-Implemented by classes whose instances can change visibility to be shown or hidden.
--->
-
-## showable.Show
-
-<!-- engine text:
-Set this value to hide or show the class.
--->
-
-## signalable
-
-<!-- engine text:
-A parametric interface implemented by events with a `payload` that can be signaled.
-Can be used with `awaitable`, `subscribable`, or both (see: `listenable`).
--->
-
-## signalable.Signal
-
-<!-- engine text:
-Concurrently resumes the tasks waiting for this event in `awaitable.Await` and synchronously invokes any callbacks added to this event by `subscribable.Subscribe`.
--->
-
 ## Join([]string,string)
 
 Concatenates the elements of `Strings` with `Separator` between each adjacent
@@ -528,7 +240,6 @@ a runtime error rather than returning something truncated.
 <!-- engine text:
 Makes a `string` by concatenating `Separator` between the elements of `Strings`.
 -->
-
 ## ToString(char)
 
 Wraps a single `char` into a `string` one code unit long.
@@ -543,14 +254,6 @@ hazard.
 <!-- engine text:
 Makes a `string` from `Character`.
 -->
-
-## subscribable
-
-<!-- engine text:
-A parametric interface implemented by events with a `payload` that can be subscribed to.
-Matched with `signalable.`
--->
-
 ## subscribable.Subscribe
 
 Registers `Callback` to run each time the event is signalled, and hands back a
@@ -567,68 +270,782 @@ fails rolls back its own work only, and the remaining subscribers still run.
 Registers `Callback` to be invoked on matching calls to `signable.Signal`.
 Returns an unsubscriber object. Call `cancelable.Cancel` on the unsubscriber to unregister `Callback`.
 -->
+## operator'/'(int,int)
 
-## diagnostic
+Dividing one `int` by another gives a `rational`, not an `int`. This is the
+detail that catches people arriving from other languages: `7 / 2` is not `3`,
+it is the exact value seven halves, carried as a ratio with nothing thrown
+away. Verse declines to guess whether you wanted the quotient rounded down,
+rounded towards zero, or kept whole.
 
-<!-- engine text:
-An opaque diagnostic message that only shows up in diagnostic logs. The format of the diagnostic may change at any time without warning and may not be inspected by Verse code.
--->
+To land back on an `int`, say which you meant: `Floor[X / Y]`, `Ceil[X / Y]`,
+or `Quotient[X, Y]`.
 
-## diagnostic.GetDiagnostic
+The operation can fail, and does when `Y` is zero — which is why it appears in
+square brackets or under an `if` rather than being written bare.
 
 <!-- no documentation in the engine source -->
+## GetRandomFloat
 
-## ToDiagnostic
+A uniformly distributed `float` somewhere in `[Low, High]`, both ends included.
+The two bounds may arrive in either order. The draw takes 53 random bits — the
+full precision of a `float` — and the result is clamped back into range so that
+rounding in the interpolation can never push it a hair outside the interval you
+asked for.
 
-<!-- engine text:
-Converts any Verse value into an opaque diagnostic message.
--->
-
-## Ceil
-
-<!-- engine text:
-Returns the smallest `int` that is greater than or equal to `Val`.
-Fails if `not IsFinite(Val)`.
--->
-
-## Floor
+Read the note on `GetRandomInt` about transactions and repeatability; it
+applies here in full.
 
 <!-- engine text:
-Returns the largest `int` that is less than or equal to `Val`.
-Fails if `not IsFinite(Val)`.
+Returns a uniformly distributed, cryptographically-secure random `float` between `Low` and `High`, inclusive. (`Low` and `High` can be out of order.)
 -->
+## GetRandomInt
 
-## Round
+A uniformly distributed `int` in `[Low, High]`, both ends included, with the
+bounds accepted in either order. Candidates outside the range are rejected and
+redrawn rather than folded back in, so every value really is equally likely —
+no bias towards the low end of the interval.
+
+The numbers are cryptographically sourced: a hardware entropy seed, mixed per
+thread and ratcheted forward with SHA-256. There is no seed parameter and no
+way to replay a sequence. If you need a repeatable one, you need your own
+generator.
+
+The part that will bite you: **the draw is deliberately taken outside the
+enclosing transaction**. Rolling back a `<transacts>` block does not roll back
+the random state, so re-running rolled-back code produces *different* numbers.
+That is a considered choice — with no seed there is no sequence to restore —
+but it means a random value must not be something your rollback logic assumes
+it can reproduce.
 
 <!-- engine text:
-Returns `Val` rounded to the nearest `int`. When the fractional part of `Val` is `0.5`, rounds to the nearest *even* `int` (per the IEEE-754 default rounding mode).
-Fails if `not IsFinite(Val)`.
+Returns a uniformly distributed, cryptographically-secure random `int` between `Low` and `High`, inclusive. (`Low` and `High` can be out of order.)
 -->
-
-## Int
-
-<!-- engine text:
-Returns the `int` that equals `Val` without the fractional part.
-Fails if `not IsFinite(val)`.
--->
-
-## ToString(float)
-
-<!-- engine text:
-Makes a `string` representation of `Val`.
--->
-
-## ToString(int)
-
-<!-- engine text:
-Makes a printable `string` representation of `Val`.
--->
-
 ## operator'='
 
-<!-- no documentation in the engine source -->
+Succeeds when the two operands are the same value, and when it succeeds it
+produces that value — so a comparison can stand in for the thing compared:
+`if (Found := Needle = Haystack[0])` binds `Found` to the matching element.
 
+Equality here is *extensional*: two values are the same when nothing you can
+observe tells them apart. That is not IEEE float equality. `NaN = NaN`
+succeeds, and `0.0 = -0.0` succeeds, because Verse cannot expose a difference
+between those pairs. Rationals compare by value, so `1/1 = 2/2` succeeds too.
+
+The right operand is typed `comparable`, the class of everything that can be
+compared at all. Classes and interfaces are outside it unless marked
+`<unique>`, since object identity is the only equality they could offer.
+
+<!-- no documentation in the engine source -->
 ## operator'<>'
+
+The negation of `=`: succeeds when the two operands are *not* the same value,
+and yields the left operand when it does. The same extensional notion of
+sameness applies, so `NaN <> NaN` fails — the two are indistinguishable, and
+so equal, however much IEEE-754 disagrees.
+
+<!-- no documentation in the engine source -->
+## operator'+='(ref(int),int)
+
+Adds `Rhs` into the variable on the left and produces the new value. Written
+`set X += Y`.
+
+Unlike the plain arithmetic operators this one writes to memory, so it carries
+`<transacts>`: inside a transaction that later rolls back, the write is undone
+with everything else.
+
+<!-- no documentation in the engine source -->
+## Abs(int)
+
+The magnitude of `Val`, discarding its sign.
+
+There is no value this cannot represent: `int` in VerseVM is arbitrary
+precision, so unlike a fixed-width integer there is no most-negative value
+whose absolute value overflows. On BPVM, where `int` is 64 bits, that edge
+does raise a runtime error.
+
+<!-- no documentation in the engine source -->
+## BitAnd
+
+Bitwise AND of two integers, treating them as two's-complement bit patterns of
+unlimited width. Negative values behave as though sign-extended forever to the
+left, so `BitAnd(-1, X)` is `X`.
+
+<!-- no documentation in the engine source -->
+## BitOr
+
+Bitwise OR of two integers, treating them as two's-complement bit patterns of
+unlimited width.
+
+<!-- no documentation in the engine source -->
+## BitXor
+
+Bitwise exclusive-OR of two integers, treating them as two's-complement bit
+patterns of unlimited width.
+
+<!-- no documentation in the engine source -->
+## BitNot
+
+Inverts every bit of `Val`. On two's-complement numbers that is the same as
+`-Val - 1`, so `BitNot(0)` is `-1`. Because `int` has no fixed width there is
+no leading-bit cutoff to worry about.
+
+<!-- no documentation in the engine source -->
+## operator'>'(int,int)
+
+Succeeds when `Lhs` is greater than `Rhs`, and produces `Lhs` when it does.
+Comparison is a failable expression rather than something returning `logic`,
+which is why it belongs in an `if` or a `for` filter rather than in a variable.
+
+Returning the operand is what lets comparisons chain: `0 <= I <= Length` reads
+as one expression because each comparison hands its value to the next.
+
+<!-- no documentation in the engine source -->
+## MakeRationalFromInt
+
+Widens an `int` to a `rational` with a denominator of one. Rationals are exact
+ratios, so nothing is lost and nothing is approximated — this is a change of
+representation rather than a conversion.
+
+<!-- no documentation in the engine source -->
+## Ceil(rational)
+
+Rounds a `rational` up to the nearest `int`. Together with `Floor` this is how
+you leave the exact world of rationals for whole numbers, most often right
+after an integer division: `Ceil[Total / PerPage]` is the page count.
+
+Applied to something that is already an `int`, it hands it straight back.
+
+<!-- no documentation in the engine source -->
+## Floor(rational)
+
+Rounds a `rational` down to the nearest `int` — towards negative infinity, not
+towards zero, so `Floor[-7/2]` is `-4` rather than `-3`. This is the rounding
+that makes `Floor[X / Y]` agree with `Quotient[X, Y]` for positive divisors.
+
+Applied to something that is already an `int`, it hands it straight back.
+
+<!-- no documentation in the engine source -->
+## operator'/'(float,float)
+
+Floating-point division, which — unlike the `int` version — always succeeds.
+Dividing by zero gives `+Inf`, `-Inf` or `NaN` rather than failing, following
+IEEE-754, and that value then flows onward through the calculation.
+
+If you want a failure instead of an infinity, test the divisor first.
+
+<!-- no documentation in the engine source -->
+## Abs(float)
+
+The magnitude of `Val`, discarding its sign. `Abs(-0.0)` is `0.0`, and
+`Abs(NaN)` is `NaN` — magnitude says nothing about a value that is not a
+number.
+
+<!-- no documentation in the engine source -->
+## operator'<'(float,float)
+
+Succeeds when `Lhs` is less than `Rhs`, producing `Lhs`.
+
+Floats order the way you expect except at `NaN`, which Verse places above
+every other float — beyond `+Inf` — rather than making it unordered. So
+`NaN < 1.0` fails and `1.0 < NaN` succeeds. That choice is what allows floats
+to be map keys and to sort into a stable order at all.
+
+<!-- no documentation in the engine source -->
+## operator'?'(logic)
+
+Succeeds when `Value` is `true` and fails when it is `false`. Written
+`Value?`.
+
+It turns a `logic` — an ordinary value you can store and pass around — into a
+failable expression that `if` and the other failure contexts can use. The
+inverse direction is `logic{...}`, which turns a failable expression back into
+a `logic`.
+
+<!-- no documentation in the engine source -->
+## operator'+'([]t,[]t)
+
+Concatenates two arrays into a new one. Neither input is modified — arrays are
+immutable values, so `+` builds a third array rather than extending the first.
+
+<!-- no documentation in the engine source -->
+## operator'array.Length'
+
+The number of elements in an array, written `Array.Length`.
+
+For a `string`, which is an array of `char`, that is a count of UTF-8 code
+units rather than of characters as a reader would count them: a string holding
+one emoji has a `Length` of four.
+
+<!-- no documentation in the engine source -->
+## operator'()'([]t,int)
+
+Reads the element of `Array` at `Index`, written `Array[Index]`.
+
+It fails rather than erroring when the index is out of range, which is why
+indexing appears inside `if` or with square brackets on the call. There is no
+unchecked variant: bounds are part of the type discipline, not a debug feature
+you can switch off.
+
+Indices count from zero and run to `Array.Length - 1`.
+
+<!-- no documentation in the engine source -->
+## operator'()'(ref([]t,[]u),int)
+
+An array element used as the target of an assignment, written
+`set Array[Index] = Value`.
+
+Like reading, it fails when the index is out of range, so the whole assignment
+is a failable expression. It carries `<reads>` as well as failing, because the
+current array has to be examined before it can be replaced.
+
+<!-- no documentation in the engine source -->
+## operator'map.Length'
+
+The number of key-value pairs in a map, written `Map.Length`.
+
+<!-- no documentation in the engine source -->
+## ConcatenateMaps
+
+Combines two maps into a new one. Where a key appears in both, the value from
+the right-hand map wins — the entries are laid down left first, then right,
+and a map keeps only the last value given for a key.
+
+This is the map counterpart of array concatenation, and like it, neither input
+is modified.
+
+<!-- no documentation in the engine source -->
+## operator'()'(weak_map(t,u),t)
+
+Reads the value stored against `Key`, written `Map[Key]`. Fails when the key
+is absent — and in a `weak_map`, a key can become absent on its own once
+nothing else holds it alive.
+
+<!-- no documentation in the engine source -->
+## weak_map
+
+The type constructor behind `weak_map(key_type, value_type)`. It appears where
+a type is expected rather than where a value is, which is why it reads as a
+function call but never evaluates one.
+
+A `weak_map` does not keep its keys alive: an entry disappears once nothing
+else refers to its key. That is what makes it the right shape for data hung
+off objects with their own lifetimes, and the basis for persistent storage.
+
+<!-- no documentation in the engine source -->
+## operator'?'(?t)
+
+Unwraps an optional. Succeeds and produces the contained value when there is
+one, fails when the optional is `false`. Written as a suffix: `Value?`.
+
+This is the only way into an optional, and the reason optionals are safe: the
+type system will not let you reach the value without handling the possibility
+that it is absent.
+
+<!-- no documentation in the engine source -->
+## FitsInPlayerMap
+
+Succeeds when `Value` is something a player's persistent map is allowed to
+hold, and produces the value unchanged when it does.
+
+Persistence imposes limits that ordinary values do not have — on what types
+may be stored and how large the data may be — and this is the check that
+decides. Use it to find out before writing rather than discovering afterwards
+that the data did not survive.
+
+<!-- no documentation in the engine source -->
+## operator'char.ToCodeUnit'
+
+The numeric value of a UTF-8 code unit, `0` to `255`, written
+`Character.ToCodeUnit()`.
+
+Since a `char` is one code unit and not a whole Unicode code point, this is a
+character's code point only for ASCII. Above `0x7F` it is one byte of a
+multi-byte sequence.
+
+<!-- no documentation in the engine source -->
+## operator'int.ToChar'
+
+Converts a number to a `char`, written `Value.ToChar()`. Fails when the number
+is not a valid UTF-8 code unit, which is what stops an arbitrary integer from
+being smuggled into a string.
+
+<!-- no documentation in the engine source -->
+## value
+
+One node of a parsed JSON document: an object, an array, a number, a string, a
+boolean, or null.
+
+JSON is untyped where Verse is typed, so every way out of a `value` is a
+question that can fail. `AsObject[]`, `AsArray[]`, `AsInt[]` and the rest each
+succeed only if the node really is of that shape, which pushes you to handle
+malformed input at the point you read it rather than discovering it later.
+
+<!-- no documentation in the engine source -->
+## editable_curve
+
+A curve of `float` values over time, authored in the editor and exposed to
+Verse as an `@editable` property.
+
+Use one when a designer should be able to shape how a value changes — a damage
+falloff, a difficulty ramp, a camera ease — without that shape being compiled
+into the Verse code.
+
+<!-- no documentation in the engine source -->
+## modifier.Evaluate
+
+Takes a value and returns the modified one. A modifier never mutates in place:
+it is a function from `t` to `t`, which is what allows a stack of them to be
+composed and applied in order, each seeing the output of the one before.
+
+<!-- no documentation in the engine source -->
+## animation_sequence
+
+A reference to a single animation clip — one recorded motion, as opposed to a
+graph or state machine that chooses between motions.
+
+<!-- no documentation in the engine source -->
+## material
+
+A reference to a material — the description of how a surface responds to light,
+which you assign to a mesh to change how it looks.
+
+Materials are the asset type most often exposed as an `@editable` so that a
+designer can restyle something without touching Verse.
+
+<!-- no documentation in the engine source -->
+## particle_system
+
+A reference to a particle effect. Like a sound, it is a thing you trigger
+rather than a thing you read: the asset describes the effect, and the component
+that plays it decides where and when.
+
+<!-- no documentation in the engine source -->
+## mesh
+
+A reference to a static mesh: the geometry of a piece of scenery or a prop,
+without any animation of its own.
+
+Every type in this module works the same way, and none of them is constructed in
+Verse — there would be nothing to construct from. You declare an `@editable`
+property of the asset type you want, pick the content in the editor, and Verse
+receives a reference to whatever was picked.
+
+<!-- no documentation in the engine source -->
+## sound_wave
+
+A reference to an audio clip.
+
+<!-- no documentation in the engine source -->
+## texture
+
+A reference to a texture asset.
+
+`Width` and `Height` come with the reference rather than being read from the
+loaded image, so they are available without the texture being in memory. The
+consequence is that they are fixed when the project is built: replacing the
+image behind a reference changes the picture but not the dimensions Verse
+reports until the manifest is regenerated.
+
+<!-- no documentation in the engine source -->
+## texture.Height
+
+The height of the texture in pixels, recorded when the project's asset manifest
+was generated rather than measured at runtime.
+
+<!-- no documentation in the engine source -->
+## texture.Width
+
+The width of the texture in pixels, recorded when the project's asset manifest
+was generated rather than measured at runtime.
+
+<!-- no documentation in the engine source -->
+## input_action
+
+A reference to a single input action, parameterised by the type of value the
+action carries: `void` for a button, a scalar for a trigger, a vector for a
+stick.
+
+The type parameter is what keeps input honest — an action declared to carry a
+direction cannot be read as though it were a button press.
+
+<!-- no documentation in the engine source -->
+## input_mapping
+
+A reference to an input mapping asset — the table that connects physical
+inputs, across keyboard, mouse, gamepad and touch, to the abstract actions a
+game responds to.
+
+Working against actions rather than keys is what lets one piece of Verse serve
+every control scheme.
+
+<!-- no documentation in the engine source -->
+## collision_channel
+
+The category a volume belongs to for collision purposes.
+
+Channels do not decide anything by themselves. A volume declares which channel
+it is on, and a `collision_profile` maps each channel to a
+`collision_interaction` — ignore, overlap, or block — which is what determines
+how any two volumes actually meet. Splitting it this way means a volume can be
+solid to characters, transparent to the camera and invisible to sight tests
+without needing three volumes.
+
+<!-- engine text:
+Every volume has a collision channel as part of its collision_profile. It is used to determine how two volumes interact. See collision_profile.
+-->
+## CollisionChannels.stationary
+
+The channel for world geometry that does not move: floors, walls, terrain, the
+fixed shape of a level.
+
+<!-- no documentation in the engine source -->
+## CollisionChannels.dynamic
+
+The channel for objects that move under the simulation — props, debris,
+projectiles, anything whose position is not fixed.
+
+<!-- no documentation in the engine source -->
+## CollisionChannels.avatar
+
+The channel for characters: the volumes that represent players and other agents
+moving through the world.
+
+<!-- no documentation in the engine source -->
+## CollisionChannels.visibility
+
+The channel for line-of-sight tests. Putting something on this channel is what
+lets it block or not block sight independently of whether it blocks movement — a
+bush that can be walked through but not seen through, or a pane of glass that is
+the reverse.
+
+<!-- no documentation in the engine source -->
+## CollisionChannels.camera
+
+The channel for camera collision, which decides what the camera is pushed away
+from. Keeping it separate from `stationary` is what lets thin decoration be
+solid to the player without shoving the camera around.
+
+<!-- no documentation in the engine source -->
+## CollisionChannels.physics
+
+The channel for the physics simulation proper, as distinct from the query
+channels that only answer questions.
+
+<!-- no documentation in the engine source -->
+## contact_point
+
+One point of contact reported by a collision: where the surfaces met, which way
+they faced, how hard, and how far they had already overlapped.
+
+A single collision can produce several of these — a box landing flat on the
+ground touches at more than one place — so they arrive as a collection rather
+than singly.
+
+<!-- no documentation in the engine source -->
+## contact_point.ContactPosition
+
+Where the two surfaces met, in world space.
+
+<!-- no documentation in the engine source -->
+## contact_point.ContactNormal
+
+The direction the contacted surface faces at that point, as a unit vector.
+Reflecting motion off a surface, or deciding whether a landing counts as
+standing on something rather than brushing past it, both start here.
+
+<!-- no documentation in the engine source -->
+## contact_point.ContactImpulse
+
+How much momentum the contact transferred. This is the number to test against
+when a hit should only count if it was hard enough — a threshold on impulse
+distinguishes a collision from a scrape.
+
+<!-- no documentation in the engine source -->
+## contact_point.ContactDepth
+
+How far the two shapes had already overlapped when the contact was reported.
+Discrete simulation lets fast bodies interpenetrate slightly before being pushed
+apart, and this is the measure of that.
+
+<!-- no documentation in the engine source -->
+## has_collision
+
+Implemented by things that occupy space for the purposes of collision — the
+queryable, blockable presence of a mesh part in the world.
+
+The interface delegates to the `mesh_part` behind `Self`, so it is the mesh
+parts of an entity, not the entity as a whole, that carry collision.
+
+<!-- no documentation in the engine source -->
+## has_dynamics
+
+Implemented by things that take part in the physics simulation: mass, velocity,
+and the forces and impulses that change them.
+
+Like `has_collision`, each method delegates to the `mesh_part` behind `Self`. If
+there is no such part the call is quietly a no-op, or returns a zero value, so
+these are safe to call on something that turns out not to be simulated.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.ApplyLinearImpulse
+
+Adds an instantaneous change of momentum, in the direction and magnitude of
+`LinearImpulse`. Use this for a kick, a hit, a jump — a one-off event — where
+`ApplyForce` is for something sustained.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.ApplyAngularImpulse
+
+Adds an instantaneous change of angular momentum, setting the body spinning
+about the axis of `AngularImpulse` in proportion to its magnitude.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.GetLinearVelocity
+
+The body's current velocity, in world space.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.SetLinearVelocity
+
+Replaces the body's velocity outright, rather than nudging it as an impulse
+would. Convenient for teleporting motion, but it discards momentum, so a body
+moved this way will not conserve energy in a collision the way a body pushed by
+an impulse does.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.GetAngularVelocity
+
+The body's current rate of rotation.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.SetAngularVelocity
+
+Replaces the body's rate of rotation outright.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.ApplyForce
+
+Adds a force, which acts over time rather than all at once. Applied once it has
+almost no visible effect; applied every tick it produces steady acceleration —
+thrust, wind, a tractor beam.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.ApplyTorque
+
+Adds a rotational force about the axis of `Torque`, accelerating the body's spin
+for as long as it keeps being applied.
+
+<!-- no documentation in the engine source -->
+## has_dynamics.GetMass
+
+The body's mass, which is what decides how much a given impulse or force moves
+it. Mass comes from the physics setup of the mesh part rather than from Verse.
+
+<!-- no documentation in the engine source -->
+## KeyframedMovement.easing_function.Evaluate
+
+Maps a progress value to an eased one. Subclasses supply the curve;
+`cubic_bezier_easing_function` is the usual one.
+
+<!-- no documentation in the engine source -->
+## mesh_part
+
+One piece of a mesh, addressable on its own.
+
+Collision and physics live here rather than on the entity: a mesh split into
+parts can have some parts solid and others not, and forces applied to one part
+need not move the others. Being `<unique>` it has identity, so a part can be
+used as a map key to hang state off it.
+
+<!-- no documentation in the engine source -->
+## particle_system_component.Stop
+
+Stops the effect. Particles already emitted are not removed — the emitter simply
+stops producing more, so the effect fades out as they expire rather than
+vanishing.
+
+<!-- no documentation in the engine source -->
+## rarity.Color
+
+The colour conventionally used to indicate this rarity in the interface.
+
+<!-- no documentation in the engine source -->
+## stackable_component.ChangeStackSizeEvent
+
+Signalled after the stack size changes, carrying both the old and the new size.
+
+Because the event reports the change rather than the state, a listener can tell
+the difference between a stack growing and a stack shrinking without keeping its
+own copy of the previous value.
+
+<!-- no documentation in the engine source -->
+## stackable_component.ChangeMaxStackSizeEvent
+
+Signalled after the stack's capacity changes, carrying the old and new maximum.
+Both are optional, since a stack may have no maximum at all.
+
+<!-- no documentation in the engine source -->
+## change_stack_size_result
+
+The payload of `ChangeStackSizeEvent`: which component changed, and the sizes
+either side of the change.
+
+<!-- no documentation in the engine source -->
+## change_max_stack_size_result
+
+The payload of `ChangeMaxStackSizeEvent`: which component changed, and the
+maximums either side of the change. They are optional because a stack may be
+unbounded, before or after.
+
+<!-- no documentation in the engine source -->
+## origin.GetTransform
+
+The transform that a `transform_component` should treat as its frame of
+reference, instead of its parent's.
+
+<!-- no documentation in the engine source -->
+## entity_origin.Entity
+
+The entity whose transform is used as the origin.
+
+<!-- no documentation in the engine source -->
+## agent
+
+A participant in the simulation — a human player, a bot, anything the game
+treats as an actor with a will of its own. `agent` is the type you accept when
+a function should work for any of them, and `player` is the narrower case.
+
+You never construct one. Agents arrive from the simulation: from an event
+payload, from the session, from whatever produced the thing you are reacting
+to.
+
+Being `<unique>` gives an agent identity-based equality, and that is what makes
+`[agent]int` and friends legal — a class can only be a map key if it is
+`<unique>`, because identity is the only equality an object can offer. It is
+also an `entity`, so it participates in the scene graph and can carry
+components.
+
+<!-- no documentation in the engine source -->
+## player
+
+An `agent` that is a human participant in the session.
+
+Unlike a bare `agent`, a `player` can key a module-scoped `var weak_map`, which
+is how per-player data survives across sessions. That privilege is conditional:
+`IsActive` tells you whether this player is currently joined, and using an
+inactive player as such a key is a runtime error rather than a failure you can
+recover from. Check first.
+
+<!-- no documentation in the engine source -->
+## Environment
+
+The `session_environment` this session is running in — which tells you whether
+you are on a developer's machine, in a test environment, or live in front of
+players.
+
+Behaviour that should differ between a playtest and a shipped experience keys
+off this: verbose logging, cheat commands, shortened timers. Reading it costs
+nothing, so branch on it directly rather than caching the answer.
+
+<!-- no documentation in the engine source -->
+## team
+
+A group of `agent`s the simulation treats as one side.
+
+Like `agent`, a `team` is `<unique>` — identity-based equality — so teams can
+be used as map keys and compared for sameness. You obtain teams from the
+session rather than constructing them.
+
+<!-- no documentation in the engine source -->
+## tag_search_sort_type
+
+How the results of a tag search are ordered.
+
+<!-- no documentation in the engine source -->
+## tag_search_criteria.RequiredTags
+
+Tags a candidate must carry to appear in the results at all.
+
+<!-- no documentation in the engine source -->
+## tag_search_criteria.PreferredTags
+
+Tags that do not filter but influence ordering: a candidate carrying more of
+them sorts ahead of one carrying fewer.
+
+<!-- no documentation in the engine source -->
+## tag_search_criteria.ExclusionTags
+
+Tags that disqualify a candidate, applied after `RequiredTags`.
+
+<!-- no documentation in the engine source -->
+## tag_search_criteria.SortType
+
+How the surviving candidates are ordered.
+
+<!-- no documentation in the engine source -->
+## classifiable_subset.GetDiagnostic
+
+Describes the set for diagnostic output, listing the types it currently holds.
+As with every `diagnostic`, the exact wording is not part of the contract and
+may change between versions — read it, do not parse it.
+
+<!-- no documentation in the engine source -->
+## Easing
+
+Interpolation curves for animation, all of them shaped like the CSS easing
+functions: they map progress from `0.0` to `1.0` onto an eased value over the
+same range.
+
+`Linear`, `Ease`, `EaseIn`, `EaseOut` and `EaseInOut` are the standard set.
+`CubicBezier` builds one from control points when none of those is the shape
+you want.
+
+<!-- no documentation in the engine source -->
+## diagnostic.GetDiagnostic
+
+Returns the diagnostic itself, since a `diagnostic` is already the form that
+diagnostic output wants. Implementing `diagnosable` this way lets a diagnostic
+be embedded in another one without special-casing.
+
+<!-- no documentation in the engine source -->
+## date_time
+
+A point in time, held as a count of ticks.
+
+Being a `struct` it is a value: comparing two `date_time`s compares the instants
+they name, and one can be stored in a map or made persistent like any other
+value.
+
+<!-- no documentation in the engine source -->
+## date_time.Ticks
+
+The instant as a whole number of ticks, where a tick is 100 nanoseconds.
+
+Working in ticks rather than seconds keeps the type exact — arithmetic on
+instants and durations never accumulates the rounding error a `float` count of
+seconds would.
+
+<!-- no documentation in the engine source -->
+## CreateDateTime
+
+Builds a `date_time` from calendar fields, failing if they do not name a real
+instant: month 13, or the 30th of February.
+
+Because it fails rather than clamping, a date arriving from outside the program
+is validated by the act of constructing it. `ValidateDateTime` answers the same
+question without building anything, for when you want to report the problem
+rather than branch on it.
+
+<!-- no documentation in the engine source -->
+## ValidateDateTime
+
+Answers whether these calendar fields name a real instant, as a `logic` rather
+than as a failure.
+
+`CreateDateTime` performs the same check; use this one when you want to test the
+fields without constructing anything — validating a form, say, where the answer
+is a message rather than a value.
 
 <!-- no documentation in the engine source -->
 
@@ -648,43 +1065,11 @@ Makes a printable `string` representation of `Val`.
 
 <!-- no documentation in the engine source -->
 
-## operator'/'(int,int)
-
-<!-- no documentation in the engine source -->
-
-## operator'+='(ref(int),int)
-
-<!-- no documentation in the engine source -->
-
 ## operator'-='(ref(int),int)
 
 <!-- no documentation in the engine source -->
 
 ## operator'*='(ref(int),int)
-
-<!-- no documentation in the engine source -->
-
-## Abs(int)
-
-<!-- no documentation in the engine source -->
-
-## BitAnd
-
-<!-- no documentation in the engine source -->
-
-## BitOr
-
-<!-- no documentation in the engine source -->
-
-## BitXor
-
-<!-- no documentation in the engine source -->
-
-## BitNot
-
-<!-- no documentation in the engine source -->
-
-## operator'>'(int,int)
 
 <!-- no documentation in the engine source -->
 
@@ -697,18 +1082,6 @@ Makes a printable `string` representation of `Val`.
 <!-- no documentation in the engine source -->
 
 ## operator'<='(int,int)
-
-<!-- no documentation in the engine source -->
-
-## MakeRationalFromInt
-
-<!-- no documentation in the engine source -->
-
-## Ceil(rational)
-
-<!-- no documentation in the engine source -->
-
-## Floor(rational)
 
 <!-- no documentation in the engine source -->
 
@@ -728,10 +1101,6 @@ Makes a printable `string` representation of `Val`.
 
 <!-- no documentation in the engine source -->
 
-## operator'/'(float,float)
-
-<!-- no documentation in the engine source -->
-
 ## operator'+='(ref(float),float)
 
 <!-- no documentation in the engine source -->
@@ -745,10 +1114,6 @@ Makes a printable `string` representation of `Val`.
 <!-- no documentation in the engine source -->
 
 ## operator'/='
-
-<!-- no documentation in the engine source -->
-
-## Abs(float)
 
 <!-- no documentation in the engine source -->
 
@@ -768,35 +1133,11 @@ Makes a printable `string` representation of `Val`.
 
 <!-- no documentation in the engine source -->
 
-## operator'<'(float,float)
-
-<!-- no documentation in the engine source -->
-
 ## operator'<='(float,float)
 
 <!-- no documentation in the engine source -->
 
-## operator'?'(logic)
-
-<!-- no documentation in the engine source -->
-
-## operator'+'([]t,[]t)
-
-<!-- no documentation in the engine source -->
-
 ## operator'+='(ref([]t),[]t)
-
-<!-- no documentation in the engine source -->
-
-## operator'array.Length'
-
-<!-- no documentation in the engine source -->
-
-## operator'()'([]t,int)
-
-<!-- no documentation in the engine source -->
-
-## operator'()'(ref([]t,[]u),int)
 
 <!-- no documentation in the engine source -->
 
@@ -808,39 +1149,11 @@ Makes a printable `string` representation of `Val`.
 
 <!-- no documentation in the engine source -->
 
-## operator'map.Length'
-
-<!-- no documentation in the engine source -->
-
-## ConcatenateMaps
-
-<!-- no documentation in the engine source -->
-
-## operator'()'(weak_map(t,u),t)
-
-<!-- no documentation in the engine source -->
-
 ## operator'()'(ref(weak_map(t,u),weak_map(t,v)),t)
 
 <!-- no documentation in the engine source -->
 
 ## operator'()'(ref(false,weak_map(comparable,v)),comparable)
-
-<!-- no documentation in the engine source -->
-
-## weak_map
-
-<!-- no documentation in the engine source -->
-
-## operator'?'(?t)
-
-<!-- no documentation in the engine source -->
-
-## FitsInPlayerMap
-
-<!-- no documentation in the engine source -->
-
-## operator'char.ToCodeUnit'
 
 <!-- no documentation in the engine source -->
 
@@ -853,10 +1166,6 @@ Makes a printable `string` representation of `Val`.
 <!-- no documentation in the engine source -->
 
 ## operator'char32.ToAsciiString'
-
-<!-- no documentation in the engine source -->
-
-## operator'int.ToChar'
 
 <!-- no documentation in the engine source -->
 
@@ -881,98 +1190,6 @@ Makes a printable `string` representation of `Val`.
 <!-- no documentation in the engine source -->
 
 ## NaN
-
-<!-- no documentation in the engine source -->
-
-## test_rootobject_native
-
-<!-- no documentation in the engine source -->
-
-## test_phases
-
-<!-- no documentation in the engine source -->
-
-## test_phases.Gameplay
-
-<!-- no documentation in the engine source -->
-
-## test_phases.PrePhysics
-
-<!-- no documentation in the engine source -->
-
-## test_phases.PostPhysics
-
-<!-- no documentation in the engine source -->
-
-## test_phases.Counter
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.ExecuteCounter
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.ExecuteTime
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.EventCounter
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.EventTime
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.Connection
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.Connection2
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.Counter2
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.Init
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.Cancel
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.OrderAfter
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.OrderBefore
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.CountNextExecute
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.CountNextEvent
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.OnExecute
-
-<!-- no documentation in the engine source -->
-
-## test_phase_user.OnEvent
-
-<!-- no documentation in the engine source -->
-
-## value
 
 <!-- no documentation in the engine source -->
 
@@ -1037,14 +1254,6 @@ A player is always in a party of at least 1 (themselves).
 <!-- engine text:
 Stably sort `Array` using `Less` where `Less` succeeding indicates `Left` should precede `Right`
 -->
-
-## curve_float_base
-
-<!-- no documentation in the engine source -->
-
-## editable_curve
-
-<!-- no documentation in the engine source -->
 
 ## editable_curve.Evaluate
 
@@ -1288,7 +1497,7 @@ Print `Message` diagnostic using the given log level.
 Prints the current script call stack using the given log level.
 -->
 
-## Rotation_Deprecated:rotation()
+## Rotation_Deprecated:rotation
 
 <!-- engine text:
 An abstract representation of an orientation change in 3d-space.
@@ -1454,25 +1663,25 @@ Makes a `rotation` by inverting `Rotation` such that `ApplyRotation(Rotation, Ro
 Returns `Rotation` if it does not contain `NaN`, `Inf` or `-Inf`.
 -->
 
-## Transform_Deprecated:transform()
+## Transform_Deprecated:transform
 
 <!-- engine text:
 A combination of scale, rotation, and translation, applied in that order.
 -->
 
-## Transform_Deprecated:transform.Scale()
+## Transform_Deprecated:transform.Scale
 
 <!-- engine text:
 The scale of this `transform`.
 -->
 
-## Transform_Deprecated:transform.Rotation()
+## Transform_Deprecated:transform.Rotation
 
 <!-- engine text:
 The rotation of this `transform`.
 -->
 
-## Transform_Deprecated:transform.Translation()
+## Transform_Deprecated:transform.Translation
 
 <!-- engine text:
 The location of this `transform`.
@@ -1486,9 +1695,13 @@ The location of this `transform`.
 
 ## vector2.X
 
+The first component, conventionally the horizontal one.
+
 <!-- no documentation in the engine source -->
 
 ## vector2.Y
+
+The second component, conventionally the vertical one.
 
 <!-- no documentation in the engine source -->
 
@@ -1500,13 +1713,19 @@ The location of this `transform`.
 
 ## vector2i.X
 
+The first component, conventionally the horizontal one. Being an `int`, a
+`vector2i` names a cell rather than a position — a pixel, a tile, a grid
+coordinate — where `vector2` names a point that can lie between them.
+
 <!-- no documentation in the engine source -->
 
 ## vector2i.Y
 
+The second component, conventionally the vertical one.
+
 <!-- no documentation in the engine source -->
 
-## Vector3_Deprecated:vector3()
+## Vector3_Deprecated:vector3
 
 <!-- engine text:
 3-dimensional vector with `float` components.
@@ -1529,10 +1748,6 @@ The location of this `transform`.
 <!-- engine text:
 Implemented by classes to provide a method for modification evaluation.
 -->
-
-## modifier.Evaluate
-
-<!-- no documentation in the engine source -->
 
 ## modifier_stack
 
@@ -1686,51 +1901,7 @@ Base class for all errors returned from agent_group.AddMember.
 Base class for all errors returned from agent_group.RemoveMember.
 -->
 
-## asset_base
-
-<!-- no documentation in the engine source -->
-
-## animation_sequence
-
-<!-- no documentation in the engine source -->
-
-## material
-
-<!-- no documentation in the engine source -->
-
 ## material.OnPropertyChangedFromVerse
-
-<!-- no documentation in the engine source -->
-
-## particle_system
-
-<!-- no documentation in the engine source -->
-
-## mesh
-
-<!-- no documentation in the engine source -->
-
-## sound_wave
-
-<!-- no documentation in the engine source -->
-
-## texture
-
-<!-- no documentation in the engine source -->
-
-## texture.Height
-
-<!-- no documentation in the engine source -->
-
-## texture.Width
-
-<!-- no documentation in the engine source -->
-
-## input_action
-
-<!-- no documentation in the engine source -->
-
-## input_mapping
 
 <!-- no documentation in the engine source -->
 
@@ -1746,10 +1917,6 @@ Interface that provides an icon.
 A texture used as the 2D visual representation of this entity (e.g. an icon or portrait).
 -->
 
-## parameterized_property_interface_base
-
-<!-- no documentation in the engine source -->
-
 ## task
 
 <!-- engine text:
@@ -1760,18 +1927,6 @@ A texture used as the 2D visual representation of this entity (e.g. an icon or p
 
 <!-- engine text:
 Wait until the current task has completed - this essentially anchors this task and adds a caller for it to return to at this call point. Notes: - Multiple `Await()` calls can be made on this one same task - essentially giving it multiple callers to return to. - The order that `Await()` calls are accumulated is important - they are woken in first in first out (FIFO) order. - If this task has already completed, then this coroutine completes immediately. - If this task is canceled, this `Await()` coroutine will not be notified and will appear to take forever. - If this `Await()` task is canceled then it will automatically unregister itself to be woken up from this task. - This task is not registered as a subtask to the `Await()` task so if the `Await()` task or any of its calling tasks are canceled, this task will *not* also be canceled as with a standard subtask of a caller.
--->
-
-## GetRandomFloat
-
-<!-- engine text:
-Returns a uniformly distributed, cryptographically-secure random `float` between `Low` and `High`, inclusive. (`Low` and `High` can be out of order.)
--->
-
-## GetRandomInt
-
-<!-- engine text:
-Returns a uniformly distributed, cryptographically-secure random `int` between `Low` and `High`, inclusive. (`Low` and `High` can be out of order.)
 -->
 
 ## capsule_light_component
@@ -1814,22 +1969,6 @@ Radius of the source capsule shape in centimeters around the local Z axis. Note 
 Length of the source capsule shape in centimeters along the local Z axis. Note that light shapes which intersect shadow casting geometry can cause shadowing artifacts.
 -->
 
-## capsule_light_component.OnRep__Intensity
-
-<!-- no documentation in the engine source -->
-
-## capsule_light_component.OnRep__AttenuationRadius
-
-<!-- no documentation in the engine source -->
-
-## capsule_light_component.OnRep__SourceRadius
-
-<!-- no documentation in the engine source -->
-
-## capsule_light_component.OnRep__SourceLength
-
-<!-- no documentation in the engine source -->
-
 ## collision_interaction
 
 <!-- engine text:
@@ -1852,12 +1991,6 @@ The pair will be detected by Overlap and Sweep queries. The pair will not collid
 
 <!-- engine text:
 The pair will be detected by Overlap and Sweep queries. The pair will collide in the physics simulation.
--->
-
-## collision_channel
-
-<!-- engine text:
-Every volume has a collision channel as part of its collision_profile. It is used to determine how two volumes interact. See collision_profile.
 -->
 
 ## collision_profile
@@ -1893,30 +2026,6 @@ How the owning object should interact with other objects.GetChannelInteraction i
 <!-- engine text:
 The set of built-in collision_channels. This is a closed set for now.
 -->
-
-## CollisionChannels.stationary
-
-<!-- no documentation in the engine source -->
-
-## CollisionChannels.dynamic
-
-<!-- no documentation in the engine source -->
-
-## CollisionChannels.avatar
-
-<!-- no documentation in the engine source -->
-
-## CollisionChannels.visibility
-
-<!-- no documentation in the engine source -->
-
-## CollisionChannels.camera
-
-<!-- no documentation in the engine source -->
-
-## CollisionChannels.physics
-
-<!-- no documentation in the engine source -->
 
 ## overlap_hit
 
@@ -2044,26 +2153,6 @@ The normal on TargetVolume at the HitPosition.
 If TargetVolume is a polygonal object (mesh, convex hull, etc.) and the contact point is on an edge or vertex, this is the most-opposing face normal of the faces that share that edge or vertex. Otherwise it is the same as HitNormal.
 -->
 
-## contact_point
-
-<!-- no documentation in the engine source -->
-
-## contact_point.ContactPosition
-
-<!-- no documentation in the engine source -->
-
-## contact_point.ContactNormal
-
-<!-- no documentation in the engine source -->
-
-## contact_point.ContactImpulse
-
-<!-- no documentation in the engine source -->
-
-## contact_point.ContactDepth
-
-<!-- no documentation in the engine source -->
-
 ## collision_hit
 
 <!-- engine text:
@@ -2118,64 +2207,6 @@ Get the transform of this volume in the space of its owner (usually a component 
 Set the transform of this volume in the space of its owner (usually a component on an entity)
 -->
 
-## collision_volume.CollidableInternal
-
-<!-- engine text:
-Begin Collidable implementation CollidableToolTip<private><localizes>:message = "Enable/disable collision on this volume." ToolTip := CollidableToolTip
--->
-
-## collision_volume.GetCollidable
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.SetCollidable
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.OnRep_CollidableInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.OnCollidableModified
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.QueryableInternal
-
-<!-- engine text:
-Begin Queryable implementation QueryableToolTip<private><localizes>:message = "Enable/disable spatial queries against this volume." ToolTip := QueryableToolTip
--->
-
-## collision_volume.GetQueryable
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.SetQueryable
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.OnRep_QueryableInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.OnQueryableModified
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.LocalTransformInternal
-
-<!-- engine text:
-Begin LocalTransform implementation LocalTransformToolTip<private><localizes>:message = "The transform of this volume relative to its owner." ToolTip := LocalTransformToolTip
--->
-
-## collision_volume.OnRep_LocalTransformInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_volume.OnLocalTransformModified
-
-<!-- no documentation in the engine source -->
-
 ## collision_element
 
 <!-- engine text:
@@ -2187,22 +2218,6 @@ Base class for collision_volumes that consist of a single volume with a single c
 <!-- engine text:
 The collision_profile for this volume.
 -->
-
-## collision_element.GetCollisionProfile
-
-<!-- no documentation in the engine source -->
-
-## collision_element.SetCollisionProfile
-
-<!-- no documentation in the engine source -->
-
-## collision_element.OnRep_CollisionProfileInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_element.OnCollisionProfileModified
-
-<!-- no documentation in the engine source -->
 
 ## collision_capsule
 
@@ -2222,54 +2237,6 @@ The radius of the capsule
 The length of the capsule's cylindrical section (distance between the two end cap centers)
 -->
 
-## collision_capsule.GetRadius
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.SetRadius
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.GetRadiusInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.SetRadiusInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.OnRep_RadiusInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.OnRadiusModified
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.GetLength
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.SetLength
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.GetLengthInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.SetLengthInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.OnRep_LengthInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_capsule.OnLengthModified
-
-<!-- no documentation in the engine source -->
-
 ## collision_sphere
 
 <!-- engine text:
@@ -2281,30 +2248,6 @@ A collision sphere.
 <!-- engine text:
 The radius of the sphere
 -->
-
-## collision_sphere.GetRadius
-
-<!-- no documentation in the engine source -->
-
-## collision_sphere.SetRadius
-
-<!-- no documentation in the engine source -->
-
-## collision_sphere.GetRadiusInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_sphere.SetRadiusInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_sphere.OnRep_RadiusInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_sphere.OnRadiusModified
-
-<!-- no documentation in the engine source -->
 
 ## collision_point
 
@@ -2320,35 +2263,11 @@ An axis-aligned collision box.
 
 ## collision_box.Extents
 
-<!-- no documentation in the engine source -->
+The half-dimensions of the box, measured from its centre outwards along each
+axis. A box with extents of `(50, 50, 50)` is 100 units on a side.
 
-## collision_box.ExtentsInternal
-
-<!-- engine text:
-Begin Extents implementation ExtentsToolTip<private><localizes>:message = "The box extents (half the size)." ToolTip := ExtentsToolTip
--->
-
-## collision_box.GetExtents(accessor)
-
-<!-- no documentation in the engine source -->
-
-## collision_box.GetExtents(accessor,[]char)
-
-<!-- no documentation in the engine source -->
-
-## collision_box.SetExtents(accessor,vector3)
-
-<!-- no documentation in the engine source -->
-
-## collision_box.SetExtents(accessor,[]char,float)
-
-<!-- no documentation in the engine source -->
-
-## collision_box.OnRep_ExtentsInternal
-
-<!-- no documentation in the engine source -->
-
-## collision_box.OnExtentsModified
+Half-extents rather than full ones because collision maths works from the centre:
+every test becomes a comparison against a distance from the middle.
 
 <!-- no documentation in the engine source -->
 
@@ -2375,98 +2294,6 @@ Intensity of the light hitting the surface. In Lux (Lumen per square meter).
 <!-- engine text:
 Angle subtended by light source in degrees (also known as angular diameter). Defaults to 0.5357 which is the angle for our sun.
 -->
-
-## directional_light_component.OnRep__Illuminance
-
-<!-- no documentation in the engine source -->
-
-## directional_light_component.OnRep__SourceAngleDegrees
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## DirectionalLightComponent:directional_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## has_collision
-
-<!-- no documentation in the engine source -->
 
 ## has_collision.GetCollidable
 
@@ -2504,10 +2331,6 @@ Temp workaround: Once <native> can be written in interfaces, use the listenable 
 Temp workaround: Once <native> can be written in interfaces, use the listenable that lives on the interfaces directly.
 -->
 
-## has_dynamics
-
-<!-- no documentation in the engine source -->
-
 ## has_dynamics.GetDynamic
 
 <!-- engine text:
@@ -2519,42 +2342,6 @@ By default, true if any associated physics objects are physically simulated
 <!-- engine text:
 By default, set the dynamic state for all associated physics objects
 -->
-
-## has_dynamics.ApplyLinearImpulse
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.ApplyAngularImpulse
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.GetLinearVelocity
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.SetLinearVelocity
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.GetAngularVelocity
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.SetAngularVelocity
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.ApplyForce
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.ApplyTorque
-
-<!-- no documentation in the engine source -->
-
-## has_dynamics.GetMass
-
-<!-- no documentation in the engine source -->
 
 ## KeyframedMovement
 
@@ -2568,10 +2355,6 @@ Animate Scene Graph entities with keyframes.
 Base class for an animation easing function.
 -->
 
-## KeyframedMovement.easing_function.Evaluate
-
-<!-- no documentation in the engine source -->
-
 ## KeyframedMovement.cubic_bezier_easing_function
 
 <!-- engine text:
@@ -2580,21 +2363,35 @@ Cubic bezier easing function. See CubicBezierEasingFunctions for some basic easi
 
 ## KeyframedMovement.cubic_bezier_easing_function.X0
 
+The X coordinate of the first control point. As with CSS easing, the curve runs
+from `(0, 0)` to `(1, 1)` and the two control points bend it in between; the X
+coordinates must lie in `[0, 1]` so that each progress value has one answer.
+
 <!-- no documentation in the engine source -->
 
 ## KeyframedMovement.cubic_bezier_easing_function.Y0
+
+The Y coordinate of the first control point. Y is unconstrained, and taking it
+outside `[0, 1]` is how a curve overshoots and settles back.
 
 <!-- no documentation in the engine source -->
 
 ## KeyframedMovement.cubic_bezier_easing_function.X1
 
+The X coordinate of the second control point, again restricted to `[0, 1]`.
+
 <!-- no documentation in the engine source -->
 
 ## KeyframedMovement.cubic_bezier_easing_function.Y1
 
+The Y coordinate of the second control point.
+
 <!-- no documentation in the engine source -->
 
 ## KeyframedMovement.cubic_bezier_easing_function.Evaluate
+
+Maps progress to its eased value by following the curve the four control points
+describe.
 
 <!-- no documentation in the engine source -->
 
@@ -2605,6 +2402,10 @@ Cubic bezier easing function. See CubicBezierEasingFunctions for some basic easi
 -->
 
 ## KeyframedMovement.linear_easing_function.X0
+
+Fixed at the value that puts the control point on the diagonal, which is what
+makes the curve a straight line: progress maps to itself and motion runs at a
+constant speed.
 
 <!-- no documentation in the engine source -->
 
@@ -2628,6 +2429,10 @@ Cubic bezier easing function. See CubicBezierEasingFunctions for some basic easi
 
 ## KeyframedMovement.ease_cubic_bezier_easing_function.X0
 
+Fixed to the control points of CSS `ease`: slow to start, quick through the
+middle, settling over a longer stretch than it took to get going. The asymmetry
+is what makes it read as natural.
+
 <!-- no documentation in the engine source -->
 
 ## KeyframedMovement.ease_cubic_bezier_easing_function.Y0
@@ -2649,6 +2454,9 @@ Cubic bezier easing function. See CubicBezierEasingFunctions for some basic easi
 -->
 
 ## KeyframedMovement.ease_in_cubic_bezier_easing_function.X0
+
+Fixed to the control points of CSS `ease-in`: starts from rest and accelerates
+the whole way, arriving at speed.
 
 <!-- no documentation in the engine source -->
 
@@ -2672,6 +2480,9 @@ Cubic bezier easing function. See CubicBezierEasingFunctions for some basic easi
 
 ## KeyframedMovement.ease_out_cubic_bezier_easing_function.X0
 
+Fixed to the control points of CSS `ease-out`: leaves at speed and decelerates
+into its destination.
+
 <!-- no documentation in the engine source -->
 
 ## KeyframedMovement.ease_out_cubic_bezier_easing_function.Y0
@@ -2693,6 +2504,9 @@ Cubic bezier easing function. See CubicBezierEasingFunctions for some basic easi
 -->
 
 ## KeyframedMovement.ease_in_out_cubic_bezier_easing_function.X0
+
+Fixed to the control points of CSS `ease-in-out`: accelerates away and
+decelerates in, symmetric about the midpoint.
 
 <!-- no documentation in the engine source -->
 
@@ -2744,15 +2558,11 @@ Represents a change in pose and scale over a duration.
 Represents a change in the transform relative to the previous keyframe or initial animation position. Translation and Scale are interpreted additively.
 -->
 
-## KeyframedMovement.keyframed_movement_delta.MinValue
+## KeyframedMovement.keyframed_movement_delta.Duration
 
 <!-- engine text:
 Duration of this keyframe in seconds.
 -->
-
-## KeyframedMovement.keyframed_movement_delta.Duration
-
-<!-- no documentation in the engine source -->
 
 ## KeyframedMovement.keyframed_movement_delta.Easing
 
@@ -2936,147 +2746,15 @@ Disables rendering of this light.
 Succeeds if the component is enabled, fails if it's disabled.
 -->
 
-## light_component.OnRep__CastShadows
-
-<!-- no documentation in the engine source -->
-
-## light_component.OnRep__ColorFilter
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## light_component.OnRep__SpecularScale
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## light_component.OnRep__DiffuseScale
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## LightComponent:light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
 ## mesh_component
+
+Gives an entity a visible shape: attach one and the entity is drawn using the
+mesh it refers to.
+
+It is `<final_super>`, so it cannot be subclassed — configure it rather than
+extend it. Being `bounded` it contributes to the entity's extent, and being
+`enableable` it can be switched off to hide the entity without removing the
+component or losing its settings.
 
 <!-- no documentation in the engine source -->
 
@@ -3166,107 +2844,7 @@ Triggered at the beginning of each tick when another entity is no longer overlap
 Get mesh_part's on this mesh_component.
 -->
 
-## MeshComponent:mesh_component.ToolTip()
-
-<!-- engine text:
-Begin Collidable implementation
--->
-
-## MeshComponent:mesh_component.ToolTip()
-
-<!-- engine text:
-Begin Queryable implementation
--->
-
-## MeshComponent:mesh_component.ToolTip()
-
-<!-- engine text:
-Begin Visible implementation
--->
-
-## MeshComponent:mesh_component.ToolTip()
-
-<!-- engine text:
-Begin CanAffectNavigation implementation
--->
-
 ## mesh_component.OnPropertyChangedFromVerse
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## MeshComponent:mesh_component.EpicOnly()
 
 <!-- no documentation in the engine source -->
 
@@ -3281,10 +2859,6 @@ Returns the bounded box of this component, in world space.
 <!-- engine text:
 Returns the bounded box of this component, in local space.
 -->
-
-## mesh_part
-
-<!-- no documentation in the engine source -->
 
 ## mesh_part.GetDiagnostic
 
@@ -3351,20 +2925,10 @@ Controls if the `particle_system_component` should start enabled.
 Begin Playable implementation
 -->
 
-## particle_system_component.Stop
-
-<!-- no documentation in the engine source -->
-
 ## particle_system_component.AutoPlay
 
 <!-- engine text:
 Controls if the `particle_system_component` should play the simulation automatically when added to the scene, or when enabled from a disabled state.
--->
-
-## particle_system_component.EpicOnly
-
-<!-- engine text:
-Should the niagara component tick pre (default) or post physics?
 -->
 
 ## particle_system_component.OnPropertyChangedFromVerse
@@ -3454,18 +3018,6 @@ The angle of the barn door in degrees attached to the light source rect. Clamped
 The length of the barn door attached to the light source rect, in centimeters.
 -->
 
-## rect_light_component.OnRep__Intensity
-
-<!-- no documentation in the engine source -->
-
-## rect_light_component.OnRep__AttenuationRadius
-
-<!-- no documentation in the engine source -->
-
-## rect_light_component.OnRep__SourceWidth
-
-<!-- no documentation in the engine source -->
-
 ## rect_light_component.GetBoundedGlobalBox
 
 <!-- engine text:
@@ -3478,27 +3030,12 @@ Returns the bounded box of this component, in world space.
 Returns the bounded box of this component, in local space.
 -->
 
-## rect_light_component.OnRep__SourceHeight
-
-<!-- no documentation in the engine source -->
-
-## rect_light_component.MinValue
-
-<!-- no documentation in the engine source -->
-
-## rect_light_component.MaxValue
-
-<!-- no documentation in the engine source -->
-
-## rect_light_component.OnRep__BarnDoorAngleDegrees
-
-<!-- no documentation in the engine source -->
-
-## rect_light_component.OnRep__BarnDoorLength
-
-<!-- no documentation in the engine source -->
-
 ## sound_component
+
+The base for components that play audio from an entity's position, so that what
+the listener hears follows the entity as it moves.
+
+Abstract: attach one of its concrete subclasses rather than this.
 
 <!-- no documentation in the engine source -->
 
@@ -3562,6 +3099,10 @@ Succeeds if the sound component is enabled, fails if it is disabled.
 
 ## sound_component.Enabled
 
+Whether the component is active. Its setter is `<private>`, so this is read
+freely but changed only through the component's own interface rather than
+assigned to directly.
+
 <!-- no documentation in the engine source -->
 
 ## sound_component.OnPropertyChangedFromVerse
@@ -3602,18 +3143,6 @@ there is an additional smoothing factor to fade out the light contribution to 0 
 Radius of the source shape, in centimeters. Note that light shapes which intersect shadow casting geometry can cause shadowing artifacts.
 -->
 
-## sphere_light_component.OnRep__Intensity
-
-<!-- no documentation in the engine source -->
-
-## sphere_light_component.OnRep__AttenuationRadius
-
-<!-- no documentation in the engine source -->
-
-## sphere_light_component.OnRep__SourceRadius
-
-<!-- no documentation in the engine source -->
-
 ## sphere_light_component.GetBoundedGlobalBox
 
 <!-- engine text:
@@ -3625,22 +3154,6 @@ Returns the bounded box of this component, in world space.
 <!-- engine text:
 Returns the bounded box of this component, in local space.
 -->
-
-## SphereLightComponent:sphere_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## SphereLightComponent:sphere_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## sphere_light_component.MinValue
-
-<!-- no documentation in the engine source -->
-
-## sphere_light_component.MaxValue
-
-<!-- no documentation in the engine source -->
 
 ## spot_light_component
 
@@ -3690,42 +3203,6 @@ The light's inner cone shaped angle in degrees. Clamped between 0.0 and 80.0.
 The light's outer cone shaped angle in degrees. Clamped between 1.0 and 80.0.
 -->
 
-## spot_light_component.OnRep__Intensity
-
-<!-- no documentation in the engine source -->
-
-## spot_light_component.OnRep__AttenuationRadius
-
-<!-- no documentation in the engine source -->
-
-## spot_light_component.OnRep__SourceRadius
-
-<!-- no documentation in the engine source -->
-
-## SpotLightComponent:spot_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## SpotLightComponent:spot_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## spot_light_component.OnRep__InnerConeAngleDegrees
-
-<!-- no documentation in the engine source -->
-
-## SpotLightComponent:spot_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## SpotLightComponent:spot_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
-
-## spot_light_component.OnRep__OuterConeAngleDegrees
-
-<!-- no documentation in the engine source -->
-
 ## spot_light_component.GetBoundedGlobalBox
 
 <!-- engine text:
@@ -3737,22 +3214,6 @@ Returns the bounded box of this component, in world space.
 <!-- engine text:
 Returns the bounded box of this component, in local space.
 -->
-
-## SpotLightComponent:spot_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## SpotLightComponent:spot_light_component.EpicOnly()
-
-<!-- no documentation in the engine source -->
-
-## SpotLightComponent:spot_light_component.MinValue()
-
-<!-- no documentation in the engine source -->
-
-## SpotLightComponent:spot_light_component.MaxValue()
-
-<!-- no documentation in the engine source -->
 
 ## float_range
 
@@ -3776,28 +3237,6 @@ The maximum value of the range. Must be greater than or equal to Min for values 
 
 <!-- engine text:
 An easing function combined with a relative time window
--->
-
-## easing_window.Easing
-
-<!-- engine text:
-Easing function to apply
--->
-
-## easing_window.Duration
-
-<!-- engine text:
-Duration of the easing window in seconds
--->
-
-## easing_window.Offset
-
-<!-- engine text:
-Offset of the easing window in seconds
-The offset allows the window to be moved later or earlier relative to the easing modifier’s internal timeline.
-For example, moving the ease-in window later (ie +Offset) would cause the blend to happen later - ie delay it.
-For -ve offsets to ease-in and +ve offsets to ease-out, this has the effect of allowing ‘frozen’ states of targets
-to be observed (for time-varying targets).
 -->
 
 ## FindDescendantEntities
@@ -3849,6 +3288,10 @@ A modifier of skeletons, used to animate meshes using skeletal animation
 -->
 
 ## skeletal_animation.Evaluate
+
+Takes a skeleton pose and returns the posed skeleton, which is what lets
+animations be stacked: each one receives the result of the previous, so a
+walk cycle, a lean and a recoil compose into a single pose.
 
 <!-- no documentation in the engine source -->
 
@@ -4175,6 +3618,12 @@ Component that holds an icon for an entity.
 
 ## icon_component.Icon
 
+The texture shown as this entity's icon.
+
+Declared with a getter and setter rather than as plain data, so assigning to it
+runs the component's own code — the displayed icon updates rather than the field
+quietly changing underneath it.
+
 <!-- no documentation in the engine source -->
 
 ## icon_component.OnBeginSimulation
@@ -4190,10 +3639,6 @@ Component that holds an icon for an entity.
 <!-- engine text:
 Rarity may be used by gameplay and presentation systems to classify and rank things.
 -->
-
-## rarity.Color
-
-<!-- no documentation in the engine source -->
 
 ## rarity_component
 
@@ -4229,15 +3674,11 @@ Returns the simulation entity parent for this entity.
 A component that when attached to an entity allows for it to merge or 'stack' with other entities with compatible components.
 -->
 
-## stackable_component.MinValue
+## stackable_component.StackSize
 
 <!-- engine text:
 The current amount of this entity held in the stack.
 -->
-
-## stackable_component.StackSize
-
-<!-- no documentation in the engine source -->
 
 ## stackable_component.MaxStackSize
 
@@ -4277,14 +3718,6 @@ Attempts to merge this entity into the specified entity. Fails if entities canno
  If the specified amount is invalid, the merge will fail.
 -->
 
-## stackable_component.ChangeStackSizeEvent
-
-<!-- no documentation in the engine source -->
-
-## stackable_component.ChangeMaxStackSizeEvent
-
-<!-- no documentation in the engine source -->
-
 ## stackable_component.OnBeginSimulation
 
 <!-- no documentation in the engine source -->
@@ -4293,35 +3726,41 @@ Attempts to merge this entity into the specified entity. Fails if entities canno
 
 <!-- no documentation in the engine source -->
 
-## change_stack_size_result
-
-<!-- no documentation in the engine source -->
-
 ## change_stack_size_result.StackableComponent
+
+The component whose stack changed, so that one listener can serve several stacks
+and still tell which one signalled.
 
 <!-- no documentation in the engine source -->
 
 ## change_stack_size_result.PreviousStackSize
 
+The stack size before the change.
+
 <!-- no documentation in the engine source -->
 
 ## change_stack_size_result.CurrentStackSize
 
-<!-- no documentation in the engine source -->
-
-## change_max_stack_size_result
+The stack size after the change. Comparing it with `PreviousStackSize` is how a
+listener tells growth from shrinkage without keeping its own record.
 
 <!-- no documentation in the engine source -->
 
 ## change_max_stack_size_result.StackableComponent
 
+The component whose capacity changed.
+
 <!-- no documentation in the engine source -->
 
 ## change_max_stack_size_result.PreviousMaxStackSize
 
+The capacity before the change, or `false` if the stack had no maximum.
+
 <!-- no documentation in the engine source -->
 
 ## change_max_stack_size_result.CurrentMaxStackSize
+
+The capacity after the change, or `false` if the stack now has no maximum.
 
 <!-- no documentation in the engine source -->
 
@@ -4449,21 +3888,15 @@ Resets the origin of this entity, which will now default to its parent
 Interface to provide alternative origin to an entity which is defaulted to its parent. See `transform_component`
 -->
 
-## origin.GetTransform
-
-<!-- no documentation in the engine source -->
-
 ## entity_origin
 
 <!-- engine text:
 class to provide alternative origin to the 'transform_component' as an entity
 -->
 
-## entity_origin.Entity
-
-<!-- no documentation in the engine source -->
-
 ## entity_origin.GetTransform
+
+The transform of the entity being used as the origin.
 
 <!-- no documentation in the engine source -->
 
@@ -4484,18 +3917,6 @@ Suspends the current task until resumed by a matching call to `signalable.Signal
 <!-- engine text:
 Subscribe a callback function to this TickEvent phase. The input parameter to your function (DeltaTime) is the time that has passed between the last update and the current update.
 -->
-
-## unique_net_id_internal
-
-<!-- no documentation in the engine source -->
-
-## agent
-
-<!-- no documentation in the engine source -->
-
-## player
-
-<!-- no documentation in the engine source -->
 
 ## player.IsActive
 
@@ -4541,10 +3962,6 @@ The current session is in a Private environment for an experience, such as a pla
 The current session is in a Live environment for an experience.
 -->
 
-## Environment
-
-<!-- no documentation in the engine source -->
-
 ## Sleep
 
 <!-- engine text:
@@ -4560,14 +3977,6 @@ Immediately completing (less than 0) is useful when you want programmatic contro
 <!-- engine text:
 Get the seconds that have elapsed since the world began simulating
 -->
-
-## team_base
-
-<!-- no documentation in the engine source -->
-
-## team
-
-<!-- no documentation in the engine source -->
 
 ## has_tags
 
@@ -4623,29 +4032,17 @@ Fails if at least one type in `tag_types` cannot be found in this container, suc
 Succeeds if at least of the types in `tag_types` is found in this container, fails otherwise. Note that this means that if `tag_types` is empty this call fails.
 -->
 
-## tag_base
-
-<!-- no documentation in the engine source -->
-
 ## tag
 
 <!-- engine text:
 A base type used for tagging objects in order to hierarchically evaluate an objects classification.
 -->
 
-## tag_container_base
-
-<!-- no documentation in the engine source -->
-
 ## tag_key
 
 <!-- engine text:
 A `tag_key` is the return value from adding a `tag` to a container implementing the `has_tags` interface, and is used to selectively remove such an instance from the same container.
 -->
-
-## tag_search_sort_type
-
-<!-- no documentation in the engine source -->
 
 ## tag_search_sort_type.Unsorted
 
@@ -4660,22 +4057,6 @@ A `tag_key` is the return value from adding a `tag` to a container implementing 
 <!-- engine text:
 Advanced tag search criteria
 -->
-
-## tag_search_criteria.RequiredTags
-
-<!-- no documentation in the engine source -->
-
-## tag_search_criteria.PreferredTags
-
-<!-- no documentation in the engine source -->
-
-## tag_search_criteria.ExclusionTags
-
-<!-- no documentation in the engine source -->
-
-## tag_search_criteria.SortType
-
-<!-- no documentation in the engine source -->
 
 ## tag_view
 
@@ -4701,7 +4082,7 @@ Checks if this container contains ANY of the tags in the specified container, al
 Checks if this container contains ALL of the tags in the specified container, also checks against parent tags {"A.1","B.1"}.HasAll({"A","B"}) will return True, {"A","B"}.HasAll({"A.1","B.1"}) will return False If InTags is empty/invalid it will always return True, because there were no failed checks.
 -->
 
-## Rotation:rotation()
+## Rotation:rotation
 
 <!-- engine text:
 An abstract representation of an orientation change in 3d-space.
@@ -4812,31 +4193,31 @@ Makes a `rotation` by inverting `Rotation` such that `ApplyRotation(Rotation, Ro
 Returns `Rotation` if it does not contain `NaN`, `Inf` or `-Inf`.
 -->
 
-## Transform:transform()
+## Transform:transform
 
 <!-- engine text:
 A combination of scale, rotation, and translation, applied in that order.
 -->
 
-## Transform:transform.Translation()
+## Transform:transform.Translation
 
 <!-- engine text:
 The location of this `transform`.
 -->
 
-## Transform:transform.Rotation()
+## Transform:transform.Rotation
 
 <!-- engine text:
 The rotation of this `transform`.
 -->
 
-## Transform:transform.Scale()
+## Transform:transform.Scale
 
 <!-- engine text:
 The scale of this `transform`.
 -->
 
-## Vector3:vector3()
+## Vector3:vector3
 
 <!-- engine text:
 3-dimensional vector with `float` components.
@@ -4860,10 +4241,288 @@ The Up (was Z) component of this vector.
 The Forward (was X) component of this vector.
 -->
 
+## cancelable
+
+<!-- engine text:
+Implemented by classes that allow users to cancel an operation. For example, calling `subscribable.Subscribe` with a callback returns a `cancelable` object. Calling `Cancel` on the return object unsubscribes the callback.
+-->
+
+## cancelable.Cancel
+
+<!-- engine text:
+Prevents any current or future work from completing.
+-->
+
+## classifiable_subset
+
+<!-- engine text:
+A `classifiable_subset` is a container that holds a set of elements. A classifiable_subset can hold multiple elements of the same type.
+-->
+
+## MakeClassifiableSubset
+
+<!-- engine text:
+Constructs a `classifiable_subset` containing the `InElements`.
+-->
+
 ## operator'+'(classifiable_subset(t),classifiable_subset(t))
 
 <!-- engine text:
 Returns a new set that is the union of all elements in `InSetL` set and `InSetR`.
+-->
+
+## FilterByType
+
+<!-- engine text:
+Returns a new set that contains all the elements in `InSet` that are of type `element_type`.
+-->
+
+## disposable
+
+<!-- engine text:
+Implemented by classes whose instances have limited lifetimes.
+-->
+
+## disposable.Dispose
+
+<!-- engine text:
+Cleans up this object.
+-->
+
+## enableable
+
+<!-- engine text:
+Implemented by classes whose instances can be enabled and disabled.
+-->
+
+## enableable.IsEnabled
+
+<!-- engine text:
+Succeeds if the object is enabled, fails if it’s disabled.
+-->
+
+## event
+
+<!-- engine text:
+A *recurring*, successively signaled parametric `event` with a `payload` allowing a simple mechanism to coordinate between concurrent tasks.
+-->
+
+## event.Await
+
+<!-- engine text:
+Suspends the current task until another task calls `Signal`.
+If called during another invocation of `Signal`, the the task will still suspend and resume during the next call to `Signal`.
+-->
+
+## invalidatable
+
+<!-- engine text:
+Implemented by classes whose instances can become invalid at runtime.
+-->
+
+## invalidatable.IsValid
+
+<!-- engine text:
+Succeeds if this object is still valid.
+-->
+
+## listenable
+
+<!-- engine text:
+A parametric interface combining `awaitable` and `subscribable`.
+-->
+
+## locale
+
+<!-- engine text:
+Used for message localization.
+-->
+
+## message
+
+<!-- engine text:
+A localizable text message.
+-->
+
+## Localize
+
+<!-- engine text:
+Makes a `string` by localizing `Message` based on the current `locale`.
+-->
+
+## Join([]message,message)
+
+<!-- engine text:
+Makes a `message` by concatenating `Separator` between the elements of `Messages`.
+-->
+
+## Clamp
+
+<!-- engine text:
+Constrains the value of `Val` between `A` and `B`. Robustly handles different argument orderings.
+Returns the median of `Val`, `A`, and `B`.
+-->
+
+## Sin
+
+<!-- engine text:
+Returns the sine of `X`, where `X` is interpreted as a value in radians, if `IsFinite[X]`.
+Returns `NaN` if `not IsFinite[X]`.
+-->
+
+## Cos
+
+<!-- engine text:
+Returns the cosine of `X`, where `X` is interpreted as a value in radians, if `IsFinite[X]`.
+Returns `NaN` if `not IsFinite[X]`.
+-->
+
+## Tan
+
+<!-- engine text:
+Returns the tangent of `X`, where `X` is interpreted as a value in radians, if `IsFinite[X]`.
+Returns `NaN` if `not IsFinite[X]`.
+-->
+
+## ArcSin
+
+<!-- engine text:
+Returns the inverse sine (arcsine) of `X` as a value in radians if `-1.0 <= X <= 1.0`.
+-->
+
+## ArcCos
+
+<!-- engine text:
+Returns the inverse cosine (arccosine) of `X` as a value in radians if `-1.0 <= X <= 1.0`.
+-->
+
+## ArcTan(float)
+
+<!-- engine text:
+Returns the inverse tangent (arctangent) of `X` as a value in radians such that:`-PiFloat/2.0 <= ArcTan(x) <= PiFloat/2.0`.
+-->
+
+## ArcTan(float,float)
+
+<!-- engine text:
+Returns the angle in radians at the origin between a ray pointing to `(X, Y)` and the positive `X` axis such that `-PiFloat < ArcTan(Y, X) <= PiFloat`.
+Returns `0.0` if `X=0.0 and Y=0.0`.
+-->
+
+## Sinh
+
+<!-- engine text:
+Returns the hyperbolic sine of `X`.
+-->
+
+## Cosh
+
+<!-- engine text:
+Returns the hyperbolic cosine of `X`.
+-->
+
+## Tanh
+
+<!-- engine text:
+Returns the hyperbolic tangent of `X`.
+-->
+
+## ArSinh
+
+<!-- engine text:
+Returns the inverse hyperbolic sine of `X` if `IsFinite(X)`.
+-->
+
+## ArCosh
+
+<!-- engine text:
+Returns the inverse hyperbolic cosine of `X` if `1.0 <= X`.
+-->
+
+## ArTanh
+
+<!-- engine text:
+Returns the inverse hyperbolic tangent of `X` if `IsFinite(X)`.
+-->
+
+## Pow
+
+<!-- engine text:
+Returns `A` to the power of `B`.
+-->
+
+## Exp
+
+<!-- engine text:
+Returns the natural exponent of `X`.
+-->
+
+## Ln
+
+<!-- engine text:
+Returns the natural logarithm of `X`.
+-->
+
+## result
+
+<!-- engine text:
+Implemented by classes that provide a result for an operation, which can fail or be successful
+-->
+
+## result.GetSuccess
+
+<!-- engine text:
+Returns the success data of the specified type.
+-->
+
+## result.GetError
+
+<!-- engine text:
+Returns the error data of the specified type.
+-->
+
+## showable
+
+<!-- engine text:
+Implemented by classes whose instances can change visibility to be shown or hidden.
+-->
+
+## showable.Show
+
+<!-- engine text:
+Set this value to hide or show the class.
+-->
+
+## signalable
+
+<!-- engine text:
+A parametric interface implemented by events with a `payload` that can be signaled.
+Can be used with `awaitable`, `subscribable`, or both (see: `listenable`).
+-->
+
+## signalable.Signal
+
+<!-- engine text:
+Concurrently resumes the tasks waiting for this event in `awaitable.Await` and synchronously invokes any callbacks added to this event by `subscribable.Subscribe`.
+-->
+
+## subscribable
+
+<!-- engine text:
+A parametric interface implemented by events with a `payload` that can be subscribed to.
+Matched with `signalable.`
+-->
+
+## diagnostic
+
+<!-- engine text:
+An opaque diagnostic message that only shows up in diagnostic logs. The format of the diagnostic may change at any time without warning and may not be inspected by Verse code.
+-->
+
+## ToDiagnostic
+
+<!-- engine text:
+Converts any Verse value into an opaque diagnostic message.
 -->
 
 ## Ceil(float)
@@ -4878,6 +4537,32 @@ Fails if `not IsFinite(Val)`.
 <!-- engine text:
 Returns the largest `int` that is less than or equal to `Val`.
 Fails if `not IsFinite(Val)`.
+-->
+
+## Round
+
+<!-- engine text:
+Returns `Val` rounded to the nearest `int`. When the fractional part of `Val` is `0.5`, rounds to the nearest *even* `int` (per the IEEE-754 default rounding mode).
+Fails if `not IsFinite(Val)`.
+-->
+
+## Int
+
+<!-- engine text:
+Returns the `int` that equals `Val` without the fractional part.
+Fails if `not IsFinite(val)`.
+-->
+
+## ToString(float)
+
+<!-- engine text:
+Makes a `string` representation of `Val`.
+-->
+
+## ToString(int)
+
+<!-- engine text:
+Makes a printable `string` representation of `Val`.
 -->
 
 ## day_of_week
@@ -4968,22 +4653,6 @@ Enumerates the months of the year in 12-month calendars.
 
 <!-- no documentation in the engine source -->
 
-## date_time
-
-<!-- no documentation in the engine source -->
-
-## date_time.Ticks
-
-<!-- no documentation in the engine source -->
-
-## CreateDateTime
-
-<!-- no documentation in the engine source -->
-
-## ValidateDateTime
-
-<!-- no documentation in the engine source -->
-
 ## DaysInMonth
 
 <!-- engine text:
@@ -5010,17 +4679,8 @@ Returns the current UTC date_time.
 
 ## date_parts
 
-<!-- no documentation in the engine source -->
-
-## date_parts.Year
-
-<!-- no documentation in the engine source -->
-
-## date_parts.Month
-
-<!-- no documentation in the engine source -->
-
-## date_parts.Day
+The calendar fields of a `date_time` — year, month and day — pulled apart so
+they can be read individually.
 
 <!-- no documentation in the engine source -->
 
@@ -5030,71 +4690,73 @@ Returns the current UTC date_time.
 TODO: Create a time_space struct and related time_span methods - FORT-416561
 -->
 
-## time_of_day_parts.Hours
-
-<!-- no documentation in the engine source -->
-
-## time_of_day_parts.Minutes
-
-<!-- no documentation in the engine source -->
-
-## time_of_day_parts.Seconds
-
-<!-- no documentation in the engine source -->
-
-## time_of_day_parts.Milliseconds
-
-<!-- no documentation in the engine source -->
-
-## time_of_day_parts.Microseconds
-
-<!-- no documentation in the engine source -->
-
-## time_of_day_parts.Nanoseconds
-
-<!-- no documentation in the engine source -->
-
 ## GetDate
+
+Splits the calendar part of an instant into year, month and day in one call,
+which is cheaper and reads better than three separate accessors when you want
+all three.
 
 <!-- no documentation in the engine source -->
 
 ## GetTimeOfDay
 
+Splits the time-of-day part of an instant into hours through nanoseconds, for
+when you want the clock face rather than the date.
+
 <!-- no documentation in the engine source -->
 
 ## GetYear
+
+The year of `Val`.
 
 <!-- no documentation in the engine source -->
 
 ## GetMonth
 
+The month of `Val`, `1` for January through `12` for December.
+
 <!-- no documentation in the engine source -->
 
 ## GetDay
+
+The day of the month of `Val`, counting from `1`.
 
 <!-- no documentation in the engine source -->
 
 ## GetHours(date_time)
 
+The hour of `Val` on a 24-hour clock, `0` through `23`.
+
 <!-- no documentation in the engine source -->
 
 ## GetMinutes(date_time)
+
+The minute of `Val`, `0` through `59`.
 
 <!-- no documentation in the engine source -->
 
 ## GetSeconds(date_time)
 
+The second of `Val`, `0` through `59`.
+
 <!-- no documentation in the engine source -->
 
 ## GetMilliseconds(date_time)
+
+The millisecond within the second of `Val`, `0` through `999`.
 
 <!-- no documentation in the engine source -->
 
 ## GetMicroseconds(date_time)
 
+The microsecond within the second of `Val`.
+
 <!-- no documentation in the engine source -->
 
 ## GetNanoseconds(date_time)
+
+The nanosecond within the second of `Val`. A tick is 100 nanoseconds, so this is
+always a multiple of 100 — the finest resolution a `date_time` can express.
 
 <!-- no documentation in the engine source -->
 
