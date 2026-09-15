@@ -169,7 +169,8 @@ This index provides quick access to key concepts, language features, and importa
 ## Operators
 
 ### Arithmetic
-- **+, -, \*, /, %** - math operations: [Primitives - Mathematical Functions](02_primitives.md#mathematical-functions), [Operators](04_operators.md)
+- **+, -, \*, /** - math operations: [Primitives - Mathematical Functions](02_primitives.md#mathematical-functions), [Operators](04_operators.md)
+- **`Mod[X, Y]`** - modulo, failable rather than an operator: [Runtime API Reference](api/verse_runtime_api.html)
 - **+=, -=, \*=, /=** - compound assignment: [Operators](04_operators.md)
 
 ### Comparison
