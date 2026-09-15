@@ -667,7 +667,7 @@ This restriction applies even when the tuple is mutable. You must replace the en
 
 ### Map Ordering and Mutation
 
-Maps preserve **insertion order**, and this order is maintained through mutations:
+Maps preserve **insertion order**, and this order is maintained through mutations.
 
 #### New Keys Append to End
 

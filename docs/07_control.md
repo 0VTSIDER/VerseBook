@@ -394,7 +394,7 @@ comparison:
 They do not work on `float`, objects and tuples due to implementation
 limitations.
 
-### Exhaustiveness Checking with Enums
+#### Exhaustiveness Checking with Enums
 
 Case expressions over enums are checked for exhaustiveness.  For closed
 enums where all values are known, the compiler verifies you've handled
@@ -609,7 +609,7 @@ DoSomething(V:int):void = {}
 for (V : Values). DoSomething(V)
 ```
 
-### Index and Value Pairs
+#### Index and Value Pairs
 
 When iterating arrays or maps, you can access both the index/key and the value
 using the pair syntax `Index -> Value` or `Key -> Value`:
@@ -629,7 +629,7 @@ Roster(array{player{Name:="Ada"}, player{Name:="Bo"}}) =
 
 The index is zero-based, matching Verse's array indexing convention.
 
-### Defining Variables in For Clauses
+#### Defining Variables in For Clauses
 
 The for loop allows you to define intermediate variables that can be
 used in subsequent filters or the loop body:
@@ -651,7 +651,7 @@ SafeDivision = array{-4, -5, -10, 10, 5, 3}
 These intermediate variables are scoped to the iteration and can
 reference earlier variables in the same clause.
 
-### Multiple Filters
+#### Multiple Filters
 
 You can chain multiple filter conditions using comma-separated or
 semicolon-separated expressions. Each filter must be failable, and if any fails, that
@@ -669,7 +669,7 @@ Each filter condition is evaluated in order, and iteration continues
 only if all conditions succeed. The two separators cannot be mixed
 within one clause list.
 
-### Iterating Over Maps
+#### Iterating Over Maps
 
 Maps can be iterated over in two ways: values only, or key-value pairs
 using the pair syntax:
@@ -690,7 +690,7 @@ for (Name -> Score : Ranking) { "{Name} scored {Score}" } =
 Maps preserve insertion order, so iteration order matches the order in
 which keys were added to the map.
 
-### String Iteration
+#### String Iteration
 
 Strings can be iterated character by character:
 
@@ -706,7 +706,7 @@ CountVowels(Text:string):int =
 CountVowels("education") = 5
 ```
 
-### Nested Iteration
+#### Nested Iteration
 
 Multiple iteration sources create nested loops, producing the cartesian product:
 
@@ -718,7 +718,7 @@ Cells := for (X := 1..3, Y := 1..3):
 Cells = array{11, 12, 13, 21, 22, 23, 31, 32, 33}
 ```
 
-### Filtering with Failure
+#### Filtering with Failure
 
 Verse's `for` expressions are particularly powerful when they leverage
 failure contexts, as they can naturally filter:
@@ -741,7 +741,7 @@ When any expression in the iteration header fails, that iteration is
 skipped. This allows elegant filtering without explicit `if`
 statements.
 
-### For as an Expression
+#### For as an Expression
 
 Like other control flow constructs, `for` is an expression. When the body produces values, `for` collects them into an array:
 
@@ -789,7 +789,7 @@ ProcessValidItems(Items:[]item):void =
 ```
 
 
-### Range Iteration
+#### Range Iteration
 
 The range operator `..` provides numeric
 iteration over integer sequences. Ranges are inclusive on both ends:
@@ -826,7 +826,7 @@ Squares = array{1, 4, 9, 16, 25}
 The range exists only during the for expression evaluation; the
 resulting array is what gets stored.
 
-### Restrictions
+#### Restrictions
 
 The for loop has several important restrictions:
 
@@ -874,7 +874,7 @@ Ranges := array{1..10}
 ```
 <!-- #> -->
 
-Every one of these reports the same error 3552: ranges are only
+Every one of these reports the same error: ranges are only
 supported as the iterated expression of `for`, `sync`, `rush`, or
 `race`. Indexing a range or reading a member off one fails the same
 way.

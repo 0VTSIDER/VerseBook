@@ -25,25 +25,28 @@ public, you are making a strong commitment about its availability and
 stability:
 
 <!--versetest
-Test01 := module:
+assert_semantic_error(3593, 3593):
+    Game2 := module:
+        PlayerManager2 := module:
+            MaxPlayers2<public>:int = 100
+    Outside2():int = Game2.PlayerManager2.MaxPlayers2
+-->
+<!-- 01 -->
+```verse
+Game := module:
+    # Public reaches out of Game; without it PlayerManager would be
+    # internal and unnameable from here
     PlayerManager<public> := module:
         MaxPlayers<public>:int = 100
 
         player<public> := class:
             Name<public>:string
             Level<public>:int = 1
-<#
--->
-<!-- 01 -->
-```verse
-PlayerManager<public> := module:
-    MaxPlayers<public>:int = 100
 
-    player<public> := class:
-        Name<public>:string
-        Level<public>:int = 1
+Hero := Game.PlayerManager.player{Name := "Aldric"}
+Hero.Level = 1
+Game.PlayerManager.MaxPlayers = 100
 ```
-<!-- #> -->
 
 Public members form the contract between your code and the outside
 world. In the metaverse context, public declarations are particularly
@@ -66,7 +69,12 @@ private, allowing access within the defining class and any classes
 that inherit from it. This level exists specifically to support
 inheritance hierarchies while maintaining encapsulation:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3593):
+    entity2 := class:
+        var Health2<protected>:int = 100
+    Outside2(E:entity2):int = E.Health2
+-->
 <!-- 02 -->
 ```verse
 game_entity := class:
@@ -105,41 +113,32 @@ members are truly internal implementation details that can be changed
 freely without affecting any external code:
 
 <!--versetest
-item:=struct{Weight:float=0.0}
-inventory := class:
-    var Items<private>:[]item = array{}
-    var Capacity<private>:int = 20
-    var CurrentWeight<private>:float = 0.0
-    MaxWeight:float=20.0
-
-    AddItem<public>(NewItem:item, At:int)<transacts><decides>:void =
-        ValidateCapacity[NewItem]
-        set Items[At] = NewItem
-        set CurrentWeight = CurrentWeight + NewItem.Weight
-
-    ValidateCapacity<private>(NewItem:item)<reads><decides>:void =
-        Items.Length < Capacity
-        CurrentWeight + NewItem.Weight <= MaxWeight
-<#
+assert_semantic_error(3593, 3593):
+    bag2 := class:
+        var Items2<private>:[]string = array{}
+        HasRoom2<private>()<reads><decides>:void = Items2.Length < 2
+    Outside2(B:bag2)<reads><decides>:void =
+        B.HasRoom2[]
+        B.Items2.Length = 0
 -->
 <!-- 03 -->
 ```verse
 inventory := class:
-    var Items<private>:[]item = array{}
-    var Capacity<private>:int = 20
-    var CurrentWeight<private>:float = 0.0
-    MaxWeight:float=20.0
+    var Items<private>:[]string = array{}
+    Capacity<private>:int = 2
 
-    AddItem<public>(NewItem:item, At:int)<transacts><decides>:void =
-        ValidateCapacity[NewItem]
-        set Items[At] = NewItem
-        set CurrentWeight = CurrentWeight + NewItem.Weight
+    AddItem<public>(Name:string)<transacts><decides>:void =
+        ValidateCapacity[]
+        set Items += array{Name}
 
-    ValidateCapacity<private>(NewItem:item)<reads><decides>:void =
-        Items.Length < Capacity
-        CurrentWeight + NewItem.Weight <= MaxWeight
+    ValidateCapacity<private>()<reads><decides>:void = Items.Length < Capacity
+
+    Count<public>()<reads>:int = Items.Length
+
+Bag := inventory{}
+Bag.AddItem["sword"]
+Bag.Count() = 1
 ```
-<!-- #> -->
 
 Private members are the building blocks of encapsulation. They allow
 you to maintain invariants, hide complexity, and create clean
@@ -156,44 +155,25 @@ collaborative code that needs to share implementation details without
 exposing them publicly:
 
 <!--versetest
-game_entity:=class{}
-collision_info:=class{}
-ApplyGravity(:game_entity,:float):void={}
-CheckCollisions(:game_entity):void={}
-
-Physics := module:
-    gravity_constant:float = 9.81
-
-    collision_detector := class<abstract>:
-        DetectCollision<internal>(A:game_entity, B:game_entity):?collision_info
-
-    physics_world := class:
-        var Entities<internal>:[]game_entity = array{}
-
-        SimulateStep<internal>(DeltaTime:float):void =
-            for (Entity : Entities):
-                ApplyGravity(Entity, DeltaTime)
-                CheckCollisions(Entity)
-<#
+assert_semantic_error(3593):
+    Physics2 := module:
+        Fall2<internal>(V:float):float = V + 9.81
+    Outside2():float = Physics2.Fall2(0.0)
 -->
 <!-- 04 -->
 ```verse
 Physics := module:
-    # Internal types and constants
-    gravity_constant:float = 9.81
+    # No specifier, so internal to Physics
+    GravityConstant:float = 9.81
 
-    collision_detector := class<abstract>:
-        DetectCollision<internal>(A:game_entity, B:game_entity):?collision_info
+    Fall<internal>(Velocity:float, DeltaTime:float):float =
+        Velocity + GravityConstant * DeltaTime
 
-    physics_world := class:
-        var Entities<internal>:[]game_entity = array{}
+    # The one step other modules are allowed to take
+    Simulate<public>(Velocity:float):float = Fall(Velocity, 1.0)
 
-        SimulateStep<internal>(DeltaTime:float):void =
-            for (Entity : Entities):
-                ApplyGravity(Entity, DeltaTime)
-                CheckCollisions(Entity)
+Physics.Simulate(0.0) = 9.81
 ```
-<!-- #> -->
 
 Internal access is ideal for module-wide utilities, shared
 implementation details, and helper functions that multiple classes
@@ -215,7 +195,6 @@ entities.
 A scoped access level is created using the `scoped{...}` expression,
 which takes one or more module references:
 
-<!--NoCompile-->
 <!-- 05 -->
 ```verse
 Collaboration := module:
@@ -223,8 +202,16 @@ Collaboration := module:
     Shared<public> := scoped{ModuleA, ModuleB}
 
     # This class is only accessible within ModuleA and ModuleB
-    SharedResource<Shared> := class:
+    shared_resource<Shared> := class:
         Data<public>:int = 42
+
+ModuleA := module:
+    using{Collaboration}
+    Read<public>():int = shared_resource{}.Data
+
+ModuleB := module{}
+
+ModuleA.Read() = 42
 ```
 
 The scoped definition creates an access level that can then be used as
@@ -241,36 +228,24 @@ module but scoped to another, making it accessible where it is needed
 while keeping it hidden elsewhere — the definition itself, not its
 members; see [below](#scoping-a-definition-does-not-scope-its-members):
 
-<!--versetest
-bounding_box:=class{}
-Graphics := module:
-    CollidableShape<scoped{Physics}> := interface:
-        GetBounds<scoped{Physics}>():bounding_box
-
-Physics := module:
-    using{Graphics}
-
-    sphere_collider := class<abstract>(CollidableShape):
-        GetBounds<override>():bounding_box
-<#
--->
 <!-- 06 -->
 ```verse
+bounding_box := class{}
+
 Graphics := module:
     # Define an interface scoped to the physics module. Its members need the
     # same scope, otherwise they stay internal to Graphics and cannot be
     # overridden from Physics.
-    CollidableShape<scoped{Physics}> := interface:
+    collidable_shape<scoped{Physics}> := interface:
         GetBounds<scoped{Physics}>():bounding_box
 
 Physics := module:
     using{Graphics}
 
     # Physics can implement the interface even though it is defined in graphics
-    sphere_collider := class<abstract>(CollidableShape):
+    sphere_collider := class<abstract>(collidable_shape):
         GetBounds<override>():bounding_box
 ```
-<!-- #> -->
 
 This pattern allows graphics to define contracts that physics
 implements without exposing those implementation details publicly. The
@@ -280,29 +255,6 @@ part of either module's public API.
 You can scope a definition to multiple modules, creating a shared
 private space for collaboration:
 
-<!--versetest
-Gameplay := module:
-    SharedGameplayScope := scoped{Inventory, Crafting}
-
-    Item<SharedGameplayScope> := class:
-        ID<public>:int
-        Properties<public>:[string]string
-
-    CreateItem<SharedGameplayScope>(TheID:int):Item = Item{ID:=TheID, Properties:=map{}}
-
-Inventory := module:
-    using{Gameplay}
-
-    AddToInventory(ItemID:int):void =
-        NewItem := CreateItem(ItemID)
-
-Crafting := module:
-    using{Gameplay}
-
-    CraftItem(Recipe:[]int)<decides>:Item =
-        CreateItem(Recipe[0])
-<#
--->
 <!-- 07 -->
 ```verse
 Gameplay := module:
@@ -310,28 +262,22 @@ Gameplay := module:
     SharedGameplayScope := scoped{Inventory, Crafting}
 
     # Items can be accessed by both inventory and crafting
-    Item<SharedGameplayScope> := class:
+    item<SharedGameplayScope> := class:
         ID<public>:int
-        Properties<public>:[string]string
 
     # Factory function available to both systems
-    CreateItem<SharedGameplayScope>(TheID:int):Item = Item{ID:=TheID, Properties:=map{}}
+    CreateItem<SharedGameplayScope>(TheID:int):item = item{ID := TheID}
 
 Inventory := module:
     using{Gameplay}
-
-    AddToInventory(ItemID:int):void =
-        NewItem := CreateItem(ItemID)  # Can access scoped function
-        # Implementation...
+    AddToInventory<public>(ItemID:int):int = CreateItem(ItemID).ID
 
 Crafting := module:
     using{Gameplay}
+    CraftItem<public>(Recipe:[]int)<decides>:int = CreateItem(Recipe[0]).ID
 
-    CraftItem(Recipe:[]int)<decides>:Item =
-        # Can create items and access their properties
-        CreateItem(Recipe[0])
+Inventory.AddToInventory(7) = 7
 ```
-<!-- #> -->
 
 ### Scoped Read or Write Access
 
@@ -350,30 +296,21 @@ Gives:
 
 
 <!--versetest
-ModuleA:=module{}
-ModuleB:=module{}
-game_state:=class{}
-
-SharedScope := scoped{ModuleA, ModuleB}
-
-state_manager := class:
-    var<SharedScope> GameState<public>:game_state = game_state{}
-
-    var<SharedScope> SyncCounter<SharedScope>:int = 0
-<#
 -->
 <!-- 08 -->
 ```verse
-SharedScope := scoped{ModuleA, ModuleB}
+Inventory := module{}
+Crafting := module{}
 
 state_manager := class:
-    # Public read access, but only ModuleA and ModuleB can write
-    var<SharedScope> GameState<public>:game_state = game_state{}
+    # Public read access, but only inventory and crafting can write
+    var<scoped{Inventory, Crafting}> Phase<public>:int = 0
 
-    # Only ModuleA and ModuleB can read or write this internal state
-    var<SharedScope> SyncCounter<SharedScope>:int = 0
+    # Only inventory and crafting can read or write this internal state
+    var<scoped{Inventory, Crafting}> SyncCounter<scoped{Inventory, Crafting}>:int = 0
+
+state_manager{}.Phase = 0
 ```
-<!-- #> -->
 
 This pattern is particularly useful for shared state that multiple
 modules need to coordinate on without exposing write access publicly.
@@ -385,23 +322,38 @@ specific member, but does not make intermediate types or modules
 visible. To access a scoped member, you must be able to see the entire
 path to it:
 
-<!--NoCompile-->
+<!--versetest
+assert_semantic_error(3593, 3593, 3593):
+    Outer := module:
+        # Internal to outer
+        Inner := module:
+            # Scoped to Target
+            shared<scoped{Target}> := class{}
+
+    Target := module:
+        using{Outer}
+
+        # ERROR: can't see Outer.Inner because Inner is internal to Outer,
+        # even though shared is scoped to us
+        UseShared():void = Inner.shared{}
+<#
+-->
 <!-- 09 -->
 ```verse
 Outer := module:
     # Internal to outer
     Inner := module:
-        # Scoped to TargetModule
-        SharedClass<scoped{TargetModule}> := class:
-            Value:int = 42
+        # Scoped to Target
+        shared<scoped{Target}> := class{}
 
-TargetModule := module:
+Target := module:
     using{Outer}
 
-    # ERROR: Can't see Outer.Inner because Inner is internal to Outer
-    # even though SharedClass is scoped to us
-    UseShared():void = Outer.Inner.SharedClass{}
+    # ERROR: can't see Outer.Inner because Inner is internal to Outer,
+    # even though shared is scoped to us
+    UseShared():void = Inner.shared{}
 ```
+<!-- #> -->
 
 For scoped access to work, either the containing scope must be
 accessible (public or also scoped appropriately), or the scoped member
@@ -410,12 +362,22 @@ must be accessed through a public interface that exposes it.
 A definition can only have one scoped access level—you cannot apply
 multiple scoped specifiers:
 
-<!-- NoCompile-->
+<!--versetest
+assert_semantic_error(3642):
+    ModuleA := module{}
+    ModuleB := module{}
+    # ERROR: Cannot have multiple access level specifiers
+    invalid_scope<scoped{ModuleA}><scoped{ModuleB}> := class{}
+<#
+-->
 <!-- 10 -->
 ```verse
+ModuleA := module{}
+ModuleB := module{}
 # ERROR: Cannot have multiple access level specifiers
-InvalidScope<scoped{ModuleA}><scoped{ModuleB}> := class{}
+invalid_scope<scoped{ModuleA}><scoped{ModuleB}> := class{}
 ```
+<!-- #> -->
 
 ### Scoped Access and Inheritance
 
@@ -423,31 +385,21 @@ When a class member has scoped access, overriding members in
 subclasses can maintain or narrow that access, following normal
 inheritance rules:
 
-<!--versetest
-ModuleA:=module{}
-ModuleB:=module{}
-SharedScope := scoped{ModuleA, ModuleB}
-
-base := class:
-    ComputeValue<SharedScope>():int = 42
-
-derived := class(base):
-    ComputeValue<override>():int = 100
-<#
--->
 <!-- 11 -->
 ```verse
-SharedScope := scoped{ModuleA, ModuleB}
+ModuleA := module{}
+ModuleB := module{}
 
 base := class:
     # Accessible only in ModuleA and ModuleB
-    ComputeValue<SharedScope>():int = 42
+    ComputeValue<scoped{ModuleA, ModuleB}>():int = 42
 
 derived := class(base):
     # Can override with same or more restrictive access
     ComputeValue<override>():int = 100  # Now internal to this module
+
+derived{}.ComputeValue() = 100
 ```
-<!-- #> -->
 
 #### Scoping a Definition Does Not Scope Its Members
 
@@ -460,12 +412,13 @@ Granting `A<scoped{B}>` lets `B` name `A` but does not let `B` touch anything
 assert_semantic_error(3593):
     Graphics := module:
         shape<scoped{Physics}> := class:
-            Size:int = 1
+            Size:int = 1            # internal to Graphics
+
     Physics := module:
         using{Graphics}
         Report():int =
             S := shape{}
-            S.Size
+            S.Size                  # ERROR: Size is internal to Graphics
 <#
 -->
 <!-- 12 -->
@@ -484,24 +437,20 @@ Physics := module:
 
 To make a member reachable, mark the member too:
 
-<!--versetest
-Graphics := module:
-    shape<scoped{Physics}> := class:
-        Size<scoped{Physics}>:int = 1
-Physics := module:
-    using{Graphics}
-    Report():int =
-        S := Graphics.shape{}
-        S.Size
-<#
--->
 <!-- 13 -->
 ```verse
 Graphics := module:
     shape<scoped{Physics}> := class:
         Size<scoped{Physics}>:int = 1
+
+Physics := module:
+    using{Graphics}
+    Report<public>():int =
+        S := shape{}
+        S.Size
+
+Physics.Report() = 1
 ```
-<!-- #> -->
 
 The same applies at every level of nesting: reaching `A.B.C` from a granted
 scope needs the grant on `A`, on `B`, and on `C`. A `<scoped>` container holding
@@ -512,16 +461,6 @@ This also governs interface implementation. An `<internal>` member of a
 that are themselves `<scoped{...}>` or `<public>` can be overridden:
 
 <!--versetest
-bounding_box := class{}
-Graphics := module:
-    collidable<scoped{Physics}> := interface:
-        GetBounds<scoped{Physics}>():bounding_box
-        Describe<public>():void
-Physics := module:
-    using{Graphics}
-    sphere := class<abstract>(collidable):
-        GetBounds<override>():bounding_box
-        Describe<override>():void = {}
 assert_semantic_error(3593, 3593):
     Graphics2 := module:
         collidable2<scoped{Physics2}> := interface:
@@ -530,47 +469,28 @@ assert_semantic_error(3593, 3593):
         using{Graphics2}
         sphere2 := class<abstract>(collidable2):
             Reset<override>():void = {}
-<#
 -->
 <!-- 14 -->
 ```verse
 Graphics := module:
     collidable<scoped{Physics}> := interface:
-        GetBounds<scoped{Physics}>():bounding_box  # overridable from Physics
-        Describe<public>():void                    # overridable from Physics
-        Reset():void                               # internal - NOT overridable
+        Describe<public>():void   # overridable from Physics
+        Reset():void              # internal - NOT overridable
 
 Physics := module:
     using{Graphics}
     sphere := class<abstract>(collidable):
-        GetBounds<override>():bounding_box
         Describe<override>():void = {}
 ```
-<!-- #> -->
 
 ### Using Scoped for API Boundaries
 
 Scoped access excels at creating controlled API boundaries where
 certain functionality should be shared between specific modules but
-not exposed as part of the public interface:
-
-<!--NoCompile-->
-<!-- 15 -->
-```verse
-Networking := module:
-    # Public scope for modules that need network access
-    NetworkScope<public> := scoped{PlayerSystem, Matchmaking, Telemetry}
-
-    # Core networking available to specific systems
-    SendPacket<NetworkScope>(Data:[]uint8):void =
-        # Implementation...
-
-    # Internal statistics
-    var<NetworkScope> BytesSent<NetworkScope>:int = 0
-```
+not exposed as part of the public interface.
 
 This creates an explicit architectural boundary—only the modules
-listed in the scope can access the networking primitives, while other
+listed in the scope can access the scoped primitives, while other
 code must use higher-level public APIs.
 
 ### Design Considerations
@@ -598,16 +518,7 @@ variable. This fine-grained control allows you to create variables
 that are widely readable but narrowly writable, implementing common
 patterns like read-only properties elegantly:
 
-<!--versetest
-game_state := class:
-    var<protected> Score<public>:int = 0
-
-    var<private> PlayerCount<public>:int = 0
-
-    var<private> SessionID<internal>:string
-<#
--->
-<!-- 16 -->
+<!-- 15 -->
 ```verse
 game_state := class:
     # Public read, protected write
@@ -618,8 +529,10 @@ game_state := class:
 
     # Internal read, private write
     var<private> SessionID<internal>:string
+
+State := game_state{SessionID := "s1"}
+State.Score = 0
 ```
-<!-- #> -->
 
 This dual-specifier system solves a common problem in object-oriented
 programming where you want to expose state for reading without
@@ -665,30 +578,20 @@ privately or protectively writable, you can expose state for
 observation while maintaining complete control over modifications:
 
 <!--versetest
-resource_manager := class:
-    var<private> TotalResources<public>:int = 1000
-    var<private> AllocatedResources<public>:int = 0
-    var<private> AvailableResources<public>:int = 1000
-
-    AllocateResources<public>(Amount:int)<decides><transacts>:void =
-        Amount <= AvailableResources
-        set AllocatedResources = AllocatedResources + Amount
-        set AvailableResources = AvailableResources - Amount
-<#
 -->
-<!-- 17 -->
+<!-- 16 -->
 ```verse
 resource_manager := class:
-    var<private> TotalResources<public>:int = 1000
-    var<private> AllocatedResources<public>:int = 0
-    var<private> AvailableResources<public>:int = 1000
+    var<private> Available<public>:int = 1000
 
-    AllocateResources<public>(Amount:int)<decides><transacts>:void =
-        Amount <= AvailableResources
-        set AllocatedResources = AllocatedResources + Amount
-        set AvailableResources = AvailableResources - Amount
+    Allocate<public>(Amount:int)<transacts><decides>:void =
+        Amount <= Available
+        set Available -= Amount
+
+Manager := resource_manager{}
+Manager.Allocate[400]
+Manager.Available = 600
 ```
-<!-- #> -->
 
 ## Annotations and Metadata
 
@@ -706,55 +609,16 @@ compilation and evolution.
 
 The `@deprecated` annotation marks definitions that should no longer
 be used. When code references a deprecated definition, the compiler
-produces a warning, alerting developers to update their code:
-
-<!--versetest
-@deprecated
-OldFunction():void =
-    Print("This function is deprecated")
-
-@deprecated
-legacy_player := class:
-    Name:string
-
-UseDeprecated():void =
-    OldFunction()
-<#
--->
-<!-- 18 -->
-```verse
-# Mark a definition as deprecated
-@deprecated
-OldFunction():void =
-    Print("This function is deprecated")
-
-# Mark a class as deprecated
-@deprecated
-legacy_player := class:
-    Name:string
-
-# Attempting to use deprecated code produces a warning
-UseDeprecated():void =
-    OldFunction()  # Warning: OldFunction is deprecated
-```
-<!-- #> -->
+produces a warning, alerting developers to update their code.
 
 Deprecated definitions can use other deprecated definitions without
 warnings, but non-deprecated code cannot use deprecated definitions
 without triggering warnings. This allows gradual migration of
 deprecated APIs:
 
-<!--versetest
-@deprecated
-OldAPI():int = 42
-@deprecated
-MigrateOldAPI():int = OldAPI()
-
-
-<#
--->
-<!-- 19 -->
+<!-- 17 -->
 ```verse
+# Mark a definition as deprecated
 @deprecated
 OldAPI():int = 42
 
@@ -763,9 +627,10 @@ OldAPI():int = 42
 MigrateOldAPI():int = OldAPI()
 
 # Warning: non-deprecated calling deprecated
-# NewCode():int = OldAPI()
+NewCode():int = OldAPI()
+
+NewCode() = 42
 ```
-<!-- #> -->
 
 `@deprecated` accepts two optional fields:
 
@@ -777,7 +642,7 @@ MigrateOldAPI():int = OldAPI()
 The version comparison is `>=`: a package uploaded at **exactly** the cutoff
 already counts as discontinued, not merely deprecated.
 
-<!-- 20 -->
+<!-- 18 -->
 ```verse
 @deprecated{Message := "Use NewSpawn instead."}
 OldSpawn():void = {}
@@ -806,20 +671,27 @@ The `@experimental` annotation marks features that are not yet stable
 and may change or be removed in future versions. Experimental features
 can only be used when the `AllowExperimental` package flag is enabled:
 
-<!--NoCompile-->
-<!-- 21 -->
+<!--versetest
+# Mark a feature as experimental
+@experimental
+experimental_class := class:
+    NewFeature:int
+
+# Using experimental features requires the AllowExperimental package flag
+UseExperimental(Obj:experimental_class):int = Obj.NewFeature
+<#
+-->
+<!-- 19 -->
 ```verse
 # Mark a feature as experimental
 @experimental
 experimental_class := class:
     NewFeature:int
 
-# Using experimental features requires AllowExperimental flag
-# Without flag: error
-# With AllowExperimental:=true: allowed
-UseExperimental(Obj:experimental_class):void =
-    Print("Using experimental feature")
+# Using experimental features requires the AllowExperimental package flag
+UseExperimental(Obj:experimental_class):int = Obj.NewFeature
 ```
+<!-- #> -->
 
 Experimental definitions behave similarly to deprecated
 ones—experimental definitions can freely use other experimental
@@ -837,26 +709,19 @@ available based on version numbers. This enables gradual API rollout
 and version-specific functionality:
 
 <!--versetest
-using { /Verse.org/Native }
-@available{MinUploadedAtFNVersion := 3000}
-NewFeature():void =
-    Print("New feature")
+using { /Verse.org/Native }  # Required for @available
+
+# Multiple definitions can coexist for different versions
 @available{MinUploadedAtFNVersion := 2900}
 OldImplementation():int = 42
 
 @available{MinUploadedAtFNVersion := 3000}
 NewImplementation():int = 100
-
 <#
 -->
-<!-- 22 -->
+<!-- 20 -->
 ```verse
 using { /Verse.org/Native }  # Required for @available
-
-# Available only in version 3000 and later
-@available{MinUploadedAtFNVersion := 3000}
-NewFeature():void =
-    Print("New feature")
 
 # Multiple definitions can coexist for different versions
 @available{MinUploadedAtFNVersion := 2900}
@@ -880,16 +745,19 @@ You can create custom attributes by inheriting from the special
 domain-specific metadata to your code:
 
 <!--versetest
+# Define a custom attribute
 @attribscope_class
 gameplay_element := class<computes>(attribute):
     Category:string
     Priority:int
+
+# Use the custom attribute
 @gameplay_element{Category := "Combat", Priority := 1}
 weapon_system := class:
     Damage:int
 <#
 -->
-<!-- 23 -->
+<!-- 21 -->
 ```verse
 # Define a custom attribute
 @attribscope_class
@@ -919,33 +787,42 @@ applied using scope annotations:
 Example of scoped custom attributes:
 
 <!--versetest
+assert_semantic_error(3596):
+    @attribscope_function
+    perf2 := class<computes>(attribute):
+        MaxMs:int
+    @perf2{MaxMs := 16}
+    thing2 := class{}
+
+# Attribute that can only be applied to functions
 @attribscope_function
 performance_critical := class<computes>(attribute):
     MaxExecutionTimeMs:int
 
+# Attribute that can only be applied to data members
 @attribscope_data
 serializable_field := class<computes>(attribute):
     SerializationKey:string
 
+# Use them appropriately
 entity := class<abstract>:
     @serializable_field{SerializationKey := "entity_id"}
     ID:int
 
     @performance_critical{MaxExecutionTimeMs := 16}
     Update():void
-
 <#
 -->
-<!-- 24 -->
+<!-- 22 -->
 ```verse
 # Attribute that can only be applied to functions
 @attribscope_function
-performance_critical := class(attribute):
+performance_critical := class<computes>(attribute):
     MaxExecutionTimeMs:int
 
 # Attribute that can only be applied to data members
 @attribscope_data
-serializable_field := class(attribute):
+serializable_field := class<computes>(attribute):
     SerializationKey:string
 
 # Use them appropriately
@@ -962,7 +839,7 @@ Attempting to use an attribute in the wrong location produces a
 compiler error. For example, a function-scoped attribute cannot be
 applied to a class.
 
-**Reading attributes:** Custom attributes are currently metadata for
+Custom attributes are currently metadata for
 external tooling — the compiler, LSP, and the Unreal Editor can read
 and act on them, but there is no Verse API to query attributes at
 runtime. Attributes are used to apply rules, constraints, or extra
@@ -979,21 +856,7 @@ While not strictly annotations, the `<getter(...)>` and
 controlling field access. These can be applied to both class and
 interface fields to define custom access logic:
 
-<!--versetest
-entity := class:
-    var Health<getter(GetHealth)><setter(SetHealth)>:int = external{}
-
-    var InternalHealth:int = 100
-
-    GetHealth(:accessor):int = InternalHealth
-
-    SetHealth(:accessor, NewValue:int):void =
-        if (NewValue >= 0, NewValue <= 100):
-            set InternalHealth = NewValue
-
-<#
--->
-<!-- 25 -->
+<!-- 23 -->
 ```verse
 entity := class:
     # External field with custom accessors
@@ -1007,7 +870,6 @@ entity := class:
         if (NewValue >= 0, NewValue <= 100):
             set InternalHealth = NewValue
 ```
-<!-- #> -->
 
 Constraints on accessors:
 
@@ -1027,13 +889,17 @@ for internationalization. Localized messages use the `message` type
 and can be extracted for translation into different languages:
 
 <!--versetest
+# Simple localized message
 WelcomeMessage<localizes> : message = "Welcome to the game!"
 
+# Call Localize to get the string
 ShowWelcome():void =
     Print(Localize(WelcomeMessage))
+assert:
+    Localize(WelcomeMessage) = "Welcome to the game!"
 <#
 -->
-<!-- 26 -->
+<!-- 24 -->
 ```verse
 # Simple localized message
 WelcomeMessage<localizes> : message = "Welcome to the game!"
@@ -1046,56 +912,44 @@ ShowWelcome():void =
 
 #### Message Parameters
 
-Localized messages can accept parameters for dynamic content interpolation:
+Localized messages can accept parameters for dynamic content interpolation.
 
-<!--versetest
-GreetPlayer<localizes>(PlayerName:string) : message = "Hello, {PlayerName}!"
-
-ShowGreeting(Name:string):void =
-    Print(Localize(GreetPlayer(Name)))
-<#
--->
-<!-- 27 -->
-```verse
-# Message with parameter interpolation
-GreetPlayer<localizes>(PlayerName:string) : message = "Hello, {PlayerName}!"
-
-# Use with arguments
-ShowGreeting(Name:string):void =
-    Print(Localize(GreetPlayer(Name)))
-    # Outputs: "Hello, Aldric!" (if Name = "Aldric")
-```
-<!-- #> -->
-
-**Supported parameter types:**
+Three parameter types are supported:
 - `string` - Text values
 - `int` - Integer values (formatted with comma separators)
 - `float` - Floating-point values
 
-**Parameter interpolation syntax:**
+The interpolation syntax is minimal:
 - Use `{ParameterName}` to insert parameter values
 - Parameters can be used multiple times or not at all
 - Only parameter names and Unicode code points allowed in braces
 
 <!--versetest
+# Message with parameter interpolation
+GreetPlayer<localizes>(PlayerName:string) : message = "Hello, {PlayerName}!"
+
 # Multiple parameters, some repeated
 ScoreMessage<localizes>(Player:string, Score:int) : message =
     "Congratulations {Player}! Your score is {Score}. Great job, {Player}!"
-
-# Outputs: "Congratulations Alice! Your score is 1,500. Great job, Alice!"
 
 # Not all parameters required in message text
 OptionalParam<localizes>(Name:string, Score:int) : message =
     "Thanks for playing!"  # Score parameter ignored
+assert:
+    Localize(GreetPlayer("Aldric")) = "Hello, Aldric!"
+    Localize(ScoreMessage("Alice", 1500)) =
+        "Congratulations Alice! Your score is 1,500. Great job, Alice!"
+    Localize(OptionalParam("Bob", 3)) = "Thanks for playing!"
 <#
 -->
-<!-- 28 -->
+<!-- 25 -->
 ```verse
+# Message with parameter interpolation
+GreetPlayer<localizes>(PlayerName:string) : message = "Hello, {PlayerName}!"
+
 # Multiple parameters, some repeated
 ScoreMessage<localizes>(Player:string, Score:int) : message =
     "Congratulations {Player}! Your score is {Score}. Great job, {Player}!"
-
-# Outputs: "Congratulations Alice! Your score is 1,500. Great job, Alice!"
 
 # Not all parameters required in message text
 OptionalParam<localizes>(Name:string, Score:int) : message =
@@ -1110,13 +964,15 @@ Integer parameters are automatically formatted with comma separators for readabi
 <!--versetest
 HighScore<localizes>(Points:int) : message = "New record: {Points} points!"
 
+assert:
+    Localize(HighScore(190091)) = "New record: 190,091 points!"
 <#
 -->
-<!-- 29 -->
+<!-- 26 -->
 ```verse
 HighScore<localizes>(Points:int) : message = "New record: {Points} points!"
 
-# Localize(HighScore(190091)) produces: "New record: 190,091 points!"
+Localize(HighScore(190091)) = "New record: 190,091 points!"
 ```
 <!-- #> -->
 
@@ -1129,22 +985,21 @@ ConfigMessage<localizes>(?MaxPlayers:int = 8, ?TimeLimit:int = 300):message =
     "Game settings: {MaxPlayers} players, {TimeLimit} seconds"
 
 assert:
-    Localize(ConfigMessage())                           # Uses defaults
-    Localize(ConfigMessage(?MaxPlayers := 16))          # Override one
-    Localize(ConfigMessage(?TimeLimit := 600, ?MaxPlayers := 32))  # Override both
+    # Can be called with any combination
+    Localize(ConfigMessage()) = "Game settings: 8 players, 300 seconds"
+    Localize(ConfigMessage(?MaxPlayers := 16)) = "Game settings: 16 players, 300 seconds"
 <#
 -->
-<!-- 30 -->
+<!-- 27 -->
 ```verse
 ConfigMessage<localizes>(?MaxPlayers:int = 8, ?TimeLimit:int = 300):message =
     "Game settings: {MaxPlayers} players, {TimeLimit} seconds"
 
 # Can be called with any combination
-Localize(ConfigMessage())                           # Uses defaults
-Localize(ConfigMessage(?MaxPlayers := 16))          # Override one
-Localize(ConfigMessage(?TimeLimit := 600, ?MaxPlayers := 32))  # Override both
+Localize(ConfigMessage()) = "Game settings: 8 players, 300 seconds"
+Localize(ConfigMessage(?MaxPlayers := 16)) = "Game settings: 16 players, 300 seconds"
 ```
-<!-- #> --> 
+<!-- #> -->
 
 #### Tuple Parameters
 
@@ -1154,75 +1009,57 @@ Messages can accept tuple parameters, which are destructured in the parameter li
 LocationMessage<localizes>(Player:string, (X:int, Y:int)) : message =
     "{Player} is at position ({X}, {Y})"
 
-# Test the call
-TestTupleParam():void =
-    Localize(LocationMessage("Hero", (10, 20)))
+assert:
+    # Call with tuple
+    Localize(LocationMessage("Hero", (10, 20))) = "Hero is at position (10, 20)"
 <#
 -->
-<!-- 31 -->
+<!-- 28 -->
 ```verse
 LocationMessage<localizes>(Player:string, (X:int, Y:int)) : message =
     "{Player} is at position ({X}, {Y})"
 
 # Call with tuple
-Localize(LocationMessage("Hero", (10, 20)))
-# Outputs: "Hero is at position (10, 20)"
+Localize(LocationMessage("Hero", (10, 20))) = "Hero is at position (10, 20)"
 ```
 <!-- #>-->
 
 #### String Escaping and Unicode
 
-**Unicode code points:**
+A message literal may carry a Unicode code point, escaped braces to show
+literal braces, and the usual backslash escapes; whitespace and comments are
+allowed inside an interpolation. Escaping only suppresses interpolation for a
+name that is *not* a parameter — `\{Name\}` still substitutes when `Name` is
+one:
 
 <!--versetest
 UnicodeMessage<localizes> : message = "The letter is {0u004d}"
-<#
--->
-<!-- 32 -->
-```verse
-UnicodeMessage<localizes> : message = "The letter is {0u004d}"
-# Outputs: "The letter is M"
-```
-<!-- #> -->
 
-**Escaped braces** (to show literal braces):
-
-<!--versetest
 EscapedMessage<localizes>(Name:string) : message =
-    "Use \{Name\} to insert {Name}"
-<#
--->
-<!-- 33 -->
-```verse
-EscapedMessage<localizes>(Name:string) : message =
-    "Use \{Name\} to insert {Name}"
-# Localize(EscapedMessage("value")) produces: "Use {Name} to insert value"
-```
-<!-- #> -->
+    "Braces \{ and \} around {Name}"
 
-**Special characters:**
-
-<!--versetest
 SpecialChars<localizes> : message =
     "Supports: \\r\\n\\t\\\"\\'\\#\\<\\>\\&\\~"
-<#
--->
-<!-- 34 -->
-```verse
-SpecialChars<localizes> : message =
-    "Supports: \\r\\n\\t\\\"\\'\\#\\<\\>\\&\\~"
-```
-<!-- #> -->
 
-**Whitespace and comments** are allowed in interpolation:
-
-<!--versetest
 SpacedParam<localizes>(Name:string) : message = "Hello { Name }"
-CommentedParam<localizes>(Name:string) : message = "Hello {Name}"
+CommentedParam<localizes>(Name:string) : message = "Hello {<# comment #>Name}"
+assert:
+    Localize(UnicodeMessage) = "The letter is M"
+    Localize(EscapedMessage("value")) = "Braces \{ and \} around value"
+    Localize(SpacedParam("Aldric")) = "Hello Aldric"
+    Localize(CommentedParam("Aldric")) = "Hello Aldric"
 <#
 -->
-<!-- 35 -->
+<!-- 29 -->
 ```verse
+UnicodeMessage<localizes> : message = "The letter is {0u004d}"
+
+EscapedMessage<localizes>(Name:string) : message =
+    "Braces \{ and \} around {Name}"
+
+SpecialChars<localizes> : message =
+    "Supports: \\r\\n\\t\\\"\\'\\#\\<\\>\\&\\~"
+
 SpacedParam<localizes>(Name:string) : message = "Hello { Name }"
 CommentedParam<localizes>(Name:string) : message = "Hello {<# comment #>Name}"
 ```
@@ -1232,8 +1069,20 @@ CommentedParam<localizes>(Name:string) : message = "Hello {<# comment #>Name}"
 
 Localized messages **must be defined at module or snippet scope**. They cannot be defined inside functions:
 
-<!--NoCompile-->
-<!-- 36 -->
+<!--versetest
+# Valid: module scope
+MyModule := module:
+    ModuleMessage<localizes> : message = "Valid"
+
+# Valid: snippet scope
+TopLevelMessage<localizes> : message = "Valid"
+
+assert_semantic_error(3506, 3506, 3651):
+    BadFunction():void =
+        LocalMessage<localizes> : message = "Invalid"  # ERROR
+<#
+-->
+<!-- 30 -->
 ```verse
 # Valid: module scope
 MyModule := module:
@@ -1245,21 +1094,13 @@ TopLevelMessage<localizes> : message = "Valid"
 BadFunction():void =
     LocalMessage<localizes> : message = "Invalid"  # ERROR
 ```
+<!-- #> -->
 
 #### Inheritance and Override
 
 Localized messages can be overridden in class hierarchies:
 
-<!--versetest
-base_ui := class:
-    Title<localizes>:message = "Base Title"
-    Description<localizes>:message = "Base description"
-
-derived_ui := class(base_ui):
-    Title<localizes><override>:message = "Derived Title"
-<#
--->
-<!-- 37 -->
+<!-- 31 -->
 ```verse
 base_ui := class:
     Title<localizes>:message = "Base Title"
@@ -1269,21 +1110,14 @@ derived_ui := class(base_ui):
     # Override the title message
     Title<localizes><override>:message = "Derived Title"
     # Inherits Description from base
+
+Localize(derived_ui{}.Title) = "Derived Title"
+Localize(derived_ui{}.Description) = "Base description"
 ```
-<!-- #> -->
 
 Localized messages can also be abstract:
 
-<!--versetest
-quest_base := class<abstract>:
-    TaskDescription<localizes><public> : message
-    CompletionMessage<localizes><protected> : message = "Quest complete!"
-
-fetch_quest := class<final>(quest_base):
-    TaskDescription<localizes><override> : message = "Collect 10 items"
-<#
--->
-<!-- 38 -->
+<!-- 32 -->
 ```verse
 quest_base := class<abstract>:
     # Abstract message - must be implemented by subclasses
@@ -1293,98 +1127,42 @@ quest_base := class<abstract>:
 
 fetch_quest := class<final>(quest_base):
     TaskDescription<localizes><override> : message = "Collect 10 items"
+
+Localize(fetch_quest{}.TaskDescription) = "Collect 10 items"
 ```
-<!-- #> -->
 
 #### Restrictions and Errors
 
-**Must use explicit type annotation:**
-
-The type annotation `: message` is required. Implicit typing is not supported:
+The type annotation `: message` is required; implicit typing is not
+supported. The right-hand side must be a string literal, not an
+expression. Not all types are supported as parameters. And only
+parameter names and Unicode code points are allowed inside `{}`. Each
+of these four definitions is rejected:
 
 <!--versetest
-
-GoodMessage<localizes> : message = "Text"
 assert_semantic_error(3639, 3560):
-    BadMessage35<localizes> := "Text"
-<#
--->
-<!-- 39 -->
-```verse
-# ERROR: Missing type annotation
-# BadMessage<localizes> := "Text"  # ERROR
-
-# Valid: Explicit type
-GoodMessage<localizes> : message = "Text"
-```
-<!-- #> -->
-
-**RHS must be string literal:**
-
-<!--versetest
-
-ValidMessage<localizes> : message = "AB"
+    BadMessage<localizes> := "Text"                                # no `: message`
 assert_semantic_error(3638, 3560):
-    InvalidMessage36<localizes> : message = "A" + "B"
-<#
--->
-<!-- 40 -->
-```verse
-# ERROR: Expression not allowed
-# InvalidMessage<localizes> : message = "A" + "B"  # ERROR
-
-# Valid: Literal only
-ValidMessage<localizes> : message = "AB"
-```
-<!-- #> -->
-
-**Restricted parameter types:**
-
-Not all types are supported as parameters:
-
-<!--versetest
-
-my_class := class{Value:int}
+    InvalidMessage<localizes> : message = "A" + "B"                # not a literal
 assert_semantic_error(3506, 3506):
-    OptionalMsg37<localizes>(Player:?string) : message = "{Player}"
+    OptionalMsg<localizes>(Player:?string) : message = "{Player}"  # optional type
 assert_semantic_error(3506, 3506):
-    my_class37 := class{Value:int}
-    ClassMsg37<localizes>(Obj:my_class37) : message = "{Obj}"
-<#
--->
-<!-- 41 -->
-```verse
-# ERROR: Optional types not supported
-# OptionalMsg<localizes>(Player:?string) : message = "{Player}"  # ERROR
-
-# ERROR: Custom classes not supported
-my_class := class{Value:int}
-# ClassMsg<localizes>(Obj:my_class) : message = "{Object}"  # ERROR
-```
-<!-- #> -->
-
-**Interpolation syntax restrictions:**
-
-Only parameter names and Unicode code points are allowed inside `{}`:
-
-<!--versetest
-
-ParamMessage<localizes>(Name:string) : message = "{Name}"
+    my_class2 := class{Value:int}
+    ClassMsg<localizes>(Obj:my_class2) : message = "{Obj}"         # class type
 assert_semantic_error(3652, 3506, 3506):
-    ExprMessage38<localizes>(Name:string) : message = "{"Hello"}"
+    ExprMessage<localizes>(Name:string) : message = "{"Hello"}"    # expression
 <#
 -->
-<!-- 42 -->
+<!-- 33 -->
 ```verse
-# ERROR: Expressions not allowed
-# ExprMessage<localizes>(Name:string) : message = "{"Hello"}"  # ERROR
-
-# Valid: Parameter names only
-ParamMessage<localizes>(Name:string) : message = "{Name}"
+BadMessage<localizes> := "Text"                                # no `: message`
+InvalidMessage<localizes> : message = "A" + "B"                # not a literal
+OptionalMsg<localizes>(Player:?string) : message = "{Player}"  # optional type
+my_class2 := class{Value:int}
+ClassMsg<localizes>(Obj:my_class2) : message = "{Obj}"         # class type
+ExprMessage<localizes>(Name:string) : message = "{"Hello"}"    # expression
 ```
 <!-- #> -->
-
-**Non-parameter identifiers are escaped:**
 
 If you reference an identifier that is not a parameter, it gets escaped in the output:
 
@@ -1394,17 +1172,20 @@ GlobalName:string = "World"
 RefMessage<localizes>(Greeting:string) : message =
     "{Greeting} to {GlobalName}"
 
+assert:
+    # GlobalName is escaped because it is not a parameter
+    Localize(RefMessage("Hello")) = "Hello to \{GlobalName\}"
 <#
 -->
-<!-- 43 -->
+<!-- 34 -->
 ```verse
 GlobalName:string = "World"
 
 RefMessage<localizes>(Greeting:string) : message =
     "{Greeting} to {GlobalName}"
 
-# Localize(RefMessage("Hello")) produces: "Hello to \{GlobalName\}"
-# Note: GlobalName is escaped because it is not a parameter
+# GlobalName is escaped because it is not a parameter
+Localize(RefMessage("Hello")) = "Hello to \{GlobalName\}"
 ```
 <!-- #> -->
 
@@ -1412,16 +1193,7 @@ RefMessage<localizes>(Greeting:string) : message =
 
 Localized messages support standard access specifiers:
 
-<!--versetest
-MyModule := module:
-    PublicMessage<localizes><public> : message = "Public message"
-    InternalMessage<localizes> : message = "Internal message"
-
-    some_class := class:
-        PrivateMessage<localizes><private> : message = "Private message"
-<#
--->
-<!-- 44 -->
+<!-- 35 -->
 ```verse
 MyModule := module:
     PublicMessage<localizes><public> : message = "Public message"
@@ -1429,33 +1201,41 @@ MyModule := module:
 
     some_class := class:
         PrivateMessage<localizes><private> : message = "Private message"
+
+Localize(MyModule.PublicMessage) = "Public message"
 ```
-<!-- #> -->
 
 #### Best Practices
 
-**Keep messages translatable:**
+Keep messages translatable:
+
 - Use complete sentences, not fragments that might be concatenated
 - Avoid gender or number assumptions that do not translate well
 - Provide context through parameter names
 
-**Design for different languages:**
+Design for different languages:
+
 - Don't assume word order - let translators rearrange parameter positions
 - Allow repeated parameter use for languages that need it
 - Keep formatting codes (like comma separators) automated
 
-**Organization:**
+Organization:
+
 - Group related messages in the same module
 - Use descriptive names that indicate message purpose
 - Consider using abstract base classes for message families
 
 <!--versetest
+# Good: Clear, complete, flexible
 PlayerJoined<localizes>(PlayerName:string, TeamName:string) : message =
     "{PlayerName} joined team {TeamName}"
 
+# Avoid: Fragments that might be concatenated
+# PlayerPrefix<localizes>(Name:string) : message = "Player {Name}"
+# JoinedSuffix<localizes>(Team:string) : message = "joined {Team}"
 <#
 -->
-<!-- 45 -->
+<!-- 36 -->
 ```verse
 # Good: Clear, complete, flexible
 PlayerJoined<localizes>(PlayerName:string, TeamName:string) : message =

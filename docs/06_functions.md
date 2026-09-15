@@ -1561,8 +1561,6 @@ This restriction exists because the compiler cannot determine which overload you
 You can overload functions with different effects, but only if the
 parameter types are also different:
 
-Different types with different effects are accepted:
-
 <!--versetest-->
 <!-- 74 -->
 ```verse

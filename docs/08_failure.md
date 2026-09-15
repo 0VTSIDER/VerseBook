@@ -285,58 +285,23 @@ ValidateInRange(Value:int, LwrBnd:int, UprBnd:int)<decides>:int =
 
 ## Option Types
 
-The option type and failure are intimately connected. An option either
-contains a value or is empty (represented by `false`). The query
-operator `?` converts between options and failure:
-
-<!--versetest-->
-<!-- 15 -->
-```verse
-MaybeValue:?int = option{42}  # An optional int
-MaybeValue? = 42              # The query succeeds with 42
-
-Empty:?int = false            # An empty option
-not Empty?                    # The query fails - there is nothing to unwrap
-```
-
-The `option{}` constructor works in reverse, converting failure to an empty option:
-
-<!--versetest
-RiskyComputation()<computes><decides>:int=1
--->
-<!-- 16 -->
-```verse
-Result := option{RiskyComputation[]} # option{value} if computation succeeds
-                                     # otherwise false
-```
-<!-- Result? = 1 -->
-
-This bidirectional conversion makes options and failure
-interchangeable, allowing you to choose the most appropriate
-representation for your specific use case.
-
-The option type `?T` represents values that may or may not be present.
-The question mark appears *before* the type, not after. The `?` prefix
-applies to any type, and the `option{}` constructor wraps a value:
-
-<!--versetest
-player := struct{}
--->
-<!-- 17 -->
-```verse
-MaybeNumber:?int = option{42}
-MaybeText:?string = option{"hello"}
-MaybePlayer:?player = option{player{}}
-```
-
-Empty options and `false` are equivalent—an empty option *is* `false`.
+An option is a container, and [Container Types](03_containers.md#optionals)
+introduces it as one: `?t` holds a value or nothing, `option{...}` wraps a
+value, `false` is the empty option, and `?` unwraps. What concerns us here is
+the other half of that story, which is that an option is how a failure is
+stored and carried around. The query operator `?` turns an option back into a
+failable expression and `option{...}` turns a failable expression into an
+option, so the two representations are interchangeable and you can work in
+whichever one suits the code at hand. The sections below cover what that
+interchange makes possible: where an unwrap is permitted, how options nest,
+how to reach through one safely, and how to supply a fallback.
 
 Verse has a rich and flexible syntax which can also sometimes cause
 subtle bugs. A comma gives rise to a tuple in an `option` whereas a
 semicolon evaluates all values but retain only the last one:
 
 <!--versetest-->
-<!-- 18 -->
+<!-- 15 -->
 ```verse
 # Comma creates tuple
 option{1, 2}? = (1, 2)
@@ -359,7 +324,7 @@ assert_semantic_error(3512):
     GetRequired57(Maybe:?int):int =
         Maybe?
 -->
-<!-- 19 -->
+<!-- 16 -->
 ```verse
 # In an if condition
 if (Value := MaybeInt?):
@@ -379,7 +344,7 @@ GetRequired(Maybe:?int)<decides>:int =
 Options can be nested to represent multiple layers of absence:
 
 <!--versetest-->
-<!-- 20 -->
+<!-- 17 -->
 ```verse
 # Double-nested option
 Double:??int = option{option{42}}
@@ -398,7 +363,7 @@ not Outer??  # Fails if either layer is empty
 Helper functions also work with nested options:
 
 <!--versetest-->
-<!-- 21 -->
+<!-- 18 -->
 ```verse
 UnpackNested(MaybeValue:??int):?int =
     if (Inner := MaybeValue?):
@@ -424,7 +389,7 @@ DirectUnpack(option{false}) = -1
 The `?.` operator provides safe member access on optional values:
 
 <!--versetest-->
-<!-- 22 -->
+<!-- 19 -->
 ```verse
 entity := class:
     Name:string = "Unknown"
@@ -452,12 +417,36 @@ not Head?.Next?.Value  # Fails because the second link is empty
 The `?.` operator short-circuits—if the option is empty, the entire
 expression fails without evaluating the member access.
 
+The same pairing of query and access is available positionally. An
+optional tuple can be indexed directly through the query operator,
+without unwrapping it first:
+
+<!--versetest-->
+<!-- 20 -->
+```verse
+MaybePair:?tuple(int, string) = option{(42, "answer")}
+
+FirstValue := MaybePair?(0)   # 42 (type: int)
+SecondValue := MaybePair?(1)  # "answer" (type: string)
+FirstValue = 42
+SecondValue = "answer"
+
+Nothing:?tuple(int, string) = false
+not Nothing?(0)               # Fails because the option is empty
+```
+
+The syntax `Option?(index)` simultaneously:
+
+- Queries whether the option is non-empty
+- Accesses the tuple element at the given index
+- Binds the element value if both succeed
+
 ### Defaulting
 
 Use the `or` operator to provide fallback values for empty options:
 
 <!--versetest-->
-<!-- 23 -->
+<!-- 21 -->
 ```verse
 MaybeValue:?int = false
 Value := MaybeValue? or 42  # Yields 42
@@ -479,7 +468,7 @@ Result = "backup"
 Empty options equal `false`, and filled options equal their unwrapped values when compared properly:
 
 <!--versetest-->
-<!-- 24 -->
+<!-- 22 -->
 ```verse
 EmptyOption:?int = false
 EmptyOption = false  # Succeeds
@@ -491,7 +480,7 @@ FilledOption? = 1  # Succeeds - unwrap then compare
 However, you cannot directly compare optional and non-optional values without unwrapping. The comparison is accepted by the compiler, but it never succeeds:
 
 <!--versetest-->
-<!-- 25 -->
+<!-- 23 -->
 ```verse
 Opt:?int = option{42}
 Regular:int = 42
@@ -516,7 +505,7 @@ player := string
 IsActive(S:string)<transacts><decides>:string=""
 LookupPlayer(S:string)<transacts><decides>:string="player"
 -->
-<!-- 26 -->
+<!-- 24 -->
 ```verse
 FindEligiblePlayer(Name:string)<decides>:?player =
     Name <> ""           # Layer 1: Fail if name is empty
@@ -542,7 +531,7 @@ FindEligiblePlayer(Name:string)<transacts><decides>:?string =
     Player := LookupPlayer[Name]
     option{IsActive[Player]}
 -->
-<!-- 27 -->
+<!-- 25 -->
 ```verse
 # Function-level failure: nothing is bound
 not FindEligiblePlayer[""]
@@ -559,7 +548,7 @@ Active? = "ActiveUser"
 This pattern is particularly powerful for validation with different failure modes:
 
 <!--versetest-->
-<!-- 28 -->
+<!-- 26 -->
 ```verse
 ValidateScore(Score:int)<decides>:?int =
     Score >= 0           # Layer 1: Reject negative scores (invalid input)
@@ -583,7 +572,7 @@ fails if unsuccessful.
 This is also works with user defined types which must specify `<castable>`:
 
 <!--versetest-->
-<!-- 29 -->
+<!-- 27 -->
 ```verse
 component := class<castable>:
     Name:string = "Component"
@@ -612,7 +601,7 @@ UpdatePhysics(P:physics_component):void={}
 UpdateRendering(R:render_component):void={}
 UpdateGeneric(G:component):void={}
 -->
-<!-- 30 -->
+<!-- 28 -->
 ```verse
 ProcessComponent(Comp:component):void =
     if (Physics := physics_component[Comp]):
@@ -644,7 +633,7 @@ entity := class:
         component{}
 IsActive(c:component)<transacts><decides>:logic=true
 -->
-<!-- 31 -->
+<!-- 29 -->
 ```verse
 GetActivePhysicsComponent(Entity:entity)<decides>:physics_component =
     Comp := Entity.GetComponent[]  # Fails if no component
@@ -667,7 +656,7 @@ trigger_component := class<castable>(component):
 scripted_component := class<castable>(component):
     Scripted:string = "Something"
 -->
-<!-- 32 -->
+<!-- 30 -->
 ```verse
 GetInteractable(Comp:component)<transacts><decides>:component =
     physics_component[Comp] or
@@ -699,7 +688,7 @@ GetTargetLocation(A:action)<transacts><decides>:location = location{}
 IsValidLocation(L:location)<computes><decides>:void = {}
 ExecuteAction(A:action)<transacts><decides>:void = {}
 -->
-<!-- 33 -->
+<!-- 31 -->
 ```verse
 ProcessAction(Action:action)<decides>:void =
     Player := GetActingPlayer[Action]
@@ -721,7 +710,7 @@ DirectPath(S:location, E:location)<transacts><decides>:path = path{}
 PathAroundObstacles(S:location, E:location)<transacts><decides>:path = path{}
 ComplexPathfinding(S:location, E:location)<transacts><decides>:path = path{}
 -->
-<!-- 34 -->
+<!-- 32 -->
 ```verse
 FindPath(Start:location, End:location)<decides>:path =
     DirectPath[Start, End] or
@@ -737,7 +726,7 @@ The filtering pattern uses failure to select items:
 enemy := struct{}
 GetLevel(E:enemy)<computes><decides>:int = 10
 -->
-<!-- 35 -->
+<!-- 33 -->
 ```verse
 GetEliteEnemies(Enemies:[]enemy):[]enemy =
     for (Enemy : Enemies, Level := GetLevel[Enemy], Level >= 10):
@@ -756,7 +745,7 @@ RemoveItem(P:player, I:item)<transacts><decides>:void = {}
 AddItem(P:player, I:item)<transacts>:void = {}
 ValidateTrade(P1:player, P2:player)<computes><decides>:void = {}
 -->
-<!-- 36 -->
+<!-- 34 -->
 ```verse
 TradeItems(PlayerA:player, PlayerB:player, ItemA:item, ItemB:item)<transacts><decides>:void =
     RemoveItem[PlayerA, ItemA]
@@ -768,41 +757,13 @@ TradeItems(PlayerA:player, PlayerB:player, ItemA:item, ItemB:item)<transacts><de
 
 Either the entire trade succeeds, or nothing changes.
 
-### Optional Indexing
-
-When working with optional containers, you can access their contents
-using specialized query syntax that combines optional checking with
-element access.  Optional tuples support direct element access through
-the query operator:
+A last pattern is composition. Decides functions compose naturally,
+allowing complex operations to be built from simple, reusable pieces.
+When a decides function calls another decides function, failures
+propagate automatically.
 
 <!--versetest-->
-<!-- 37 -->
-```verse
-MaybePair:?tuple(int, string) = option{(42, "answer")}
-
-FirstValue := MaybePair?(0)   # 42 (type: int)
-SecondValue := MaybePair?(1)  # "answer" (type: string)
-FirstValue = 42
-SecondValue = "answer"
-
-Nothing:?tuple(int, string) = false
-not Nothing?(0)               # Fails because the option is empty
-```
-
-The syntax `Option?(index)` simultaneously:
-
-- Queries whether the option is non-empty
-- Accesses the tuple element at the given index
-- Binds the element value if both succeed
-
-### Composition and Call Chains
-
-Decides functions compose naturally, allowing complex operations to be
-built from simple, reusable pieces. When a decides function calls
-another decides function, failures propagate automatically.
-
-<!--versetest-->
-<!-- 38 -->
+<!-- 35 -->
 ```verse
 ValidatePositive(X:int)<decides>:int =
     X > 0
@@ -827,7 +788,7 @@ assert_semantic_error(3512):
     Bad57(Name:string):void =
         Player := FindPlayer57[Name]
 -->
-<!-- 39 -->
+<!-- 36 -->
 ```verse
 # This will not compile - BadProcessPlayer does not have <decides>
 # BadProcessPlayer(Name:string):void =
@@ -863,7 +824,7 @@ recovered within Verse code.
 The `Err()` function explicitly triggers a runtime error with an optional message:
 
 <!--versetest-->
-<!-- 40 -->
+<!-- 37 -->
 ```verse
 ValidateInput(Value:int):int =
     if (Value < 0):
@@ -878,7 +839,7 @@ terminating the current operation:
 <!--versetest
 Log(Message:string)<transacts>:void = {}
 -->
-<!-- 41 -->
+<!-- 38 -->
 ```verse
 DeepFunction()<transacts>:int =
     Log("B")
@@ -902,7 +863,7 @@ Runtime errors propagate through asynchronous operations, terminating spawned ta
 Log(Message:string)<transacts>:void = {}
 WaitTicks(Count:int)<suspends>:void = {}
 -->
-<!-- 42 -->
+<!-- 39 -->
 ```verse
 AsyncOperation()<suspends>:int =
     Log("Start")
@@ -941,7 +902,7 @@ InitialState()<transacts>:solution = solution{}
 ApplyConstraint(S:solution, C:constraint)<transacts>:void = {}
 ValidateSolution(S:solution)<computes><decides>:void = {}
 -->
-<!-- 43 -->
+<!-- 40 -->
 ```verse
 SolvePuzzle(Constraints:[]constraint)<decides>:solution =
     var State:solution = InitialState()

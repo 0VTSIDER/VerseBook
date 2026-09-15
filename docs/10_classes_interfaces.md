@@ -124,38 +124,21 @@ valid_class := class:
 Classes can include `block` clauses that execute when an instance is
 created:
 
-<!--versetest
-GetCurrentTime()<computes>:float=0.0
-
-logged_entity := class:
-    ID:int
-    var CreationTime:float = 0.0
-
-    block:
-        # This executes when an instance is created
-        Print("Creating entity with ID: {ID}")
-        set CreationTime = GetCurrentTime()
-
-M()<transacts>:void =
-    Entity := logged_entity{ID := 42}
-    # Prints: "Creating entity with ID: 42"
-<#
--->
+<!--versetest-->
 <!-- 006 -->
 ```verse
 logged_entity := class:
     ID:int
-    var CreationTime:float = 0.0
+    var Label:string = ""
 
     block:
         # This executes when an instance is created
         Print("Creating entity with ID: {ID}")
-        set CreationTime = GetCurrentTime()
+        set Label = "entity-{ID}"
 
-# Entity := logged_entity{ID := 42}
-# Prints: "Creating entity with ID: 42"
+Entity := logged_entity{ID := 42}
+Entity.Label = "entity-42"
 ```
-<!-- #>-->
 
 Block clauses have access to all fields of the class, including
 `Self`, and can modify mutable fields. They execute in the order they
@@ -177,32 +160,56 @@ multi_step_init := class:
         set Step2 = Step1 + 5  # Can access earlier fields
         set Step3 = Step2 * 2
 
-# Instance := multi_step_init{}
-# Instance.Step1 = 10, Step2 = 15, Step3 = 30
+Instance := multi_step_init{}
+Instance.Step1 = 10 and Instance.Step2 = 15 and Instance.Step3 = 30
 ```
 
-**Execution order with inheritance:** Block execution order differs
-between VMs (Verse: subclass-first, BP: superclass-first). Avoid order
-dependencies for portable code.
+When a class hierarchy is involved, the order in which blocks run is
+not portable: the Verse VM runs the subclass block first, while
+Blueprint runs the superclass block first. Code that has to work on
+both should not depend on that order.
 
-**Why blocks instead of constructors?** Block clauses have access to
-`Self`, unlike constructor functions. Use blocks for initialization
-that references the object being constructed.
+Blocks exist alongside constructor functions because they can see
+`Self`, which a constructor function cannot. Reach for a block
+whenever the initialization needs to refer to the object being
+constructed.
 
-Additionally, field default values cannot use divergent calls. Give the
-field a simple default and move initialization into a block:
+A block is also the place to put initialization that has to call
+another function. A field default value may not call anything at all,
+not even a harmless-looking helper that merely allocates: the compiler
+reports "divergent calls cannot define data-members", and it reports it
+whatever effects the helper carries. Give the field a cheap default and
+move the real work into a block:
 
-<!--NoCompile-->
+<!--versetest
+foo := class{}
+MakeFoo()<transacts>:foo = foo{}
+
+assert_semantic_error(3582):
+    priv_foo := class{}
+    PrivMakeFoo()<transacts>:priv_foo = priv_foo{}
+    priv_bar := class:
+        var Foo:priv_foo = PrivMakeFoo()
+-->
 <!-- 008 -->
 ```verse
+# ERROR: a field default value may not call MakeFoo
+# bar := class:
+#     var Foo:foo = MakeFoo()
+
 bar := class:
-    var Foo:foo = foo{}
+    var Foo:foo = foo{}      # cheap default
 
     block:
-        set Foo = MakeFoo()  # Block can call divergent functions
+        set Foo = MakeFoo()  # the block does the real work
 ```
 
-**Constraints on block clauses:**
+A block runs inside the transaction that constructs the object, so
+what it may call is limited in turn. `MakeFoo` above has to be
+`<transacts>`; had it been left with the default effect set, the call
+would be rejected with "this invocation calls a function that has the
+`no_rollback` effect, which is not allowed by its context". Blocks are
+restricted in a few other ways:
 
 - Blocks cannot contain failure (`<decides>`) operations
 - Blocks cannot call suspending (`<suspends>`) functions
@@ -215,60 +222,84 @@ Block clauses are particularly useful for:
 - Logging object creation
 - Computing derived values during initialization
 - Registering objects with global systems
-- Performing initialization that requires `Self` or divergent calls
+- Performing initialization that requires `Self` or a function call
 
 ### Let Clauses in Archetypes
 
 Archetype expressions (used to construct class and struct instances)
-can include `let` clauses that introduce local variable bindings.
+can include `let` clauses that introduce local bindings.
 These are useful for computing intermediate values used by multiple
 field initializers, avoiding repetition:
 
-<!--NoCompile-->
+<!--versetest
+assert_semantic_error(3506, 3552):
+    priv_box := class:
+        var X:int = 0
+    PrivMake()<transacts>:priv_box = priv_box:
+        set X += 3
+-->
 <!-- 009 -->
 ```verse
-MkWord8<constructor>(I:int)<decides><transacts> := Word8:
+rect := class:
+    Width:int
+    Height:int
+    Area:int
+
+Square := rect:
     let:
-        MaxU8:int = Int[Pow(2.0, 8.0)] - 1 or Impossible("MkWord8")
-    B := 0 <= I and I <= MaxU8
+        S:int = 4    # computed once, used by three initializers
+    Width := S
+    Height := S
+    Area := S * S
+
+Square.Area = 16
 ```
 
 The `let` clause introduces bindings visible to subsequent field
-initializers. Unlike `block`, `let` permits only variable
+initializers. Unlike `block`, `let` permits only 
 declarations.
 
 #### Restrictions Inside Archetype Bodies
 
-An archetype body initializes fields; it is not a general statement block. Two
-things in particular are rejected:
+An archetype body initializes fields; it is not a general statement
+block. Mutating assignment is rejected outright: a body that says
+`set X += 3` does not see `X` as a name it can read, so the compiler
+reports both "unknown identifier `X`", and "unsupported
+argument to archetype instantiation". Initialize each field once, with
+`:=`, and mutate afterwards through a method or a `block` clause.
 
-- Mutating assignment such as `set X += 3`.
-- Calling a `<constructor>` function of the class being instantiated.
+Calling a `<constructor>` function of the class being instantiated is
+*not* a restriction, despite what the shape of an archetype body might
+suggest: that call is exactly how delegating constructors work, and it
+is legal both inside another constructor and in a plain archetype
+expression. Delegation is covered later in this chapter.
 
 ### Self
 
 Within class methods, `Self` refers to the current instance:
 
-<!--NoCompile-->
+<!--versetest
+LogCharacterAction(:character, :string)<computes>:void={}
+-->
 <!-- 010 -->
 ```verse
 character := class:
     var Name : string
-    var Config:[string]string = map{}
-	
-    Announce() : void =
-        # Using Self to pass the whole object
-        LogCharacterAction(Self, "announced")
+    var Title : string = ""
 
+    Announce()<computes>:void =
+        LogCharacterAction(Self, "announced")  # pass the whole object along
 
-    SetOption(Key:string, Value:string):character =
-        set Config[Key] = Value
-        Self  # Return this instance for method chaining
+    WithTitle(NewTitle:string)<transacts>:character =
+        set Title = NewTitle
+        Self                             # return this instance, for chaining
 
+    SetName(NewName:string)<transacts>:void =
+        set Self.Name = NewName          # set a field of this instance
+        Self.Announce()                  # call a method of this instance
 
-    SetName(NewName:string):void =
-       set Self.Name = NewName	  # Set the name of this instance
-	   Self.Announce()            # Call a method of this instance
+Hero := character{Name := "Aldric"}
+Hero.WithTitle("Knight").Title = "Knight"
 ```
 
 You can capture `Self` when creating nested objects:
@@ -280,14 +311,13 @@ container := class:
     ID:int
 
     CreateChild():child_with_parent =
-        child_with_parent{Parent := Self}  # Capture this instance
+        child_with_parent{Parent := Self}  # capture this instance
 
 child_with_parent := class:
     Parent:container
 
-# C := container{ID := 42}
-# Child := C.CreateChild()
-# Child.Parent.ID = 42  # Child stores reference to C
+C := container{ID := 42}
+C.CreateChild().Parent.ID = 42   # the child holds a reference to C
 ```
 
 ### Inheritance
@@ -296,30 +326,6 @@ Classes support single inheritance:
 
 <!--versetest
 vector3:=struct{}
-
-entity := class:
-    var Position : vector3 = vector3{}
-    var IsActive : logic = true
-
-    Activate() : void = set IsActive = true
-    Deactivate() : void = set IsActive = false
-
-character := class(entity):  # character inherits from entity
-    Name : string
-    var Health : int = 100
-
-    TakeDamage(Amount : int) : void =
-        set Health = Max(0, Health - Amount)
-        if (Health = 0):
-            Deactivate()  # Can call inherited methods
-
-player := class(character):  # player inherits from character
-    var Score : int = 0
-    var Lives : int = 3
-
-    AddScore(Points : int) : void =
-        set Score += Points
-<#
 -->
 <!-- 012 -->
 ```verse
@@ -345,48 +351,19 @@ player := class(character):  # player inherits from character
 
     AddScore(Points : int) : void =
         set Score += Points
+
+P := player{Name := "Aldric"}
+P.TakeDamage(100)
+P.Health = 0 and P.IsActive = false   # inherited field, set by inherited method
 ```
-<!-- #>-->
 
 A `player` is a `character`, and a `character` is an `entity`. You can
 use a subclass wherever a superclass is expected.
 
-**Important constraints on inheritance:**
+Three constraints govern what a subclass may do:
 
 1. **Single class inheritance only:** A class can inherit from at most
-   one class, but can implement multiple interfaces:
-
-<!--versetest
-assert_semantic_error(3589):
-    b1 := class<abstract>:
-        Value1:int
-    b2 := class<abstract>:
-        Value2:int
-    invalid := class<abstract>(b1, b2){}
--->
-<!-- 013 -->
-```verse
-base1 := class:
-    Value1:int
-
-base2 := class:
-    Value2:int
-
-# Valid: inherit from one class and multiple interfaces
-interface1 := interface:
-    Method1():void
-
-interface2 := interface:
-    Method2():void
-
-derived := class<abstract>(base1, interface1, interface2):
-    # Valid: one class, multiple interfaces
-    Method1<override>():void = {}
-    Method2<override>():void = {}
-
-# Invalid: cannot inherit from multiple classes
-# invalid := class(base1, base2):  # ERROR
-```
+   one class, but can implement multiple interfaces.
 
 2. **No shadowing of data members:** Subclasses cannot declare fields
    with the same name as parent fields
@@ -398,176 +375,81 @@ To override a method, use the `<override>` specifier with the matching signature
 
 ### Super
 
-Within a subclass, you can use the `super` keyword to refer to the
-superclass type. This is primarily used to access the superclass's
-implementation or to construct a superclass instance:
+Within a subclass, `super` refers to the superclass, and it appears in
+two forms that are easy to confuse. `(super:)` is a qualifier on a
+call: it invokes the superclass's implementation of a method on the
+object you are already in. `super{...}` is an archetype instantiation:
+`super` names the superclass as a *type*, so the braces build a brand
+new instance of it.
+
+The qualifier is what an overriding method almost always wants. It
+reaches the parent's version of the very method being overridden,
+letting the subclass add to that behavior rather than replace it:
+
+<!--versetest-->
+<!-- 013 -->
+```verse
+base := class:
+    Describe()<computes>:string = "base"
+
+derived := class(base):
+    Describe<override>()<computes>:string =
+        # Call the parent implementation, then add to it
+        "{(super:)Describe()} + derived"
+
+derived{}.Describe() = "base + derived"
+```
+
+`super{...}` is not a way to call up, even though it can be arranged
+to look like one. Because it constructs a separate object, the parent
+method runs against that new instance and cannot see the state of the
+one you are in. When the superclass holds mutable state the two forms
+give different answers:
 
 <!--versetest-->
 <!-- 014 -->
 ```verse
-entity := class:
-    ID:int
-    Name:string
+tagged := class:
+    var Tag:string = "original"
+    Describe()<transacts>:string = "[{Tag}]"
 
-    Display():void =
-        Print("Entity {ID}: {Name}")
+call_parent := class(tagged):
+    Describe<override>()<transacts>:string = "call {(super:)Describe()}"
 
-character := class(entity):
-    Health:int
+build_parent := class(tagged):
+    Describe<override>()<transacts>:string = "build {super{}.Describe()}"
 
-    Display<override>():void =
-        # Create a superclass instance to call its method
-        super{ID := ID, Name := Name}.Display()
-        Print("Health: {Health}")
+A := call_parent{}
+set A.Tag = "updated"
+A.Describe() = "call [updated]"    # the parent's method, on this object
+
+B := build_parent{}
+set B.Tag = "updated"
+B.Describe() = "build [original]"  # a different object entirely
 ```
 
-The `super` keyword represents the superclass type itself. When you
-write `super{...}`, you are creating an instance of the superclass with
-the specified field values. This allows you to delegate to superclass
-behavior while adding subclass-specific functionality.
+Both methods above are `<transacts>` for a reason. Constructing a
+class that holds mutable state is a transaction, so the `super{}` form
+needs that effect, while `(super:)` on its own is content with
+`<reads>`. Since an overriding method may not widen the effects it
+inherits, a `<reads>` parent method cannot be overridden by a
+`<transacts>` one at all — the compiler no longer treats it as an
+override and reports that it could not find a parent function to
+override. The `super{...}` form is therefore unavailable in any
+hierarchy whose parent method is `<reads>` or narrower, and the only
+way to admit it is to loosen the parent. Write `super{...}` only when
+you genuinely want a fresh instance of the superclass, which is the
+same object `tagged{...}` would have given you, named without
+repeating the parent's name.
 
-Within an overriding method, you can call the parent class's
-implementation using the `(super:)` syntax. This is the primary way to
-invoke parent method implementations while adding or modifying
-behavior:
-
-<!--versetest-->
-<!-- 015 -->
-```verse
-base := class:
-    Method():void =
-        Print("Base implementation")
-
-derived := class(base):
-    Method<override>():void =
-        # Call parent implementation first
-        (super:)Method()
-        Print("Derived implementation")
-
-# Creates instance and calls Method()
-# derived{}.Method()
-# Output:
-# Base implementation
-# Derived implementation
-
-```
-
-The `(super:)` syntax explicitly calls the parent class's version of
-the current method. This is cleaner and more efficient than
-constructing a parent instance with `super{...}` when you only need to
-call parent methods.
-
-**Basic Usage:**
-
-<!--versetest
-ToString(:vector3)<computes>:string=""
-vector3:=class<final>{ X:float=0.0; Y:float=0.0; Z:float=0.0 }
-
-entity := class:
-    Position:vector3
-
-    Move(Delta:vector3):void =
-        Print("Entity moving by {Delta}")
-        # Update position logic here
-
-character := class(entity):
-    var Stamina:float = 100.0
-
-    Move<override>(Delta:vector3):void =
-        # Call parent movement logic
-        (super:)Move(Delta)
-        # Add character-specific behavior
-        set Stamina -= 1.0
-<#
--->
-<!--versetest-->
-<!-- 016 -->
-```verse
-entity := class:
-    Position:vector3
-
-    Move(Delta:vector3):void =
-        Print("Entity moving by {Delta}")
-        # Update position logic here
-
-character := class(entity):
-    var Stamina:float = 100.0
-
-    Move<override>(Delta:vector3):void =
-        # Call parent movement logic
-        (super:)Move(Delta)
-        # Add character-specific behavior
-        set Stamina -= 1.0
-```
-<!-- #>-->
-
-**With Effect Specifiers:**
-
-The `(super:)` syntax works seamlessly with all effect specifiers:
-
-<!--versetest
-async_base := class:
-    Process()<suspends>:void =
-        Sleep(1.0)
-        Print("Base processing")
-
-async_derived := class(async_base):
-    Process<override>()<suspends>:void =
-        # Parent method suspends, so this suspends too
-        (super:)Process()
-        Print("Derived processing")
-
-transactional_base := class:
-    var Value:int = 0
-
-    Update()<transacts>:void =
-        set Value += 1
-
-transactional_derived := class(transactional_base):
-    var Counter:int = 0
-
-    Update<override>()<transacts>:void =
-        (super:)Update()
-        set Counter += 1
-<#
--->
-<!--versetest-->
-<!-- 017 -->
-```verse
-async_base := class:
-    Process()<suspends>:void =
-        Sleep(1.0)
-        Print("Base processing")
-
-async_derived := class(async_base):
-    Process<override>()<suspends>:void =
-        # Parent method suspends, so this suspends too
-        (super:)Process()
-        Print("Derived processing")
-
-transactional_base := class:
-    var Value:int = 0
-
-    Update()<transacts>:void =
-        set Value += 1
-
-transactional_derived := class(transactional_base):
-    var Counter:int = 0
-
-    Update<override>()<transacts>:void =
-        (super:)Update()
-        set Counter += 1
-```
-<!-- #>-->
-
-**Virtual Dispatch Through Parent Methods:**
+#### Virtual Dispatch Through Parent Methods
 
 When parent methods call other methods, virtual dispatch still applies
 based on the actual object type. This means `Self` binds to the
 derived instance even when calling through `(super:)`:
 
 <!--versetest-->
-<!-- 018 -->
+<!-- 015 -->
 ```verse
 base := class:
     # Virtual method that can be overridden
@@ -586,62 +468,12 @@ derived := class(base):
         # Calls base.ComputeDouble, which calls derived.GetValue!
         (super:)ComputeDouble()
 
-# derived{}.ComputeDouble()  # Returns 40, not 20
+derived{}.ComputeDouble() = 40   # not 20
 ```
 
 In this example, even though `ComputeDouble` calls the parent
 implementation, the `GetValue()` call inside the parent uses virtual
 dispatch and calls the derived version.
-
-**With Overloaded Methods:**
-
-The `(super:)` syntax works with overloaded methods, calling the
-parent's version of the same overload:
-
-<!--versetest-->
-<!-- 019 -->
-```verse
-base := class:
-    Process(X:int):void =
-        Print("Base int: {X}")
-
-    Process(S:string):void =
-        Print("Base string: {S}")
-
-derived := class(base):
-    Process<override>(X:int):void =
-        (super:)Process(X)  # Calls parent's int overload
-        Print("Derived int: {X}")
-
-    Process<override>(S:string):void =
-        (super:)Process(S)  # Calls parent's string overload
-        Print("Derived string: {S}")
-```
-
-**Return Type Covariance:**
-
-When overriding methods with `(super:)`, the return type can be a subtype of the parent's return type (covariant return types):
-
-<!--versetest-->
-<!-- 020 -->
-```verse
-base_type := class:
-    Name:string
-
-derived_type := class(base_type):
-    Value:int
-
-base := class:
-    Create():base_type =
-        base_type{Name := "base"}
-
-derived := class(base):
-    # Override with more specific return type
-    Create<override>():derived_type =
-        # Can still call parent even with different return type
-        Parent := (super:)Create()
-        derived_type{Name := Parent.Name, Value := 42}
-```
 
 ### Method Overriding
 
@@ -654,10 +486,10 @@ MoveToward(:?character)<transacts>:void={}
 Patrol()<transacts>:void={}
 ScanForTargets()<transacts>:void={}
 -->
-<!-- 021 -->
+<!-- 016 -->
 ```verse
 entity := class:
-    OnUpdate<public>() : void = {}  # Default no-op implementation
+    OnUpdate<public>()<transacts>:void = {}  # Default no-op implementation
 
 enemy := class(entity):
     var Target : ?character = false
@@ -669,18 +501,72 @@ enemy := class(entity):
             Patrol()
 
 turret := class(entity):
-    var Rotation:int= 0
+    var Rotation:int = 0
 
     OnUpdate<override>()<transacts>: void =
-        if (V:= Mod[Rotation, 360]):
+        if (V := Mod[Rotation + 90, 360]):
             set Rotation = V
         ScanForTargets()
+
+T := turret{}
+Squad:[]entity = array{enemy{}, T}
+for (U : Squad):
+    U.OnUpdate()          # called through an entity reference
+T.Rotation = 90           # ...but the turret's own override is what ran
 ```
 
-The override mechanism ensures that the correct method implementation
-is called based on the actual type of the object, not the type of the
-variable holding it. This is the foundation of polymorphic behavior in
-object-oriented programming.
+The loop knows only that its elements are entities, yet each object
+runs its own `OnUpdate`. That is the whole point of overriding: the
+implementation is chosen by the actual type of the object, not by the
+type of the variable holding it.
+
+An overriding method does not have to return exactly what the parent
+returned. It may narrow the result to a subtype, which is called a
+*covariant* return type. The override can call the parent through
+`(super:)` and then refine what comes back:
+
+<!--versetest
+assert_semantic_error(3532, 3523, 3532):
+    b2 := class:
+        Tag:int = 0
+    d2 := class(b2):
+        Extra:int = 0
+    p2 := class:
+        Create()<transacts>:d2 = d2{}
+    s2 := class(p2):
+        Create<override>()<transacts>:b2 = b2{}
+-->
+<!-- 017 -->
+```verse
+base_type := class:
+    Name:string
+
+derived_type := class(base_type):
+    Value:int = 0
+
+producer := class:
+    Create()<transacts>:base_type = base_type{Name := "base"}
+
+sub_producer := class(producer):
+    # Override with a more specific return type
+    Create<override>()<transacts>:derived_type =
+        derived_type{Name := "{(super:)Create().Name} refined", Value := 42}
+
+# A caller that knows the subclass sees the narrower type
+sub_producer{}.Create().Value = 42
+
+# Through a superclass reference, dispatch still reaches the override
+P:producer = sub_producer{}
+P.Create().Name = "base refined"
+```
+
+Narrowing is the only direction allowed, and the reason is
+substitutability: anyone holding a `producer` was promised a
+`base_type`, and a `derived_type` honors that promise. Going the other
+way would not, so the compiler does not merely complain about the
+return type — it stops treating the method as an override at all and
+then reports the leftover definition as clashing with the inherited
+one.
 
 ### Constructor Functions
 
@@ -711,15 +597,15 @@ For simple cases where you just need to set field values, use
 archetype expressions directly:
 
 <!--versetest-->
-<!-- 022 -->
+<!-- 018 -->
 ```verse
 player := class:
     Name:string
     var Health:int = 100
     Level:int = 1
 
-# Direct construction with archetype
-# Hero := player{Name := "Aldric", Health := 150, Level := 5}
+Hero := player{Name := "Aldric", Health := 150, Level := 5}
+Hero.Health = 150
 ```
 
 When you need validation, computation, or complex initialization
@@ -733,30 +619,15 @@ player := class:
 
 MaxLevel:int = 99
 -->
-<!-- 023 -->
+<!-- 019 -->
 ```verse
 MakePlayer<constructor>(InName:string, InLevel:int)<transacts> := player:
     Name := InName
     Level := InLevel
     Health := InLevel * 100
-```
 
-Calling it:
-
-<!--versetest
-player := class:
-    Name:string
-    var Health:int = 100
-    Level:int = 1
-MaxLevel:int = 99
-MakePlayer<constructor>(InName:string, InLevel:int)<transacts> := player:
-    Name := InName
-    Level := InLevel
-    Health := InLevel * 100
--->
-<!-- 024 -->
-```verse
-Hero := MakePlayer("Aldric", 5) # Call constructor function 
+Hero := MakePlayer("Aldric", 5)   # call it by name
+Hero.Health = 500
 ```
 
 Constructor functions are regular functions that return class
@@ -778,18 +649,19 @@ player := class:
 
 MaxLevel:int = 99
 -->
-<!-- 025 -->
+<!-- 020 -->
 ```verse
-MakeValidPlayer<constructor>(InName:string, InLevel:int)<transacts><decides> := 
-    player:
-         Name := InName
-         Level := block:
-                 InLevel > 0
-                 InLevel <= MaxLevel
-                 InLevel
-         Health := InLevel * 100
-```
+MakeValidPlayer<constructor>(InName:string, InLevel:int)<transacts><decides> := player:
+    Name := InName
+    Level := block:
+        InLevel > 0
+        InLevel <= MaxLevel
+        InLevel
+    Health := InLevel * 100
 
+MakeValidPlayer["Aldric", 5].Health = 500
+not MakeValidPlayer["Aldric", 0]   # the level check fails, so the call fails
+```
 
 Constructor functions cannot use the `<suspends>` effect. Construction
 must complete synchronously to maintain object consistency.
@@ -802,7 +674,7 @@ parameter signatures, allowing flexible object creation:
 <!--versetest
 vector3:=class<final>{ X:float=0.0; Y:float=0.0; Z:float=0.0 }
 -->
-<!-- 026 -->
+<!-- 021 -->
 ```verse
 entity := class:
     Name:string
@@ -827,10 +699,11 @@ MakeEntity<constructor>(Name:string) := entity:
     Health := 100
     Position := vector3{X := 0.0, Y := 0.0, Z := 0.0}
 
-# Each overload can be called based on arguments
-# Enemy1 := MakeEntity("Goblin", 50, SpawnPoint)
-# Enemy2 := MakeEntity("Guard", PatrolPoint)
-# NPC := MakeEntity("Shopkeeper")
+# The overload is chosen by the argument list
+SpawnPoint := vector3{X := 10.0, Y := 0.0, Z := 0.0}
+MakeEntity("Goblin", 50, SpawnPoint).Health = 50
+MakeEntity("Guard", SpawnPoint).Health = 100
+MakeEntity("Shopkeeper").Position.X = 0.0
 ```
 
 ### Delegating Constructors
@@ -850,13 +723,13 @@ entity := class:
     Name:string
     var Health:int
 
-character := class(entity):
-    Class:string
-    Level:int
-
 MakeEntity<constructor>(Name:string, Health:int) := entity:
     Name := Name
     Health := Health
+
+character := class(entity):
+    Class:string
+    Level:int
 
 # Subclass constructor delegates to parent constructor
 MakeCharacter<constructor>(Name:string, Class:string, Level:int) := character:
@@ -865,9 +738,13 @@ MakeCharacter<constructor>(Name:string, Class:string, Level:int) := character:
     Level := Level
     # Then delegate to parent constructor
     MakeEntity<constructor>(Name, Level * 100)
+
+assert:
+    Hero := MakeCharacter("Aldric", "Warrior", 5)
+    Hero.Health = 500 and Hero.Name = "Aldric"
 <#
 -->
-<!-- 027 -->
+<!-- 022 -->
 ```verse
 entity := class:
     Name:string
@@ -890,6 +767,7 @@ MakeCharacter<constructor>(Name:string, Class:string, Level:int) := character:
     MakeEntity<constructor>(Name, Level * 100)
 
 Hero := MakeCharacter("Aldric", "Warrior", 5)
+Hero.Health = 500 and Hero.Name = "Aldric"
 ```
 <!-- #>-->
 
@@ -909,9 +787,12 @@ MakePlayer<constructor>(Name:string, Score:int) := player:
 MakeNewPlayer<constructor>(Name:string) := player:
     # Delegate to another constructor of the same class
     MakePlayer<constructor>(Name, 0)
+
+assert:
+    MakeNewPlayer("Aldric").Score = 0
 <#
 -->
-<!-- 028 -->
+<!-- 023 -->
 ```verse
 player := class:
     Name:string
@@ -926,6 +807,8 @@ MakePlayer<constructor>(Name:string, Score:int) := player:
 MakeNewPlayer<constructor>(Name:string) := player:
     # Delegate to another constructor of the same class
     MakePlayer<constructor>(Name, 0)
+
+MakeNewPlayer("Aldric").Score = 0
 ```
 <!-- #>-->
 
@@ -952,22 +835,26 @@ For delegating constructors to parent classes:
 base := class:
     BaseValue:int
 
-derived := class(base):
-    DerivedValue:int
-
 MakeBase<constructor>(Value:int) := base:
     block:
         Print("Base constructor")
     BaseValue := Value
+
+derived := class(base):
+    DerivedValue:int
 
 MakeDerived<constructor>(Base:int, Derived:int) := derived:
     # This executes first
     DerivedValue := Derived
     # Then parent constructor executes
     MakeBase<constructor>(Base)
+
+assert:
+    Instance := MakeDerived(10, 20)
+    Instance.BaseValue = 10 and Instance.DerivedValue = 20
 <#
 -->
-<!-- 029 -->
+<!-- 024 -->
 ```verse
 base := class:
     BaseValue:int
@@ -985,35 +872,11 @@ MakeDerived<constructor>(Base:int, Derived:int) := derived:
     DerivedValue := Derived
     # Then parent constructor executes
     MakeBase<constructor>(Base)
+
+Instance := MakeDerived(10, 20)          # prints "Base constructor"
+Instance.BaseValue = 10 and Instance.DerivedValue = 20
 ```
 <!-- #>-->
-
-The order in which these run:
-
-<!--versetest
-base := class:
-    BaseValue:int
-
-MakeBase<constructor>(Value:int) := base:
-    block:
-        Print("Base constructor")
-    BaseValue := Value
-
-derived := class(base):
-    DerivedValue:int
-
-MakeDerived<constructor>(Base:int, Derived:int) := derived:
-    # This executes first
-    DerivedValue := Derived
-    # Then parent constructor executes
-    MakeBase<constructor>(Base)
--->
-<!-- 030 -->
-```verse
-# Prints: "Base constructor"
-# Results in: derived{BaseValue := 10, DerivedValue := 20}
-Instance := MakeDerived(10, 20)
-```
 
 For classes with mutable fields, initialization sets starting values
 that can change during the object's lifetime. Immutable fields must be
@@ -1038,67 +901,74 @@ assert_semantic_error(3532):
     c := class:
         F(X:int):int = X + 2
 -->
-<!-- 031 -->
+<!-- 025 -->
 ```verse
-# ERROR: Function at module level shadows class method
+# ERROR: the class method shadows the module-level F
 # F(X:int):int = X + 1
 # c := class:
-#     F(X:int):int = X + 2  # ERROR - shadows outer F
+#     F(X:int):int = X + 2
 ```
 
-This prohibition extends across various contexts:
+The same prohibition reaches across every kind of definition. Each of
+the four pairs below is rejected the same way:
 
-<!--NoCompile-->
-<!-- 032 -->
+<!--versetest
+assert_semantic_error(3532):
+    priv_something := class {}
+    PrivM := module:
+        priv_something := class {}
+
+assert_semantic_error(3532):
+    PrivValue:int = 1
+    PrivN := module:
+        PrivValue:int = 2
+
+assert_semantic_error(3532):
+    priv_c := class { PrivA:int }
+    PrivA():void = {}
+
+assert_semantic_error(3532):
+    PrivId():void = {}
+    PrivId := module {}
+-->
+<!-- 026 -->
 ```verse
-# ERROR: Cannot shadow classes
-something := class {}
+# something := class {}
+# M := module:
+#     something := class {}   # a nested module cannot shadow a class
 
-M := module:
-    something := class {}  # ERROR
+# Value:int = 1
+# N := module:
+#     Value:int = 2           # nor a binding
 
-# ERROR: Cannot shadow variables
-Value:int = 1
+# c := class { A:int }
+# A():void = {}               # nor collide with a data member
 
-M := module:
-     Value:int = 2        # ERROR
-
-# ERROR: Cannot shadow data members
-c := class { A:int }
-
-A():void = {}             # ERROR - order does not matter
-
-# ERROR: Module and function cannot share name
-
-Id():void = {}
-Id := module {}           # ERROR
+# Id():void = {}
+# Id := module {}             # a module and a function cannot share a name
 ```
 
-The shadowing prohibition exists **regardless of definition order** -
-it does not matter whether the outer name is defined before or after
-the inner scope.
+The prohibition holds regardless of definition order: it does not
+matter whether the outer name is defined before or after the inner
+scope. The third pair above shows this — the class comes first there,
+and moving the function ahead of it changes nothing.
 
 To define methods with the same name in different contexts, use
 **qualified names** with the syntax `(ClassName:)MethodName`:
 
 <!--versetest-->
-<!-- 033 -->
+<!-- 027 -->
 ```verse
-# Class with qualified method of same name
+# Class with a qualified method of the same name
 c := class:
    (c:)F(X:int):int = X + 2
 
 # Module-level function
 F(X:int):int = X + 1
 
-# Call the module-level function
-F(10)  # Returns 11
-
-# Call the class method
-c{}.F(10)  # Returns 12
-
-# Explicit qualification (optional here)
-c{}.(c:)F(10)  # Returns 12
+F(10) = 11              # the module-level function
+c{}.F(10) = 12          # the class method
+c{}.(c:)F(10) = 12      # explicit qualification, optional here
 ```
 
 The `(c:)` qualifier indicates this `F` is defined specifically in
@@ -1111,36 +981,32 @@ Using qualifiers, you can define *new methods* with the same name as
 inherited methods, creating multiple distinct methods in the same
 class:
 
-<!--versetest-->
-<!-- 034 -->
-```verse
-c := class<abstract> { F(X:int):int }
-
-d := class(c):
-    F<override>(X:int):int = X + 1
-
-e := class(d):
-    (e:)F(X:int):int = X + 2 # NEW method with same name, not an override
-
-# e now contains BOTH methods:
-#    - (c:)F inherited from c (overridden in d)
-#    - (e:)F newly defined in e
-```
-
-Using the above:
-
 <!--versetest
+assert_semantic_error(3518):
+    c58 := class<abstract> { F(X:int):int }
+    d58 := class(c58):
+        F<override>(X:int):int = X + 1
+    e58 := class(d58):
+        (e58:)F(X:int):int = X + 2
+    Ambiguous58(E:e58):int = E.F(10)
+-->
+<!-- 028 -->
+```verse
 c := class<abstract> { F(X:int):int }
+
 d := class(c):
     F<override>(X:int):int = X + 1
+
 e := class(d):
     (e:)F(X:int):int = X + 2 # NEW method with same name, not an override
--->
-<!-- 035 -->
-```verse
+
+# e now contains BOTH methods
 E := e{}
-E.(c:)F(10)  # Returns 11 (inherited from d's override)
-E.(e:)F(10)  # Returns 12 (new method in e)
+E.(c:)F(10) = 11   # inherited from c, overridden in d
+E.(e:)F(10) = 12   # newly defined in e
+
+# ERROR: neither one wins - the unqualified call matches both
+# E.F(10)
 ```
 
 Key distinction:
@@ -1148,9 +1014,14 @@ Key distinction:
 - `F<override>` without qualifier: Overrides the inherited `F`
 - `(e:)F` without `<override>`: Defines a **new** `F` specific to `e`
 
-This allows a class to have multiple methods with the same name,
-differentiated by their qualifiers, each serving different purposes in
-the class hierarchy.
+Once both methods exist, the qualifier is no longer optional. There is
+no rule that the nearer or the more derived definition wins: an
+unqualified `E.F(10)` matches both and the compiler reports that
+multiple overloads match the arguments. This is the difference from the
+`(c:)F` above, where the qualifier could be dropped because only one
+`F` was a member of the class. So a class can carry several methods of
+the same name, each serving a different purpose in the hierarchy, but
+every call to them has to say which one it means.
 
 ### `(super:)` Qualified
 
@@ -1158,7 +1029,7 @@ The `(super:)` qualifier works with qualified method names to call the
 parent class's implementation:
 
 <!--versetest-->
-<!-- 036 -->
+<!-- 029 -->
 ```verse
 i := interface { F(X:int):int }
 
@@ -1170,14 +1041,10 @@ dci := class(ci):
     # Override both inherited methods, calling super implementations
     (i:)F<override>(X:int):int = 100 + (super:)F(X)
     (ci:)F<override>(X:int):int = 200 + (super:)F(X)
-```
 
-<!--NoCompile-->
-<!-- 037 -->
-```verse
 DCI := dci{}
-DCI.(i:)F(10)  # Returns 111
-DCI.(ci:)F(10)  # Returns 212
+DCI.(i:)F(10) = 111
+DCI.(ci:)F(10) = 212
 ```
 
 `(super:)F(X)` within the qualified method calls the parent class's
@@ -1191,7 +1058,7 @@ qualifiers disambiguate which interface's method you are implementing:
 
 
 <!--versetest-->
-<!-- 038 -->
+<!-- 030 -->
 ```verse
 i := interface:
     B(X:int):int
@@ -1203,23 +1070,20 @@ collision := class(i, j):
     # Implement both B methods separately
     (i:)B<override>(X:int):int = 20 + X
     (j:)B<override>(X:int):int = 30 + X
-```
 
-<!--NoCompile-->
-<!-- 039 -->
-```verse
 Obj := collision{}
-Obj.(i:)B(1)  # Returns 21
-Obj.(j:)B(1)  # Returns 31
+Obj.(i:)B(1) = 21
+Obj.(j:)B(1) = 31
 ```
 
 Without qualifiers, the compiler cannot determine which interface's
 method you are implementing.
 
-**Complex interface hierarchies:**
+The same qualifiers untangle deeper hierarchies, where one interface
+inherits from another and redefines a method it has already inherited:
 
 <!--versetest-->
-<!-- 040 -->
+<!-- 031 -->
 ```verse
 i := interface:
     C(X:int):int
@@ -1237,14 +1101,10 @@ multi := class(j, k):
     # Must implement C from both inheritance paths
     (i:)C<override>(X:int):int = 30 + X
     (k:)C<override>(X:int):int = 40 + X
-```
 
-<!--NoCompile-->
-<!-- 041 -->
-```verse
 Obj := multi{}
-Obj.(i:)C(1)  # Returns 31
-Obj.(k:)C(1)  # Returns 41
+Obj.(i:)C(1) = 31
+Obj.(k:)C(1) = 41
 ```
 
 When an interface redefines a method from a parent interface using
@@ -1256,22 +1116,15 @@ separate implementations for both variants.
 Modules can be nested, and deeply qualified names reference members
 through the entire hierarchy:
 
-<!--versetest-->
-<!-- 042 -->
-```verse
-Top := module:
-    (Top:)M<public> := module:
-        (Top.M:)Value<public>:int = 1
-        (Top.M:)F<public>(X:int):int = X + 10
-
-        (Top.M:)M<public> := module:
-            (Top.M.M:)Value<public>:int = 3
-            (Top.M.M:)F<public>(X:int):int = X + 100
-```
-
-And a use case:
-
 <!--versetest
+assert_semantic_error(3506):
+    Top59 := module:
+        (Top59:)M<public> := module:
+            (Top59.M:)F<public>(X:int):int = X + 10
+    Use59():int = (Top59.M:)F(0)
+-->
+<!-- 032 -->
+```verse
 Top := module:
     (Top:)M<public> := module:
         (Top.M:)Value<public>:int = 1
@@ -1281,39 +1134,56 @@ Top := module:
             (Top.M.M:)Value<public>:int = 3
             (Top.M.M:)F<public>(X:int):int = X + 100
 
-using { Top.M }
-using { Top.M.M }
+client := module:
+    using { Top.M }
+    using { Top.M.M }
 
--->
-<!-- 043 -->
-```verse
-# using { Top.M }
-# using { Top.M.M }
+    # Both F's are in scope here; full qualification tells them apart
+    (client:)Check<public>()<decides>:void =
+        (Top.M:)F(0) = 10
+        (Top.M.M:)F(0) = 100
 
-# Access with full qualification
-(Top.M:)F(0)          # Returns 10
-(Top.M.M:)F(0)        # Returns 100
+client.Check[]
 
-# Access via path
-Top.M.F(1)            # Returns 11
-Top.M.M.F(1)          # Returns 101
+# Or reach them by path, which needs no `using` at all
+Top.M.F(1) = 11
+Top.M.M.F(1) = 101
 ```
 
-Nested modules can have the same simple name (e.g., both `M`)
-when qualified with their full path, allowing hierarchical
-organization without naming conflicts.
+Nested modules can have the same simple name — both of these are
+called `M` — and stay distinct because their full paths differ, which
+is what lets a hierarchy grow without naming conflicts.
+
+The two `using` declarations are doing more work than they appear to.
+A qualifier only says which `F` is meant among the ones already in
+scope; it does not itself bring anything into scope. Drop the `using`
+declarations and `(Top.M:)F(0)` does not become ambiguous, it becomes
+an unknown identifier. The dotted path is the form that stands alone:
+`Top.M.F(1)` needs no `using`, because the path names the module and
+the member in one go. Note also where the `using` declarations sit.
+They are module-scope declarations, so they belong inside `client`
+rather than beside the calls; a `using` of a module written in an
+ordinary expression context is rejected.
 
 ### Restrictions
 
-Local variables cannot shadow class members:
+Local variables cannot shadow class members. A local binding that
+reuses a field's name is rejected by the same rule that
+governs every other shadowing case:
 
-<!--NoCompile-->
-<!-- 044 -->
+<!--versetest
+assert_semantic_error(3532):
+    priv_a := class:
+        I:int
+        F(X:int):void =
+            I:int = 5
+-->
+<!-- 033 -->
 ```verse
-A := class:
-    I:int
-    F(X:int):void =
-        I:int = 5  # ERROR - shadows member I
+# a := class:
+#     I:int
+#     F(X:int):void =
+#         I:int = 5   # ERROR: shadows member I
 ```
 
 Currently, there is no `(local:)` qualifier to disambiguate, so this
@@ -1329,113 +1199,68 @@ type, you write one parametric class that accepts a type parameter.
 
 A parametric class takes one or more type parameters in its definition:
 
-<!--versetest
-# Simple container that holds a single value
-container(t:type) := class:
-    Value:t
-<#
--->
-<!-- 045 -->
+<!--versetest-->
+<!-- 034 -->
 ```verse
 # Simple container that holds a single value
 container(t:type) := class:
     Value:t
-```
-<!-- #>-->
 
-The syntax `container(t:type)` parameterizes the class by type `t`,
-which can be used in field declarations, method signatures, and return
-types.
-
-**Multiple type parameters:**
-
-<!--NoCompile-->
-<!-- 046 -->
-```verse
+# More than one type parameter is allowed
 pair(t:type, u:type) := class:
     First:t
     Second:u
 
-Coordinate := pair(int, int){First := 10, Second := 20}
+Coordinate := pair(int, string){First := 10, Second := "north"}
+Coordinate.First = 10 and Coordinate.Second = "north"
 ```
 
-**Type parameters in methods:**
+The syntax `container(t:type)` parameterizes the class by type `t`,
+which can be used in field declarations, method signatures, and return
+types. A type parameter is in scope throughout the body, so methods can
+take it as an argument type, return it, and nest it inside other types:
 
-<!--versetest
-optional_container(t:type) := class:
-    var MaybeValue:?t = false
-
-    Set(Value:t):void =
-        set MaybeValue = option{Value}
-
-    Get()<decides>:t =
-        MaybeValue?
-
-    Clear():void =
-        set MaybeValue = false
-<#
--->
-<!-- 047 -->
+<!--versetest-->
+<!-- 035 -->
 ```verse
 optional_container(t:type) := class:
     var MaybeValue:?t = false
 
-    Set(Value:t):void =
+    Set(Value:t)<transacts>:void =
         set MaybeValue = option{Value}
 
-    Get()<decides>:t =
+    Get()<reads><decides>:t =
         MaybeValue?
 
-    Clear():void =
+    Clear()<transacts>:void =
         set MaybeValue = false
+
+Box := optional_container(string){}
+not Box.Get[]
+Box.Set("hello")
+Box.Get[] = "hello"
+Box.Clear()
+not Box.Get[]
 ```
-<!-- #> -->
 
 ### Instantiation and Identity
 
 Multiple instantiations with the same type arguments produce the same
 type:
 
-<!--versetest
-container(t:type) := class:
-    Value:t
-
-# These are the same type
-Type1 := container(int)
-Type2 := container(int)
-Type3 := container(int)
-
-# All three are equal - they are the same type
-<#
--->
-<!-- 048 -->
+<!--versetest-->
+<!-- 036 -->
 ```verse
 container(t:type) := class:
     Value:t
 
-# These are the same type
+# These name one type, not two copies of it
 Type1 := container(int)
 Type2 := container(int)
-Type3 := container(int)
 
-# All three are equal - they are the same type
-```
-<!-- #>-->
-
-This type identity is guaranteed across the program:
-
-<!--versetest
-container(t:type) := class:
-    Value:t
--->
-<!-- 049 -->
-```verse
-# Create instances
-C1 := container(int){Value := 1}
-C2 := container(int){Value := 2}
-
-# Both have the same type: container(int)
-# Type checking treats them identically
+C1:Type1 = container(int){Value := 1}
+C2:Type2 = C1              # accepted: Type1 and Type2 are the same type
+C2.Value = 1
 ```
 
 The instantiation process is **deterministic and memoized**. The first
@@ -1445,8 +1270,7 @@ type, not a new copy.
 
 This matters for:
 
-- **Type compatibility**: Two values of `container(int)` can be used
-  interchangeably
+- **Type compatibility**: Two values of `container(int)` can be used interchangeably
 - **Memory efficiency**: Not creating duplicate type definitions
 - **Semantic correctness**: Same type arguments always mean the same type
 
@@ -1454,31 +1278,24 @@ While the same type arguments always produce the same type, different
 type arguments produce distinct, incompatible types:
 
 <!--versetest
-container(t:type) := class:
-    Value:t
-<#
+assert_semantic_error(3510):
+    cont(t:type) := class:
+        Value:t
+    Mix(A:cont(int)):cont(string) = A
 -->
-<!-- 050 -->
+<!-- 037 -->
 ```verse
 container(t:type) := class:
     Value:t
-```
-<!-- #>-->
 
-
-Different instantiations are distinct types:
-
-<!--versetest
-container(t:type) := class:
-    Value:t
--->
-<!-- 051 -->
-```verse
 IntContainer := container(int){Value := 42}
 StringContainer := container(string){Value := "text"}
 
-# These are different types and cannot be mixed
-# IntContainer = StringContainer  # Type error!
+IntContainer.Value = 42
+StringContainer.Value = "text"
+
+# ERROR: the two instantiations are unrelated types
+# Mix(A:container(int)):container(string) = A
 ```
 
 `container(int)` and `container(string)` are completely different
@@ -1496,14 +1313,8 @@ The variance of a parametric type depends on how the type parameter is
 used within the class definition. The four cases below all use this
 pair of classes:
 
-<!--versetest
-entity := class:
-    ID:int
-player := class(entity):
-    Name:string
-<#
--->
-<!-- 052 -->
+<!--versetest-->
+<!-- 038 -->
 ```verse
 entity := class:
     ID:int
@@ -1511,7 +1322,6 @@ entity := class:
 player := class(entity):
     Name:string
 ```
-<!-- #> -->
 
 #### Covariant
 
@@ -1527,13 +1337,8 @@ entity := class:
     ID:int
 player := class(entity):
     Name:string
-producer(t:type) := class:
-    Value:t
-    Get():t = Value  # Returns t - covariant position
-ProcessProducer(P:producer(entity)):int = P.Get().ID
-<#
 -->
-<!-- 053 -->
+<!-- 039 -->
 ```verse
 producer(t:type) := class:
     Value:t
@@ -1541,34 +1346,10 @@ producer(t:type) := class:
     Get():t = Value  # Returns t - covariant position
 
 ProcessProducer(P:producer(entity)):int = P.Get().ID
-```
-<!-- #>-->
 
-With those definitions in place:
-
-<!--versetest
-# Base class hierarchy
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Covariant class - type parameter only in return position
-producer(t:type) := class:
-    Value:t
-
-    Get():t = Value  # Returns t - covariant position
-
-# Can use producer(player) where producer(entity) expected
-ProcessProducer(P:producer(entity)):int = P.Get().ID
--->
-<!-- 054 -->
-```verse
 PlayerProducer:producer(player) = producer(player){Value := player{ID := 1, Name := "Alice"}}
-EntityProducer:producer(entity) = PlayerProducer  # Valid!
-
-Result := ProcessProducer(PlayerProducer)  # Works!
+EntityProducer:producer(entity) = PlayerProducer   # Valid: player is an entity
+ProcessProducer(PlayerProducer) = 1                # so this works too
 ```
 
 This is safe because a `player` has everything an `entity` has. If you
@@ -1584,33 +1365,23 @@ for details on variance). This means instantiations follow the
 **opposite** subtyping direction:
 
 
-<!--versetest-->
-<!-- 055 -->
-```verse
-consumer(t:type) := class:
-    Process(Item:t):void = {}  # Accepts t - contravariant position
-```
-
-And a use case:
-
 <!--versetest
 entity := class:
     ID:int
 player := class(entity):
     Name:string
-consumer(t:type) := class:
-    Process(Item:t):void = {}
 -->
-<!-- 056 -->
+<!-- 040 -->
 ```verse
-# Contravariance allows supertype → subtype
-EntityConsumer:consumer(entity) = consumer(entity){}
-PlayerConsumer:consumer(player) = EntityConsumer  # Valid!
+consumer(t:type) := class:
+    Process(Item:t):void = {}  # Accepts t - contravariant position
 
-# Can use consumer(entity) where consumer(player) expected
 ProcessPlayers(C:consumer(player)):void =
     C.Process(player{ID := 1, Name := "Bob"})
 
+# Contravariance allows supertype -> subtype
+EntityConsumer:consumer(entity) = consumer(entity){}
+PlayerConsumer:consumer(player) = EntityConsumer  # Valid!
 ProcessPlayers(EntityConsumer)                    # Works!
 ```
 
@@ -1632,31 +1403,6 @@ entity := class:
 player := class(entity):
     Name:string
 
-# Invariant class - type parameter in both positions
-transformer(t:type) := class:
-    Transform(Input:t):t = Input  # Both parameter and return
-<#
--->
-<!-- 057 -->
-```verse
-# Type parameter in both positions
-transformer(t:type) := class:
-    Transform(Input:t):t = Input  # Both parameter and return
-```
-<!-- #>-->
-
-Neither direction is allowed:
-
-<!--versetest
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Invariant class - type parameter in both positions
-transformer(t:type) := class:
-    Transform(Input:t):t = Input  # Both parameter and return
 assert_semantic_error(3509):
     ent := class:
         ID:int
@@ -1668,15 +1414,18 @@ assert_semantic_error(3509):
         PT:tr(pl) = tr(pl){}
         X:tr(ent) = PT
 -->
-<!-- 058 -->
+<!-- 041 -->
 ```verse
-# No variance - cannot convert in either direction
+# Type parameter in both positions, so no variance either way
+transformer(t:type) := class:
+    Transform(Input:t):t = Input
+
 EntityTransformer:transformer(entity) = transformer(entity){}
 PlayerTransformer:transformer(player) = transformer(player){}
 
-# Invalid: Cannot use one where the other is expected
-# X:transformer(entity) = PlayerTransformer  # ERROR
-# Y:transformer(player) = EntityTransformer  # ERROR
+# ERROR: neither of these conversions is allowed
+# X:transformer(entity) = PlayerTransformer
+# Y:transformer(player) = EntityTransformer
 ```
 
 Neither direction is safe. If a `transformer(player)` were usable as a
@@ -1695,43 +1444,19 @@ entity := class:
 
 player := class(entity):
     Name:string
-
-# Bivariant class - type parameter not used in public interface
-container(t:type) := class:
-    DoSomething():void = {}  # Doesn't use t at all
-<#
 -->
-<!-- 059 -->
+<!-- 042 -->
 ```verse
 # Type parameter not used in the public interface
 container(t:type) := class:
     DoSomething():void = {}  # Doesn't use t at all
-```
-<!-- #>-->
 
-
-Both directions are allowed:
-
-<!--versetest
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Bivariant class - type parameter not used in public interface
-container(t:type) := class:
-    DoSomething():void = {}  # Doesn't use t at all
--->
-<!-- 060 -->
-```verse
-# Bivariant allows conversion in both directions
 EntityContainer:container(entity) = container(entity){}
 PlayerContainer:container(player) = container(player){}
 
 # Both directions work
-X:container(entity) = PlayerContainer  # Valid
-Y:container(player) = EntityContainer  # Also valid
+X:container(entity) = PlayerContainer
+Y:container(player) = EntityContainer
 ```
 
 The type parameter does not affect observable behaviour, so the
@@ -1751,7 +1476,7 @@ assert_semantic_error(3510):
     F(X:derived(int)):derived(float) = X
 <#
 -->
-<!-- 061 -->
+<!-- 043 -->
 ```verse
 holder(t:type) := interface:
     Value:t                          # covariant use of t
@@ -1778,25 +1503,8 @@ recursion at runtime.
 
 Here is a generic linked list built as a recursive parametric class:
 
-<!--versetest
-# Linked list node
-list_node(t:type) := class:
-    Value:t
-    Next:?list_node(t)  # Same type parameter 't'
-
-# Helper to create lists
-Cons(Head:t, Tail:?list_node(t) where t:type):list_node(t) =
-    list_node(t){Value := Head, Next := Tail}
-
-# Sum a linked list
-SumList(List:?list_node(int)):int =
-    if (Head := List?):
-        Head.Value + SumList(Head.Next)
-    else:
-        0
-<#
--->
-<!-- 062 -->
+<!--versetest-->
+<!-- 044 -->
 ```verse
 # Linked list node
 list_node(t:type) := class:
@@ -1804,50 +1512,21 @@ list_node(t:type) := class:
     Next:?list_node(t)  # Same type parameter 't'
 
 # Helper to create lists
-Cons(Head:t, Tail:?list_node(t) where t:type):list_node(t) =
+Cons(Head:t, Tail:?list_node(t) where t:type)<transacts>:list_node(t) =
     list_node(t){Value := Head, Next := Tail}
 
 # Sum a linked list
-SumList(List:?list_node(int)):int =
+SumList(List:?list_node(int))<transacts>:int =
     if (Head := List?):
         Head.Value + SumList(Head.Next)
     else:
         0
-```
-<!-- #>-->
 
-Using it:
-
-<!--versetest
-# Linked list node
-list_node(t:type) := class:
-    Value:t
-    Next:?list_node(t)  # Same type parameter 't'
-
-# Helper to create lists
-Cons(Head:t, Tail:?list_node(t) where t:type):list_node(t) =
-    list_node(t){Value := Head, Next := Tail}
-
-# Sum a linked list
-SumList(List:?list_node(int)):int =
-    if (Head := List?):
-        Head.Value + SumList(Head.Next)
-    else:
-        0
--->
-<!-- 063 -->
-```verse
-# Usage
-IntList := list_node(int){
-    Value := 1
-    Next := option{list_node(int){
-        Value := 2
-        Next := false
-    }}
-}
+IntList := Cons(1, option{Cons(2, false)})
+SumList(option{IntList}) = 3
 ```
 
-**Disallowed: Direct Type Alias Recursion**
+#### Disallowed: Direct Type Alias Recursion
 
 You cannot define a parametric type that directly aliases to a
 structural type containing itself:
@@ -1856,7 +1535,7 @@ structural type containing itself:
 assert_semantic_error(3502):
     t1(u:type) := []t1(u)
 -->
-<!-- 064 -->
+<!-- 045 -->
 ```verse
 # Invalid: Direct array recursion
 # t(u:type) := []t(u)  # ERROR
@@ -1875,37 +1554,28 @@ assert_semantic_error(3502):
 These fail because they create infinite type expansion—the compiler
 cannot determine the actual structure of the type.
 
-**Valid alternative:** Wrap the recursive reference in a class. For
-example, a tree where each node holds a list of children is a
-recursive parametric type — each `nested_list(t)` contains an array
-of `nested_list(t)`:
+The way round this is to wrap the recursive reference in a class. A
+tree where each node holds a list of children is a recursive
+parametric type — each `nested_list(t)` contains an array of
+`nested_list(t)` — and it is accepted, because the class gives the
+compiler a name to stop at:
 
-<!-- NoCompile-->
-<!-- 065 -->
+<!--versetest-->
+<!-- 046 -->
 ```verse
-# Valid: Indirect recursion through class
 nested_list(t:type) := class:
     Items:[]nested_list(t)  # OK - wrapped in class
-```
 
-Constructing a tree with two children:
-
-<!--versetest
-# Valid: Indirect recursion through class
-nested_list(t:type) := class:
-    Items:[]nested_list(t)  # OK - wrapped in class
--->
-<!-- 066 -->
-```verse
 Tree := nested_list(int){
     Items := array{
         nested_list(int){Items := array{}},
         nested_list(int){Items := array{}}
     }
 }
+Tree.Items.Length = 2
 ```
 
-**Disallowed: Polymorphic Recursion**
+#### Disallowed: Polymorphic Recursion
 
 Polymorphic recursion occurs when a parametric type references itself
 with a **different type argument**:
@@ -1919,7 +1589,7 @@ assert_semantic_error(3509):
         Value:t
         Next:?bi_list(u, t)
 -->
-<!-- 067 -->
+<!-- 047 -->
 ```verse
 # Invalid: Type parameter changes
 # my_type(t:type) := class:
@@ -1936,14 +1606,21 @@ Polymorphic recursion makes type inference undecidable: instantiating
 and so on without end. It is sound in some type systems, but Verse does
 not support it, to keep type checking tractable.
 
-**Disallowed: Mutual Recursion**
+#### Disallowed: Mutual Recursion
 
-Mutual recursion between multiple parametric types is not supported:
+Mutual recursion between multiple parametric types is not supported
+either; each of the two definitions below is rejected on its own:
 
-<!--versetest-->
-<!-- 068 -->
+<!--versetest
+assert_semantic_error(3509, 3509):
+    priv_t1(t:type) := class:
+        Next:?priv_t2(t)
+    priv_t2(t:type) := class:
+        Next:?priv_t1(t)
+-->
+<!-- 048 -->
 ```verse
-# Invalid: Mutual recursion
+# ERROR: circular dependency the compiler cannot resolve
 # t1(t:type) := class:
 #     Next:?t2(t)  # References t2
 #
@@ -1954,12 +1631,12 @@ Mutual recursion between multiple parametric types is not supported:
 Mutual recursion raises the same problem, creating circular
 dependencies the compiler cannot resolve.
 
-Combine them into a single type instead:
+Combine them into a single type instead, and tag each node with an
+enum to recover the case distinction the two types were carrying:
 
-<!-- NoCompile-->
-<!-- 069 -->
+<!--versetest-->
+<!-- 049 -->
 ```verse
-# Valid: Single type with multiple cases
 node_type := enum:
     TypeA
     TypeB
@@ -1968,24 +1645,30 @@ combined_node(t:type) := class:
     Type:node_type
     Value:t
     Next:?combined_node(t)
+
+Node := combined_node(int){Type := node_type.TypeA, Value := 1, Next := false}
+Node.Value = 1
 ```
 
-**Disallowed: Inheritance Recursion**
+#### Disallowed: Inheritance Recursion
 
 You cannot inherit from a type variable or create recursive
-inheritance through parametric types:
+inheritance through parametric types; both are rejected:
 
 <!--versetest
 assert_semantic_error(3590):
-    t2(u:type) := class(t2(u)){}
--->
-<!-- 070 -->
-```verse
-# Invalid: Inheriting from parametric self
-# t(u:type) := class(t(u)){}  # ERROR
+    priv_self(u:type) := class(priv_self(u)){}
 
-# Invalid: Inheriting from type variable
-# inherits_from_variable(t:type) := class(t){}  # ERROR
+assert_semantic_error(3590):
+    priv_from_var(t:type) := class(t){}
+-->
+<!-- 050 -->
+```verse
+# ERROR: inheriting from the parametric type being defined
+# t(u:type) := class(t(u)){}
+
+# ERROR: inheriting from a type variable
+# inherits_from_variable(t:type) := class(t){}
 ```
 
 Inheritance requires knowing the parent's structure, but under
@@ -1999,9 +1682,10 @@ While parametric classes get most of the attention, interfaces can
 also be parametric, enabling abstract contracts that work with any
 type:
 
-<!-- TODO why is this not working?-->
-
-<!--versetest
+<!--versetest-->
+<!-- 051 -->
+```verse
+# Generic equality interface
 equivalence(t:type, u:type) := interface:
     Equal(Left:t, Right:u)<transacts><decides>:t
 
@@ -2010,29 +1694,16 @@ collection_ifc(t:type) := interface:
     AddItem(Item:t)<transacts>:void
     RemoveItem(Item:t)<transacts><decides>:void
     Has(Item:t)<reads>:logic
-<#
--->
-<!-- 071 -->
-```verse
-# Generic equality interface
-equivalence(t:type, u:type) := interface:
-    Equal(Left:t, Right:u)<transacts><decides>:t
-
-# Generic collection interface
-collection_ifc(t:type) := interface:
-    Add(Item:t)<transacts>:void
-    Remove(Item:t)<transacts><decides>:void
-    Has(Item:t)<reads>:logic
 ```
-<!-- #>-->
 
 Classes implement parametric interfaces by providing concrete types
 for the parameters:
 
-<!-- versetest 
+<!--versetest
 equivalence(t:type, u:type) := interface:
     Equal(Left:t, Right:u)<transacts><decides>:t
 
+# Implement with specific types
 int_equivalence := class(equivalence(int, comparable)):
     Equal<override>(Left:int, Right:comparable)<transacts><decides>:int =
         Left = Right
@@ -2041,9 +1712,13 @@ int_equivalence := class(equivalence(int, comparable)):
 comparable_equivalence(t:subtype(comparable)) := class(equivalence(t, comparable)):
     Equal<override>(Left:t, Right:comparable)<transacts><decides>:t =
         Left = Right
+
+assert:
+    Eq := comparable_equivalence(int){}
+    Eq.Equal[5, 5] = 5
 <#
 -->
-<!-- 072 -->
+<!-- 052 -->
 ```verse
 equivalence(t:type, u:type) := interface:
     Equal(Left:t, Right:u)<transacts><decides>:t
@@ -2057,36 +1732,16 @@ int_equivalence := class(equivalence(int, comparable)):
 comparable_equivalence(t:subtype(comparable)) := class(equivalence(t, comparable)):
     Equal<override>(Left:t, Right:comparable)<transacts><decides>:t =
         Left = Right
+
+Eq := comparable_equivalence(int){}
+Eq.Equal[5, 5] = 5
 ```
 <!-- #> -->
 
-Using it:
-
-<!--versetest
-equivalence(t:type, u:type) := interface:
-    Equal(Left:t, Right:u)<transacts><decides>:t
-
-# Implement with specific types
-int_equivalence := class(equivalence(int, comparable)):
-    Equal<override>(Left:int, Right:comparable)<transacts><decides>:int =
-        Left = Right
-
-# Or with type parameters matching the class
-comparable_equivalence(t:subtype(comparable)) := class(equivalence(t, comparable)):
-    Equal<override>(Left:t, Right:comparable)<transacts><decides>:t =
-        Left = Right
--->
-<!-- 073 -->
-```verse
-# Usage
-Eq := comparable_equivalence(int){}
-Eq.Equal[5, 5]  # Succeeds
-```
-
 Parametric interfaces follow the same variance rules as parametric classes:
 
-<!-- NoCompile-->
-<!-- 074 -->
+<!--versetest-->
+<!-- 053 -->
 ```verse
 entity := class:
     ID:int
@@ -2100,34 +1755,18 @@ producer_interface(t:type) := interface:
 
 player_producer := class(producer_interface(player)):
     Produce<override>():player = player{ID := 1, Name := "Test"}
-```
 
-Covariant subtyping in use:
-
-<!--versetest
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Covariant interface - returns t
-producer_interface(t:type) := interface:
-    Produce():t
-
-player_producer := class(producer_interface(player)):
-    Produce<override>():player = player{ID := 1, Name := "Test"}
--->
-<!-- 075 -->
-```verse
 # Covariant subtyping works
 EntityProducer:producer_interface(entity) = player_producer{}
+EntityProducer.Produce().ID = 1
 ```
 
-You can create specialized (non-parametric) interfaces from parametric ones:
+You can create specialized (non-parametric) interfaces from parametric
+ones. That matters for casting, because a cast target has to be a
+non-parametric type:
 
-<!-- NoCompile-->
-<!-- 076 -->
+<!--versetest-->
+<!-- 054 -->
 ```verse
 generic_handler(t:type) := interface:
     Handle(Item:t):void
@@ -2140,26 +1779,8 @@ int_handler := interface(generic_handler(int)):
 int_processor := class(int_handler):
     Handle<override>(Item:int):void =
         Print("Handling: {Item}")
-```
 
-Using specialized interfaces in casts:
-
-<!--versetest
-generic_handler(t:type) := interface:
-    Handle(Item:t):void
-
-# Specialize to a concrete type
-int_handler := interface(generic_handler(int)):
-    # Inherits Handle(Item:int):void
-    # Can add more methods here
-
-int_processor := class(int_handler):
-    Handle<override>(Item:int):void =
-        Print("Handling: {Item}")
--->
-<!-- 077 -->
-```verse
-# Can use in casts now (specialized interfaces are non-parametric)
+# The specialized interface can be a cast target
 Base := int_processor{}
 if (Handler := int_handler[Base]):
     Handler.Handle(42)
@@ -2169,8 +1790,8 @@ if (Handler := int_handler[Base]):
 
 Interfaces can have multiple type parameters with independent variance:
 
-<!-- NoCompile-->
-<!-- 078 -->
+<!--versetest-->
+<!-- 055 -->
 ```verse
 converter_interface(input:type, output:type) := interface:
     Convert(In:input):output
@@ -2185,30 +1806,10 @@ player := class(entity):
 # Implement with specific types
 player_to_entity := class(converter_interface(player, entity)):
     Convert<override>(In:player):entity = entity{ID := In.ID}
-```
 
-Is used here:
-
-<!--versetest
-converter_interface(input:type, output:type) := interface:
-    Convert(In:input):output
-    # input is contravariant, output is covariant
-
-entity := class:
-    ID:int
-
-player := class(entity):
-    Name:string
-
-# Implement with specific types
-player_to_entity := class(converter_interface(player, entity)):
-    Convert<override>(In:player):entity = entity{ID := In.ID}
-
--->
-<!-- 079 -->
-```verse
 # Variance allows flexible usage
 C:converter_interface(player, entity) = player_to_entity{}
+C.Convert(player{ID := 7, Name := "Ann"}).ID = 7
 ```
 
 ### Advanced Parametric Types
@@ -2217,85 +1818,71 @@ C:converter_interface(player, entity) = player_to_entity{}
 
 Parametric types can have effect specifiers that apply to all instantiations:
 
-<!-- versetest 
-# Parametric class with effects
-async_container(t:type) := class<computes>:
-    Property:t
+<!--versetest
+assert_semantic_error(3512):
+    eff_decides(t:type) := class<decides>:
+        P:t
 
-# All instantiations inherit the effect
-X:async_container(int) = async_container(int){Property := 1}  # <computes> effect
+assert_semantic_error(3512):
+    eff_suspends(t:type) := class<suspends>:
+        P:t
 
-# Multiple effects
-transactional_container(t:type) := class<transacts>:
-    Property:t
+assert_semantic_error(3565):
+    eff_converges(t:type) := class<converges>:
+        P:t
 
-assert:
-    Y:transactional_container(int) = transactional_container(int){Property := 2}
-<#
+assert_semantic_error(3565):
+    eff_plain := class<converges>:
+        P:int
 -->
-<!-- 080 -->
+<!-- 056 -->
 ```verse
 # Parametric class with effects
 async_container(t:type) := class<computes>:
     Property:t
 
-# All instantiations inherit the effect
-X:async_container(int) = async_container(int){Property := 1}  # <computes> effect
-
-# Multiple effects
 transactional_container(t:type) := class<transacts>:
     Property:t
 
-# Constructor inherits effects
-# Y:transactional_container(int) = transactional_container(int){Property := 2}
+# Every instantiation inherits the effect
+X:async_container(int) = async_container(int){Property := 1}
+Y:transactional_container(int) = transactional_container(int){Property := 2}
+X.Property + Y.Property = 3
 ```
-<!-- #> -->
 
-**Allowed effects:**
+The effects a parametric class may carry are `<computes>`, which allows
+non-terminating computation, `<transacts>`, which makes instantiation
+participate in a transaction, `<reads>` and `<writes>`, which touch mutable
+state, and `<allocates>`, which allocates. The failure and suspension
+effects are rejected outright. `<decides>` would mean that the effect
+declaration itself might fail, which would require a failure context around
+the class definition, and `<suspends>` would likewise require a context that
+can block; neither exists at the point where a type is declared, so both
+are rejected.
 
-- `<computes>` - Allows non-terminating computation
-- `<transacts>` - Participates in transactions
-- `<reads>` - Reads mutable state
-- `<writes>` - Writes mutable state
-- `<allocates>` - Allocates resources
+An effect on the class becomes part of its contract: it propagates to every
+construction site, so a function that builds an instance has to declare it
+as well.
 
-**Not allowed:**
-
-- `<decides>` - Can fail
-- `<suspends>` - Can suspend execution
-- `<converges>` - The `<converges>` effect guarantees that a function terminates (see the [Effects](13_effects.md) chapter). Parametric classes cannot use it because instantiating a parametric type may involve arbitrary computation — the compiler cannot guarantee that constructing `my_type(t)` for all possible `t` will terminate.
-
-**Effect propagation:**
-
-<!-- versetest 
+<!--versetest-->
+<!-- 057 -->
+```verse
 my_type(t:type) := class<computes>:
     Property:t
 
 # This requires <computes> in the context
 CreateInstance()<computes>:my_type(int) =
     my_type(int){Property := 1}
-<#
--->
-<!-- 081 -->
-```verse
-# Effect on parametric type propagates to constructor
-my_type(t:type) := class<computes>:
-    Property:t
 
-# This requires <computes> in the context
-CreateInstance()<computes>:my_type(int) =
-    my_type(int){Property := 1}
+CreateInstance().Property = 1
 ```
-<!-- #> -->
-
-The effect becomes part of the type's contract—all code constructing or working with instances must account for these effects.
 
 #### Aliases
 
 You can create type aliases that simplify complex parametric type expressions:
 
 <!--versetest-->
-<!-- 082 -->
+<!-- 058 -->
 ```verse
 # Alias for map type
 string_map(t:type) := [string]t
@@ -2315,10 +1902,11 @@ FilterValid(Items:optional_array(int)):[]int =
         Value
 ```
 
-**Structural type aliases:**
+Aliases are not restricted to named types. Function types and tuple types
+can be given names in exactly the same way:
 
 <!--versetest-->
-<!-- 083 -->
+<!-- 059 -->
 ```verse
 # Function type aliases
 transformer(input:type, output:type) := input -> output
@@ -2342,11 +1930,13 @@ Type aliases improve readability and maintainability for complex generic types.
 
 Beyond basic `subtype` constraints, parametric types support specialized constraints:
 
-**Subtype constraints:**
+A `subtype` constraint restricts the argument to classes that derive from a
+given class, which in turn lets the body of the parametric class use that
+class's members:
 
 <!--versetest
-entity:=class{ID:int=0}
-player:=class(entity){}
+entity := class{ID:int = 0}
+player := class(entity){}
 
 # Constrain to subtype of a class
 bounded_container(t:subtype(entity)) := class:
@@ -2354,113 +1944,117 @@ bounded_container(t:subtype(entity)) := class:
 
     GetID():int = Value.ID  # Can access entity members
 
-# Valid: player is subtype of entity
-# PlayerContainer := bounded_container(player){}
+assert:
+    # Valid: player is a subtype of entity
+    PlayerContainer := bounded_container(player){Value := player{}}
+    PlayerContainer.GetID() = 0
 
-# Invalid: int is not subtype of entity
-# IntContainer := bounded_container(int){}  # Type error
-
+assert_semantic_error(3509):
+    c_entity := class{ID:int = 0}
+    c_bounded(t:subtype(c_entity)) := class:
+        Value:t
+    Bad(X:c_bounded(int)):void = {}
 <#
 -->
-<!-- 084 -->
+<!-- 060 -->
 ```verse
+entity := class{ID:int = 0}
+player := class(entity){}
+
 # Constrain to subtype of a class
 bounded_container(t:subtype(entity)) := class:
     Value:t
 
     GetID():int = Value.ID  # Can access entity members
 
-# Valid: player is subtype of entity
-# PlayerContainer := bounded_container(player){}
+# Valid: player is a subtype of entity
+PlayerContainer := bounded_container(player){Value := player{}}
 
-# Invalid: int is not subtype of entity
-# IntContainer := bounded_container(int){}  # Type error
+# ERROR: int is not a subtype of entity
+# IntContainer := bounded_container(int){Value := 0}
 ```
 <!-- #>-->
 
-**Castable subtype constraints:**
+A `castable_subtype` constraint goes further: it requires an argument that
+can be used as the target of a runtime cast, so the parametric class can
+test values against `t` with `t[Item]`:
 
 <!--versetest
-component:=class<castable>{}
-ProcessTyped(:component)<computes>:void={}
+component := class<castable>{}
+warrior := class(component){Power:int}
+ProcessTyped(:component)<computes>:void = {}
 
-# Requires castable subtype
+# t must be usable as the target of a cast
 dynamic_handler(t:castable_subtype(component)) := class:
     Handle(Item:component):void =
         if (Typed := t[Item]):
             # Typed has the specific subtype
             ProcessTyped(Typed)
 
+# warrior satisfies the constraint
+HandleAsWarrior(Item:component):void =
+    dynamic_handler(warrior){}.Handle(Item)
 <#
 -->
-<!-- 085 -->
+<!-- 061 -->
 ```verse
-# Requires castable subtype
+component := class<castable>{}
+warrior := class(component){Power:int}
+
+# t must be usable as the target of a cast
 dynamic_handler(t:castable_subtype(component)) := class:
     Handle(Item:component):void =
         if (Typed := t[Item]):
             # Typed has the specific subtype
             ProcessTyped(Typed)
+
+# warrior satisfies the constraint
+HandleAsWarrior(Item:component):void =
+    dynamic_handler(warrior){}.Handle(Item)
 ```
 <!-- #> -->
 
-**Constraint propagation:**
+A constraint on a parametric class also tells the compiler what the body may
+do with `t`. The `comparable` constraint below is what makes `=` legal on a
+field of type `t`. A function that takes such a class has to repeat the
+constraint in a `where` clause; dropping it is an error, because the
+function would be promising less about `t` than the class demands:
 
 <!--versetest
-# Constraints propagate through function calls
+# The constraint is what makes `=` legal on Data
 wrapper(t:subtype(comparable)) := class:
     Data:t
 
-Process(W:wrapper(t) where t:subtype(comparable))<computes><decides>:void =
-    # Compiler knows t is comparable here
-    W.Data = W.Data
-<#
--->
-<!-- 086 -->
-```verse
-# Constraints propagate through function calls
-wrapper(t:subtype(comparable)) := class:
-    Data:t
+# A function taking a wrapper must repeat the constraint
+Same(W:wrapper(t), Other:t where t:subtype(comparable))<computes><decides>:void =
+    W.Data = Other
 
-Process(W:wrapper(t) where t:subtype(comparable))<computes><decides>:void =
-    # Compiler knows t is comparable here
-    W.Data = W.Data
-```
-<!-- #> -->
+assert:
+    Same[wrapper(int){Data := 5}, 5]
+    not Same[wrapper(string){Data := "a"}, "b"]
 
-When defining parametric functions that work with parametric types,
-the constraints must be compatible:
-
-<!--versetest
-base_class := class:
-    ID:int
-constrained(t:subtype(base_class)) := class:
-    Data:t
-UseConstrained(C:constrained(t) where t:subtype(base_class)):int =
-    C.Data.ID
-assert_semantic_error(3509, 3506):
-    bc := class:
-        ID:int
-    con(t:subtype(bc)) := class:
+assert_semantic_error(3509):
+    w_priv(t:subtype(comparable)) := class:
         Data:t
-    Use(C:con(t) where t:type):int = C.Data.ID
+    SamePriv(W:w_priv(t), Other:t where t:type)<computes><decides>:void =
+        W.Data = Other
 <#
 -->
-<!-- 087 -->
+<!-- 062 -->
 ```verse
-base_class := class:
-    ID:int
-
-constrained(t:subtype(base_class)) := class:
+# The constraint is what makes `=` legal on Data
+wrapper(t:subtype(comparable)) := class:
     Data:t
 
-# Valid: Constraint matches
-UseConstrained(C:constrained(t) where t:subtype(base_class)):int =
-    C.Data.ID
+# A function taking a wrapper must repeat the constraint
+Same(W:wrapper(t), Other:t where t:subtype(comparable))<computes><decides>:void =
+    W.Data = Other
 
-# Invalid: Missing or incompatible constraint
-UseConstrained(C:constrained(t) where t:type):int =  # ERROR 
-    C.Data.ID
+Same[wrapper(int){Data := 5}, 5]
+
+# ERROR: `where t:type` promises less than the class requires
+# SameLoose(W:wrapper(t), Other:t where t:type)<computes><decides>:void =
+#     W.Data = Other
 ```
 <!-- #> -->
 
@@ -2476,7 +2070,7 @@ Classes support fine-grained control over member visibility through
 access specifiers:
 
 <!--versetest-->
-<!-- 088 -->
+<!-- 063 -->
 ```verse
 game_state := class:
     Score<public> : int = 0                    # Anyone can read
@@ -2502,7 +2096,7 @@ The `<concrete>` specifier enforces that all fields have default
 values, allowing construction with an empty archetype:
 
 <!--versetest-->
-<!-- 089 -->
+<!-- 064 -->
 ```verse
 config := class<concrete>:
     MaxPlayers : int = 8
@@ -2525,9 +2119,17 @@ to `var` members and to members of function type as well:
 assert_semantic_error(3519):
     has_field := interface { Field:int }
     thing := class<concrete>(has_field) {}
+
+assert_semantic_error(3519):
+    has_field2 := interface { Field:int }
+    thing2 := class<concrete>(has_field2) { Field<override>:int }
+
+assert_semantic_error(3519):
+    has_var := interface { var Field:int }
+    thing3 := class<concrete>(has_var) {}
 <#
 -->
-<!-- 090 -->
+<!-- 065 -->
 ```verse
 has_field := interface:
     Field:int
@@ -2554,35 +2156,20 @@ identity rather than field values.
 
 Classes marked with `<unique>` compare by identity, not by value:
 
-<!-- versetest
-vector3:=struct{X:float,Y:float,Z:float}
-entity := class<unique>:
-   Name : string
-   Position : vector3
-F()<decides>:void={
-E1 := entity{Name := "Guard", Position := vector3{X := 0.0, Y := 0.0, Z := 0.0}}
-E2 := entity{Name := "Guard", Position := vector3{X := 0.0, Y := 0.0, Z := 0.0}}
-E3 := E1
-
-not(E1 = E2 ) # Fails - different instances despite identical field values
-E1 = E3  # Succeeds - same instance
-}
-<#
--->
-<!-- 091 -->
+<!--versetest-->
+<!-- 066 -->
 ```verse
 entity := class<unique>:
-   Name : string
-   Position : vector3
+    Name : string
+    Level : int
 
-E1 := entity{Name := "Guard", Position := vector3{X := 0.0, Y := 0.0, Z := 0.0}}
-E2 := entity{Name := "Guard", Position := vector3{X := 0.0, Y := 0.0, Z := 0.0}}
+E1 := entity{Name := "Guard", Level := 3}
+E2 := entity{Name := "Guard", Level := 3}
 E3 := E1
 
-E1 = E2  # Fails - different instances despite identical field values
-E1 = E3  # Succeeds - same instance
+E1 <> E2  # distinct instances, despite identical field values
+E1 = E3   # the same instance
 ```
-<!-- #>-->
 
 Without `<unique>`, class instances cannot be compared for equality at
 all—the language prevents meaningless comparisons. With `<unique>`,
@@ -2597,7 +2184,7 @@ instances of classes implementing that interface comparable by
 identity:
 
 <!--versetest-->
-<!-- 092 -->
+<!-- 067 -->
 ```verse
 component := interface<unique>:
     Update():void
@@ -2606,27 +2193,13 @@ component := interface<unique>:
 physics_component := class(component):
     Update<override>():void = {}
     Render<override>():void = {}
-```
 
-And a use case:
-
-<!--versetest
-component := interface<unique>:
-    Update():void
-    Render():void
-
-physics_component := class(component):
-    Update<override>():void = {}
-    Render<override>():void = {}
--->
-<!-- 093 -->
-```verse
 # Instances are comparable because component is unique
 P1 := physics_component{}
 P2 := physics_component{}
 
-P1 <> P2  # true - different instances
-P1 = P1   # true - same instance
+P1 <> P2  # different instances
+P1 = P1   # the same instance
 ```
 
 The `<unique>` property propagates through interface inheritance. If a
@@ -2634,7 +2207,7 @@ parent interface is marked `<unique>`, all child interfaces and
 classes implementing those interfaces automatically become comparable:
 
 <!--versetest-->
-<!-- 094 -->
+<!-- 068 -->
 ```verse
 base_component := interface<unique>:
     Update():void
@@ -2647,35 +2220,17 @@ advanced_component := interface(base_component):
 player_component := class(advanced_component):
     Update<override>():void = {}
     AdvancedUpdate<override>():void = {}
-```
 
-And a use case:
-
-<!--versetest
-base_component := interface<unique>:
-    Update():void
-
-# Child interface inherits <unique> from parent
-advanced_component := interface(base_component):
-    AdvancedUpdate():void
-
-# Classes implementing any interface in the hierarchy become comparable
-player_component := class(advanced_component):
-    Update<override>():void = {}
-    AdvancedUpdate<override>():void = {}
--->
-<!-- 095 -->
-```verse
 C1 := player_component{}
 C2 := player_component{}
-C1 <> C2  # true - comparable due to base_component being unique
+C1 <> C2  # comparable because base_component is unique
 ```
 
 When a class implements multiple interfaces, comparability is
 determined by whether ANY of the inherited interfaces is `<unique>`:
 
 <!--versetest-->
-<!-- 096 -->
+<!-- 069 -->
 ```verse
 updateable := interface:  # Not unique
     Update():void
@@ -2686,15 +2241,11 @@ renderable := interface<unique>:  # Unique
 game_object := class(updateable, renderable):
     Update<override>():void = {}
     Render<override>():void = {}
-```
 
-<!--NoCompile-->
-<!-- 097 -->
-```verse
 # game_object is comparable because renderable is unique
 G1 := game_object{}
 G2 := game_object{}
-G1 <> G2  # true
+G1 <> G2
 ```
 
 Even if most interfaces are non-unique, a single `<unique>` interface
@@ -2708,28 +2259,24 @@ applies even when the unique class is nested within complex parametric
 types:
 
 <!--versetest-->
-<!-- 098 -->
+<!-- 070 -->
 ```verse
 token := class<unique>:
     ID:int = 0
 
 container := class:
     MyToken:token = token{}
-```
 
-<!--NoCompile-->
-<!-- 099 -->
-```verse
 C1 := container{}
 C2 := container{}
-C1.MyToken <> C2.MyToken  # true - each gets its own token
+C1.MyToken <> C2.MyToken  # each container gets its own token
 ```
 
 This behavior extends to `<unique>` instances within arrays,
 optionals, tuples, and maps:
 
 <!--versetest-->
-<!-- 100 -->
+<!-- 071 -->
 ```verse
 item := class<unique>{}
 
@@ -2742,71 +2289,40 @@ with_optional := class:
 
 with_map := class:
     ItemMap:[int]item = map{0 => item{}}
-```
 
-And a use case:
-
-<!--versetest
-item := class<unique>{}
-
-# Each class instantiation creates fresh unique instances in default values
-with_array := class:
-    Items:[]item = array{item{}}
-
-with_optional := class:
-    MaybeItem:?item = option{item{}}
-
-with_map := class:
-    ItemMap:[int]item = map{0 => item{}}
--->
-<!-- 101 -->
-```verse
 A := with_array{}
 B := with_array{}
-A.Items[0] <> B.Items[0]  # true - different unique instances
+A.Items[0] <> B.Items[0]  # different unique instances
 
 C := with_optional{}
 D := with_optional{}
-if (ItemC := C.MaybeItem?, ItemD := D.MaybeItem?):
-    ItemC <> ItemD  # true - different unique instances
+ItemC := C.MaybeItem?
+ItemD := D.MaybeItem?
+ItemC <> ItemD
+
+E := with_map{}
+F := with_map{}
+E.ItemMap[0] <> F.ItemMap[0]
 ```
 
 The same principle applies when parametric classes contain unique
 instances in their fields:
 
-<!--versetest
-entity := class<unique>{}
-
-registry(t:type) := class:
-    DefaultEntity:entity = entity{}
-    Data:t
-<#
--->
-<!-- 102 -->
+<!--versetest-->
+<!-- 072 -->
 ```verse
 entity := class<unique>{}
 
 registry(t:type) := class:
     DefaultEntity:entity = entity{}
     Data:t
-```
-<!-- #>-->
 
-<!--versetest
-entity := class<unique>{}
+R1 := registry(int){Data := 1}
+R2 := registry(int){Data := 2}
+R1.DefaultEntity <> R2.DefaultEntity
 
-registry(t:type) := class:
-    DefaultEntity:entity = entity{}
-    Data:t
--->
-<!-- 103 -->
-```verse
-R1 := registry(int){Data:=1}
-R2 := registry(int){Data:=2}
-R1.DefaultEntity <> R2.DefaultEntity  # true
-
-R3 := registry(string){Data:="hi"}
-R3.DefaultEntity <> R1.DefaultEntity  # true - even across different type parameters
+R3 := registry(string){Data := "hi"}
+R3.DefaultEntity <> R1.DefaultEntity  # even across different type parameters
 ```
 
 This guarantee ensures that identity-based operations remain
@@ -2838,7 +2354,7 @@ assert_semantic_error(3532):
     Handle(A:my_unique_interface, B:my_unique_interface):void = {}  # ERROR - ambiguous!
 <#
 -->
-<!-- 104 -->
+<!-- 073 -->
 ```verse
 # Valid: non-unique interface does not conflict with comparable
 regular_interface := interface:
@@ -2863,89 +2379,35 @@ compilation error. When designing overloaded functions, be aware that
 
 #### Use Cases
 
-The `<unique>` specifier is ideal for:
+The `<unique>` specifier suits anything whose identity matters more than its
+current field values: game entities that must stay distinguishable as their
+health and position change, session objects that outlive any particular
+connection state, and resource handles that name one specific instance
+rather than an equivalent value. What all of these have in common is that
+they want to be map keys, and only a `<unique>` type can be one, because a
+map key has to be `comparable`. The same applies to `<unique>` interfaces,
+so a component registry can be keyed by an interface reference.
 
-**Game Entities:** Where each entity in the world must be
-distinguishable regardless of current state
+<!--versetest-->
+<!-- 074 -->
+```verse
+vector3 := class<final>{X:float = 0.0; Y:float = 0.0; Z:float = 0.0}
 
-<!--versetest
-vector3:=class<final>{ X:float=0.0; Y:float=0.0; Z:float=0.0 }
+# Each entity stays distinguishable however its state changes
 entity := class<unique>:
     var Health:int = 100
-    var Position:vector3
--->
-<!-- 105 -->
-```verse
-#entity := class<unique>:
-#    var Health:int = 100
-#    var Position:vector3
+    var Position:vector3 = vector3{}
 
-# Can track specific entities in collections
-var ActiveEntities:[entity]logic = map{}
+# A unique type can be a map key
+E1 := entity{}
+E2 := entity{}
+Sessions := map{E1 => "alice", E2 => "bob"}
+Sessions[E2] = "bob"
 ```
 
-**Component Interfaces:** Where you need identity-based equality for
-interface types
-
-<!--versetest
-entity:=class:
-
-component := interface<unique>:
-    Owner:entity
-    Update():void
--->
-<!-- 106 -->
-```verse
-#component := interface<unique>:
-#    Owner:entity
-
-# Can use interface references as map keys
-var ComponentRegistry:[component]string = map{}
-```
-
-**Session Objects:** Where identity matters more than current property values
-
-<!--versetest
-connection_info := class:
-
-player_session := class<unique>:
-    PlayerID:string
-    var ConnectionTime:float
--->
-<!-- 107 -->
-```verse
-#player_session := class<unique>:
-#    PlayerID:string
-#    var ConnectionTime:float
-
-# Track specific sessions
-var ActiveSessions:[player_session]connection_info = map{}
-```
-
-**Resource Handles:** Where you need to track specific instances
-rather than equivalent values
-
-<!--versetest
-gpu_resource:=class:
-
-texture_handle := class<unique>:
-    ResourceID:int
-    FilePath:string
--->
-<!-- 108 -->
-```verse
-#texture_handle := class<unique>:
-#    ResourceID:int
-#    FilePath:string
-
-# Manage resource lifecycle
-var LoadedTextures:[texture_handle]gpu_resource = map{}
-```
-
-The `<unique>` specifier enables these patterns by providing
-identity-based equality semantics, making it possible to use instances
-as map keys, maintain sets of unique objects, and distinguish between
-different instances even when their data is identical.
+The specifier is what provides identity-based equality, and with it the
+ability to maintain sets of unique objects and to tell two instances apart
+even when their data is identical.
 
 ### Abstract
 
@@ -2962,7 +2424,7 @@ methods and fields that subclasses inherit. This creates a powerful
 pattern for code reuse and polymorphic behavior.
 
 <!-- versetest-->
-<!-- 109 -->
+<!-- 075 -->
 ```verse
 vehicle := class<abstract>:
       Speed():float             # Abstract method
@@ -2998,7 +2460,7 @@ dynamic casts. You can cast between any class or interface types using the falli
 syntax `Type[Value]`:
 
 <!--versetest-->
-<!-- 110 -->
+<!-- 076 -->
 ```verse
 # No <castable> needed for basic dynamic casts
 base := class:
@@ -3030,7 +2492,7 @@ physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 ProcessSpecific(:component):void = {}
 -->
-<!-- 111 -->
+<!-- 077 -->
 ```verse
 # Requires <castable> for castable_subtype constraint
 FilterByType(
@@ -3062,7 +2524,7 @@ value is actually an instance of the target type:
 vector3:=class<final>{ X:float=0.0; Y:float=0.0; Z:float=0.0 }
 ToString(:vector3):string=""
 -->
-<!-- 112 -->
+<!-- 078 -->
 ```verse
 # Classes with <castable> - enables castable_subtype usage
 component := class<abstract><castable><allocates>:
@@ -3102,7 +2564,7 @@ physics_component := class<allocates>(component):
 SomeComponent:component=physics_component{}
 UpdatePhysics(:physics_component)<computes>:void={}
 -->
-<!-- 113 -->
+<!-- 079 -->
 ```verse
 GetPhysicsComponent(Comp:component)<computes><decides>:physics_component =
     # Returns physics_component or fails
@@ -3115,24 +2577,20 @@ if (Physics := GetPhysicsComponent[SomeComponent]):
 
 Infallible casts use parenthesis syntax `Type(Value)` and are only
 allowed when the compiler can verify the cast is safe—that is, when the
-value type is a subtype of the target type:
-
-
-<!--versetest-->
-<!-- 114 -->
-```verse
-base := class:
-    ID:int
-
-derived := class(base):
-    Name:string
-
-GetDerived():derived = derived{ID := 1, Name := "Test"}
-```
-
-Use case:
+value type is a subtype of the target type. Attempting an infallible
+downcast, from supertype to subtype, is a compile error, because the compiler
+cannot guarantee it would succeed:
 
 <!--versetest
+assert_semantic_error(3509):
+    p_base := class:
+        ID:int
+    p_derived := class(p_base):
+        Name:string
+    Bad(B:p_base):p_derived = p_derived(B)
+-->
+<!-- 080 -->
+```verse
 base := class:
     ID:int
 
@@ -3140,20 +2598,13 @@ derived := class(base):
     Name:string
 
 GetDerived():derived = derived{ID := 1, Name := "Test"}
--->
-<!-- 115 -->
-```verse
+
 # Infallible upcast - derived is a subtype of base
 BaseRef:base = base(GetDerived())  # Always safe
-```
+BaseRef.ID = 1
 
-Attempting an infallible downcast (from supertype to subtype) is a
-compile error, as the compiler cannot guarantee safety:
-
-<!--NoCompile-->
-<!-- 116 -->
-```verse
-DerivedRef := derived(BaseRef)  # ERROR: not a subtype relationship
+# ERROR: not a subtype relationship
+# DerivedRef := derived(BaseRef)
 ```
 
 
@@ -3164,7 +2615,7 @@ mark a class as `<castable>`, every class that inherits from it
 automatically becomes castable as well:
 
 <!--versetest-->
-<!-- 117 -->
+<!-- 081 -->
 ```verse
 base := class<castable>:
     Value:int
@@ -3210,7 +2661,7 @@ assert_semantic_error(3502):
         if (C2 := container(string)[C]) {}
 <#
 -->
-<!-- 118 -->
+<!-- 082 -->
 ```verse
 # Invalid: parametric classes cannot be castable
 # container(t:type) := class<castable>:  # ERROR
@@ -3230,21 +2681,8 @@ However, concrete instantiations of parametric types can be cast
 targets, and non-parametric classes can be marked `<castable>` even
 if they inherit from parametric types:
 
-<!--versetest
-container(t:type) := class:
-    Value:t
-int_container := class<castable>(container(int)):
-    Extra:string
-string_container := class<castable>(container(string)):
-    Extra:string
-assert:
-    Base:container(int) = int_container{Value := 42, Extra := "test"}
-    if (IC := int_container[Base]):
-        Print("Extra: {IC.Extra}")
-    not string_container[Base]
-<#
--->
-<!-- 119 -->
+<!--versetest-->
+<!-- 083 -->
 ```verse
 container(t:type) := class:
     Value:t
@@ -3256,15 +2694,14 @@ int_container := class<castable>(container(int)):
 string_container := class<castable>(container(string)):
     Extra:string
 
-# Can cast to concrete instantiations
+# Can cast to a concrete instantiation
 Base:container(int) = int_container{Value := 42, Extra := "test"}
-if (IC := int_container[Base]):
-    Print("Extra: {IC.Extra}")  # Works!
+IC := int_container[Base]
+IC.Extra = "test"
 
 # Cannot cast between different instantiations
-# if (SC := string_container[Base]):  # Would fail at runtime
+not string_container[Base]
 ```
-<!-- #>-->
 
 #### Using castable_subtype
 
@@ -3272,23 +2709,13 @@ The `castable_subtype` type constructor works with `<castable>`
 classes to enable type-safe filtered queries and dynamic type
 dispatch:
 
-<!--versetest
-  component<public> := class<abstract><unique><castable>:
-      Parent<public>:entity
-
-  entity<public> := class<concrete><unique><transacts><castable>:
-      FindDescendantEntities(entity_type:castable_subtype(entity)):[]entity_type = array{}
-<#
--->
-<!-- 120 -->
+<!--versetest-->
+<!-- 084 -->
 ```verse
-  component<public> := class<abstract><unique><castable>:
-      Parent<public>:entity
-
-  entity<public> := class<concrete><unique><transacts><castable>:
-      FindDescendantEntities(entity_type:castable_subtype(entity)):[]entity_type
+entity := class<abstract><unique><castable>:
+    # The type argument doubles as the element type of the result
+    FindDescendantEntities(entity_type:castable_subtype(entity)):[]entity_type
 ```
-<!-- #> -->
 
 When you call `FindDescendantEntities(player)`, the function returns
 only entities that are actually player instances or subclasses
@@ -3321,8 +2748,10 @@ cannot be extended. This is particularly important for persistable
 classes, which require `<final>` to ensure their structure remains
 stable for serialization:
 
-<!--versetest
-player_stats:=struct<persistable>{}
+<!--versetest-->
+<!-- 085 -->
+```verse
+player_stats := struct<persistable>{}
 
 player_profile := class<final><persistable>:
     Username:string = "Player"
@@ -3333,21 +2762,7 @@ player_data := class<final><persistable>:
     Version:int = 1
     LastLogin:string = ""
     Statistics:player_stats = player_stats{}
-<#
--->
-<!-- 121 -->
-```verse
-  player_profile := class<final><persistable>:
-      Username:string = "Player"
-      Level:int = 1
-      Gold:int = 0
-
-  player_data := class<final><persistable>:
-      Version:int = 1
-      LastLogin:string = ""
-      Statistics:player_stats = player_stats{}
 ```
-<!-- #>-->
 
 The `<final>` requirement for persistable classes prevents schema
 evolution problems. If subclasses could extend persistable classes,
@@ -3358,24 +2773,26 @@ For methods, `<final>` locks behavior at a specific point in the
 inheritance chain:
 
 <!--versetest
+assert_semantic_error(3568):
+    be2 := class:
+        GetName():string = "Entity"
+    go2 := class(be2):
+        GetName<override><final>():string = "GameObject"
+    sub2 := class(go2):
+        GetName<override>():string = "Sub"
+-->
+<!-- 086 -->
+```verse
 base_entity := class:
     GetName():string = "Entity"
 
 game_object := class(base_entity):
     GetName<override><final>():string = "GameObject"
-    # Any subclass of game_object cannot override GetName
-<#
--->
-<!-- 122 -->
-```verse
-  base_entity := class:
-      GetName():string = "Entity"
 
-  game_object := class(base_entity):
-      GetName<override><final>():string = "GameObject"
-      # Any subclass of game_object cannot override GetName
+# ERROR: a subclass of game_object cannot override GetName
+# sub_object := class(game_object):
+#     GetName<override>():string = "Sub"
 ```
-<!-- #>-->
 
 For fields, `<final>` prevents modification through archetype
 construction. When a field is marked `<final>` and has a default value,
@@ -3389,7 +2806,7 @@ assert_semantic_error(3568):
     G2():void =
         InvalidFoo := foo2{Val := 10}
 -->
-<!-- 123 -->
+<!-- 087 -->
 ```verse
 foo := class<computes>:
     Val<final>:int = 0
@@ -3426,7 +2843,7 @@ assert_semantic_error(3568):
         Process<override>():void = {}
         GetID<override>():int = 99
 -->
-<!-- 124 -->
+<!-- 088 -->
 ```verse
 base_behavior := interface:
     # Final method with default implementation
@@ -3460,8 +2877,12 @@ assert_semantic_error(3568):
     impl3 := class(d3):
         GetName<override>():string = "Implementation"
         GetVersion<override>():int = 2
+
+assert_semantic_error(3596):
+    final_ifc := interface<final>:
+        F():int = 1
 -->
-<!-- 125 -->
+<!-- 089 -->
 ```verse
 base := interface:
     GetVersion<final>():int = 1
@@ -3477,8 +2898,8 @@ impl := class(derived):
     # GetVersion<override>():int = 2  # ERROR
 ```
 
-**Important:** `<final>` on interface/struct types themselves produces
-an error. Use `<final>` only on their members.
+Applying `<final>` to an interface or struct *type* rather than to one of
+its members is an error; only the members may be final.
 
 The related `<final_super>` specifier does **not** prevent further
 subclassing. Instead, it guarantees that all subclasses of this class
@@ -3487,18 +2908,20 @@ classes inserted between the `<final_super>` class and its
 descendants in the inheritance chain. Subclasses can themselves be
 further subclassed:
 
-<!-- NoCompile-->
-<!-- 126 -->
+<!--versetest-->
+<!-- 090 -->
 ```verse
+entity := class{}
+
 component := class<abstract><unique><castable><final_super_base>:
-      Parent:entity
+    Parent:entity
 
 physics_component := class<final_super>(component):
-      Mass:float = 1.0
+    Mass:float = 1.0
 
 # Valid: further subclassing is allowed
 gravity_component := class(physics_component):
-      GravityScale:float = 1.0
+    GravityScale:float = 1.0
 ```
 
 `<final_super_base>` marks the root of a restricted inheritance tree.
@@ -3507,7 +2930,7 @@ finds the `<final_super>` class in the hierarchy for a given
 instance. This enables component architectures where you need to
 identify the "category" of a component at runtime:
 
-<!-- 127 -->
+<!-- 091 -->
 ```verse
 #            base_type<castable>
 #               /         \
@@ -3542,27 +2965,40 @@ system handles all serialization, network transfer, and storage
 management transparently.
 
 <!--versetest
-player:=string
+player := string
+
+assert_semantic_error(3663):
+    not_final := class<persistable>:
+        Gold:int = 0
+
+assert_semantic_error(3664):
+    is_unique := class<final><persistable><unique>:
+        Gold:int = 0
+
+assert_semantic_error(3662):
+    has_var := class<final><persistable>:
+        var Gold:int = 0
 -->
-<!-- 128 -->
+<!-- 092 -->
 ```verse
 player_inventory := class<final><persistable>:
-      Gold:int = 0
-      Items:[]string = array{}
-      UnlockedAreas:[]string = array{}
+    Gold:int = 0
+    Items:[]string = array{}
+    UnlockedAreas:[]string = array{}
 
 # This variable automatically persists across sessions
 SavedInventories : weak_map(player, player_inventory) = map{}
 ```
 
 The `<persistable>` specifier enforces strict structural requirements
-to guarantee data integrity across versions. Classes must be `<final>`
-because inheritance would complicate serialization schemas. They
-cannot contain `var` fields, preserving immutability guarantees even
-in persistent storage. They cannot be `<unique>` since identity-based
-equality does not survive serialization. These constraints ensure that
-what you save today can be reliably loaded tomorrow, next month, or
-next year.
+to guarantee data integrity across versions. Classes must be `<final>`,
+because inheritance would complicate serialization schemas. They cannot be
+`<unique>`, since identity-based equality does not survive serialization, and
+asking for both is rejected as well. Every data member must itself be
+persistable, which rules out `var` fields — a mutable member is reported as
+non-persistable, so immutability survives into storage. These constraints
+ensure that what you save today can be reliably loaded tomorrow, next month,
+or next year.
 
 ## Interfaces
 
@@ -3577,23 +3013,22 @@ An interface can declare method signatures, provide default
 implementations, and define data members:
 
 <!--versetest-->
-<!-- 129 -->
+<!-- 093 -->
 ```verse
 damageable := interface:
     # Abstract method - implementing classes must provide
     TakeDamage(Amount:int)<transacts>:void
 
     # Method with default implementation
-    GetHealth()<computes>:int = 100
+    GetHealth()<reads>:int = 100
 
     # Data member - implementing classes inherit or must provide
     MaxHealth:int = 100
 
-    IsAlive()<computes>:logic = logic{GetHealth() > 0}
+    IsAlive()<reads>:logic = logic{GetHealth() > 0}
 
 healable := interface:
-    Heal(Amount:int):void
-    GetMaxHealth():int
+    Heal(Amount:int)<transacts>:void
 ```
 
 Interfaces can be purely abstract, partially concrete, or fully
@@ -3604,26 +3039,35 @@ field values.
 ### Implementing Interfaces
 
 <!--versetest
-healable:=interface:
-    TakeDamage(Amount:int)<transacts>:void ={}
-    GetHealth():int = 0
-    Heal(Amount:int)<transacts>:void ={}
+damageable := interface:
+    TakeDamage(Amount:int)<transacts>:void
+    GetHealth()<reads>:int = 100
+    MaxHealth:int = 100
+    IsAlive()<reads>:logic = logic{GetHealth() > 0}
 
-damageable:=interface{}
+healable := interface:
+    Heal(Amount:int)<transacts>:void
 -->
-<!-- 130 -->
+<!-- 094 -->
 ```verse
 character := class(damageable, healable):
     var Health : int = 100
-    MaxHealth : int = 100
 
     TakeDamage<override>(Amount:int)<transacts>:void =
         set Health = Max(0, Health - Amount)
 
+    # MaxHealth and IsAlive are inherited unchanged
     GetHealth<override>()<reads>:int = Health
 
     Heal<override>(Amount:int)<transacts>:void =
         set Health = Min(MaxHealth, Health + Amount)
+
+Hero := character{}
+Hero.TakeDamage(30)
+Hero.GetHealth() = 70
+Hero.IsAlive() = true
+Hero.Heal(100)
+Hero.GetHealth() = 100
 ```
 
 A class can implement multiple interfaces, achieving multiple
@@ -3636,7 +3080,7 @@ or inherit. These fields can be either immutable or mutable, and may include
 default values:
 
 <!--versetest-->
-<!-- 131 -->
+<!-- 095 -->
 ```verse
 # Interface with various field types
 entity_properties := interface:
@@ -3671,7 +3115,7 @@ Interfaces can provide complete method implementations that
 implementing classes inherit automatically:
 
 <!--versetest-->
-<!-- 132 -->
+<!-- 096 -->
 ```verse
 animated := interface:
     var CurrentFrame:int = 0
@@ -3701,7 +3145,7 @@ Classes can override both fields and methods from interfaces to
 provide specialized implementations:
 
 <!--versetest-->
-<!-- 133 -->
+<!-- 097 -->
 ```verse
 base_stats := interface:
     BaseHealth:int = 100
@@ -3749,7 +3193,7 @@ methods with the same name, you use qualified names to
 disambiguate:
 
 <!--versetest-->
-<!-- 134 -->
+<!-- 098 -->
 ```verse
 magical := interface:
     Power:int = 50
@@ -3760,11 +3204,14 @@ physical := interface:
     GetPowerLevel()<computes>:int = Power * 2
 
 hybrid := class(magical, physical):
-    UseHybridPowers():void =
-       MagicPower := (magical:)Power         # Access magical's Power
-       PhysicalPower := (physical:)Power     # Access physical's Power
-       MagicLevel := (magical:)GetPowerLevel()
-       PhysicalLevel := (physical:)GetPowerLevel()
+    MagicPower()<computes>:int = (magical:)Power             # magical's Power
+    PhysicalPower()<computes>:int = (physical:)Power         # physical's Power
+    MagicLevel()<computes>:int = (magical:)GetPowerLevel()
+    PhysicalLevel()<computes>:int = (physical:)GetPowerLevel()
+
+H := hybrid{}
+H.MagicPower() = 50 and H.PhysicalPower() = 75
+H.MagicLevel() = 50 and H.PhysicalLevel() = 150
 ```
 
 The qualified name syntax `(InterfaceName:)MemberName` specifies which
@@ -3777,8 +3224,20 @@ simultaneously without conflict.
 Interfaces can extend other interfaces, creating hierarchies of
 contracts that combine data and behavior requirements:
 
-<!--NoCompile-->
-<!-- 135 -->
+<!--versetest
+damageable := interface:
+    TakeDamage(Amount:int)<transacts>:void
+
+healable := interface:
+    Heal(Amount:int)<transacts>:void
+
+assert_semantic_error(3592):
+    dup_ifc := interface:
+        F():int = 1
+    dup_class := class(dup_ifc, dup_ifc):
+        G():int = 2
+-->
+<!-- 099 -->
 ```verse
 combatant := interface(damageable, healable):
     var AttackPower:int = 10
@@ -3801,46 +3260,19 @@ entire hierarchy—`boss`, `combatant`, `damageable`, and
 through multiple paths) is fully supported, with fields properly
 merged so each field exists only once in the implementing class.
 
-**Important:** A class cannot directly inherit the same interface
-multiple times (e.g., `class(interface1, interface1)` is an error),
-but can inherit it indirectly through diamond inheritance. This means
-`class(interface2, interface3)` is valid even if both `interface2` and
-`interface3` inherit from the same base interface.
+A class cannot name the same interface twice in its own inheritance list,
+however: `class(interface1, interface1)` is a redundant
+inheritance. Inheriting the interface indirectly, through diamond
+inheritance, is fine, so `class(interface2, interface3)` is valid even when
+both `interface2` and `interface3` inherit from the same base interface.
 
 ### Fields with Accessors
 
 Interfaces can define fields with custom getter and setter logic,
 encapsulating complex behavior behind simple field access syntax:
 
-<!--versetest
-subscribable_property := interface:
-    # External field with accessor methods
-    var Value<getter(GetValue)><setter(SetValue)>:int = external{}
-
-    # Internal storage
-    var Storage:int = 100
-
-    # Getter adds computation
-    GetValue(:accessor):int = Storage + 10
-
-    # Setter adds validation
-    SetValue(:accessor, NewValue:int):void =
-        if (NewValue >= 0):
-            set Storage = NewValue
-
-tracked_value := class(subscribable_property):
-
-UseTrackedValue():void =
-    Object := tracked_value{}
-
-    # Uses getter - returns 110 (Storage + 10)
-    Current := Object.Value
-
-    # Uses setter - validates and updates Storage
-    set Object.Value = 150
-<#
--->
-<!-- 136 -->
+<!--versetest-->
+<!-- 100 -->
 ```verse
 subscribable_property := interface:
     # External field with accessor methods
@@ -3857,24 +3289,23 @@ subscribable_property := interface:
         if (NewValue >= 0):
             set Storage = NewValue
 
-tracked_value := class(subscribable_property):
+tracked_value := class(subscribable_property){}
 
-UseTrackedValue():void =
-    Object := tracked_value{}
+Object := tracked_value{}
 
-    # Uses getter - returns 110 (Storage + 10)
-    Current := Object.Value
+# Uses the getter: Storage + 10
+Object.Value = 110
 
-    # Uses setter - validates and updates Storage
-    set Object.Value = 150
+# Uses the setter, which validates and writes Storage
+set Object.Value = 150
+Object.Value = 160
 ```
-<!-- #>-->
 
 The `external{}` keyword indicates the field has no direct storage—all
 access goes through the accessor methods. This pattern is powerful for
 implementing property change notifications, validation, computed
 properties, and other scenarios requiring logic around field access.
 
-**Important:** Fields with accessors defined in interfaces cannot be
-overridden in implementing classes. The accessor implementation is
-fixed by the interface.
+One restriction comes with it: a field with accessors declared in an
+interface cannot be overridden in an implementing class. The accessor
+implementation is fixed by the interface.

@@ -25,13 +25,9 @@ Therefore, `int` is a subtype of `rational`. This means you can
 pass an `int` to any function expecting a `rational`, but not vice versa:
 
 <!--versetest
-GetInt(X:int):void = Print("Integer: {X}")
-GetRat(X:rational):void = Print("Rational")
-assert:
-    MyRat:rational = 1/3
-    MyInt:int = -10
-    GetRat(MyInt)
-<# 
+assert_semantic_error(3509):
+    _GetInt(X:int):void = {}
+    _Pass(R:rational):void = _GetInt(R)
 -->
 <!-- 01 -->
 ```verse
@@ -41,10 +37,9 @@ GetRat(X:rational):void = Print("Rational")
 MyRat:rational = 1/3
 MyInt:int = -10
 
-GetRat(MyInt)  # OK -- int is a subtype of rational
-GetInt(MyRat)  # Compile error -  rational is not a subtype of int
+GetRat(MyInt)    # OK -- int is a subtype of rational
+# GetInt(MyRat)  # Compile error - rational is not a subtype of int
 ```
-<!-- #> -->
 
 Composite types have their own subtyping rules. Arrays, options and
 tuples are covariant in their elements, so `[]int` is a subtype of
@@ -60,7 +55,7 @@ Classes and interfaces introduce nominal subtyping through
 inheritance. When a class inherits from another class or implements an
 interface, it explicitly declares a subtyping relationship:
 
-<!--versetest 02 -->
+<!--versetest-->
 <!-- 02 -->
 ```verse
 vehicle := class:
@@ -108,16 +103,21 @@ rounding strategy:
 <!-- 04 -->
 ```verse
 MyF:float = 3.7
-Opt1:int = Floor[MyF]  # Results in 3
-Opt2:int = Ceil[MyF]   # Results in 4
-Opt3:int = Round[MyF]  # Results in 4 (rounds to nearest)
+
+Down:int    = Floor[MyF]
+Up:int      = Ceil[MyF]
+Nearest:int = Round[MyF]
+
+Down = 3
+Up = 4
+Nearest = 4
 ```
 
 These conversion functions are failable - they have the `<decides>`
 effect and will fail if passed non-finite values like `NaN` or
 `Inf`. The explicit failure forces you to handle edge cases:
 
-<!--versetest 05 -->
+<!--versetest-->
 <!-- 05 -->
 ```verse
 SafeConvert(Value:float):int =
@@ -128,8 +128,12 @@ SafeConvert(Value:float):int =
     then:
        Result
     else:
-       0  # Assuming that this is safe value
+       0  # Assuming zero is a safe fallback
 ```
+<!--versetest
+SafeConvert(3.7) = 3
+SafeConvert(NaN) = 0
+-->
 
 String conversions follow similar principles. The `ToString()`
 function converts various types to their string representations, while
@@ -141,6 +145,8 @@ in strings:
 ```verse
 Score:int  = 1500
 Msg:string = "Your score: {Score}"  # Implicit ToString() call
+
+Msg = "Your score: 1500"
 ```
 
 ## Type `any`
@@ -170,13 +176,24 @@ type, if no common type is found, the array coerces to `any`:
 
 <!--versetest
 SomeFunction():void={}
+assert_semantic_error(3509):
+    _F():void={}
+    Cfg:[string]comparable = map{"count"=>42, "process"=>_F, "name"=>"Player"}
 -->
 <!-- 07 -->
 ```verse
-MixedArray := array{42, "hello", true, 3.14} # []comparable
-MixedMap := map{0=>"zero", 1=>1, 2=>2.0} # [int]comparable
-ConfigMap := map{"count"=>42, "process"=>SomeFunction, "name"=>"Player"} # [string]any
+MixedArray := array{42, "hello", true, 3.14}
+MixedMap   := map{0=>"zero", 1=>1, 2=>2.0}
+ConfigMap  := map{"count"=>42, "process"=>SomeFunction, "name"=>"Player"}
+
+# The types the compiler inferred
+Arr:[]comparable   = MixedArray
+Mp:[int]comparable = MixedMap
+Cfg:[string]any    = ConfigMap
 ```
+
+A function value is not comparable, so `ConfigMap` cannot be narrowed
+any further: annotating it `[string]comparable` is a compile error.
 
 Conditional expressions with disjoint branch types produce `any`:
 
@@ -196,9 +213,9 @@ Logical OR with disjoint types coerces to `any`:
 <!--versetest-->
 <!-- 09 -->
 ```verse
-# Returns either int or string
-OneOf(Flag:logic, I:int, S:string):any =
-    (if (Flag?) then {option{I}} else {1=2}) or S
+# Yields either the int or the string
+OneOf(MaybeI:?int, S:string):any =
+    MaybeI? or S
 ```
 
 The `any` type has restrictions that reflect its role as a generic
@@ -214,13 +231,20 @@ Generic functions with `where t:type` constraints behave fundamentally different
 
 When you pass a value to a function with parameter type `any`, the type information is lost:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3509):
+    _AcceptAny(X:any):any = X
+    _Use(M:[int]string):void =
+        R := _AcceptAny(M)
+        if (M = R) {}
+-->
 <!-- 10 -->
 ```verse
 AcceptAny(X:any):any = X
 
 MyMap:[int]string = map{1 => "one"}
 Result := AcceptAny(MyMap)  # Result has type any - type info lost
+# MyMap = Result            # Compile error: any is not comparable
 ```
 
 In contrast, generic functions preserve exact types:
@@ -242,28 +266,23 @@ This preservation extends to all container types, including arrays, maps, tuples
 - Tuple component types
 - Struct field types
 
-**Practical implications:**
-
-Container types passed through generic functions maintain their structure completely:
+The practical implication is not that the container changes shape —
+nothing happens to the value itself — but that its type stays known to
+the compiler, so every operation that type allows still works on the
+result:
 
 <!--versetest-->
 <!-- 12 -->
 ```verse
 Identity(X:t where t:type):t = X
 
-# All key types are preserved
-IntMap:[int]int = map{1 => 2, 3 => 4}
-IntMap = Identity(IntMap)  # Same type
-
-FloatMap:[float]string = map{1.0 => "one", 2.5 => "two"}
-FloatMap = Identity(FloatMap)  # Same type
-
+# Even a compound key type survives the round trip
 TupleMap:[tuple(int, string)]int = map{(1, "a") => 100}
 TupleMap = Identity(TupleMap)  # Same type
 
-# Iteration and equality work as expected
-for (Key->Value : IntMap):
-    Identity(IntMap)[Key] = Value  # All lookups succeed
+# Iteration and lookup work as expected
+for (Key->Value : TupleMap):
+    Identity(TupleMap)[Key] = Value  # All lookups succeed
 ```
 
 This makes generic functions the preferred approach when you need to write reusable code that works with containers while maintaining type safety.
@@ -282,28 +301,9 @@ perform runtime type checks. These casts succeed and return the
 casted value (`TargetType`), failing if the value is not of
 a valid target type or a subtype:
 
-<!--versetest
-component := class<castable>:
-    Name:string = "Component"
-
-physics_component := class<castable>(component):
-    Velocity:float = 0.0
-
-render_component := class<castable>(component):
-    Material:string = "default"
-
-ProcessComponent(Comp:component):void =
-    if (PhysicsComp := physics_component[Comp]):
-        Print("Physics velocity: {PhysicsComp.Velocity}")
-    else if (RenderComp := render_component[Comp]):
-        Print("Render material: {RenderComp.Material}")
-    else:
-        Print("Unknown component type")
-<#
--->
+<!--versetest-->
 <!-- 13 -->
 ```verse
-# Define a class hierarchy
 component := class<castable>:
     Name:string = "Component"
 
@@ -313,19 +313,21 @@ physics_component := class<castable>(component):
 render_component := class<castable>(component):
     Material:string = "default"
 
-# Runtime type checking with fallible casts
-ProcessComponent(Comp:component):void =
+Describe(Comp:component)<computes>:string =
     if (PhysicsComp := physics_component[Comp]):
         # Successfully cast - PhysicsComp is physics_component
-        Print("Physics velocity: {PhysicsComp.Velocity}")
+        "physics"
     else if (RenderComp := render_component[Comp]):
         # Different type - RenderComp is render_component
-        Print("Render material: {RenderComp.Material}")
+        RenderComp.Material
     else:
         # Neither type matched
-        Print("Unknown component type")
+        Comp.Name
+
+Describe(physics_component{}) = "physics"
+Describe(render_component{}) = "default"
+Describe(component{})        = "Component"
 ```
-<!-- #> -->
 
 The cast expression fails if the runtime type does not
 match, allowing you to use it directly in conditionals. The optional
@@ -335,17 +337,7 @@ binds the result to a variable when successful.
 For classes marked `<unique>`, fallible casts preserve identity—a
 successful cast returns the same instance, not a copy:
 
-<!--versetest
-entity := class<unique><castable>:
-    ID:int
-player := class<unique>(entity):
-    Name:string
-assert:
-	P := player{ID := 1, Name := "Alice"}
-	if (E := entity[P]):
-		E = P
-<#
--->
+<!--versetest-->
 <!-- 14 -->
 ```verse
 entity := class<unique><castable>:
@@ -354,14 +346,12 @@ entity := class<unique><castable>:
 player := class<unique>(entity):
     Name:string
 
-# Create an instance
 P := player{ID := 1, Name := "Alice"}
 
 # Cast to base type
-if (E := entity[P]):
-    E = P  # True - same instance
+E := entity[P]
+E = P  # Succeeds - the cast returned the very same instance
 ```
-<!-- #> -->
 
 Fallible casts work **only with class and interface types**. You
 cannot dynamically cast from or to primitive types, structs, arrays,
@@ -370,47 +360,32 @@ or other value types:
 <!--versetest
 assert_semantic_error(3512, 3509, 3547):
     component := class<castable>{}
-    Comp := component[42]
+    FromInt := component[42]
 
 assert_semantic_error(3512, 3509, 3547):
     component := class<castable>{}
-    Comp := component[3.14]
-
-assert_semantic_error(3512, 3509, 3547):
-    component := class<castable>{}
-    Comp := component["text"]
-
-assert_semantic_error(3512, 3509, 3547):
-    component := class<castable>{}
-    Comp := component[array{1,2}]
+    FromArray := component[array{1, 2}]
 
 assert_semantic_error(3512, 3509, 3547, 3512):
     component := class<castable>{}
-    Value := int[component{}]
+    ToInt := int[component{}]
 
 assert_semantic_error(3512, 3552, 3547, 3512):
     component := class<castable>{}
-    Value := logic[component{}]
-
-assert_semantic_error(3512, 3552, 3547, 3512):
-    component := class<castable>{}
-    Value := (?int)[component{}]
+    ToOption := (?int)[component{}]
 <#
 -->
 <!-- 15 -->
 ```verse
 component := class<castable>{}
 
-# Error: cannot cast from primitives
-Comp := component[42]          # int to class - not allowed
-Comp := component[3.14]        # float to class - not allowed
-Comp := component["text"]      # string to class - not allowed
-Comp := component[array{1,2}]  # array to class - not allowed
+# Error: cannot cast a non-class value to a class
+FromInt   := component[42]
+FromArray := component[array{1, 2}]
 
-# Error: cannot cast to non-class types
-Value := int[component{}]      # class to int - not allowed
-Value := logic[component{}]    # class to logic - not allowed
-Value := (?int)[component{}]   # class to option - not allowed
+# Error: cannot cast a class to a non-class type
+ToInt    := int[component{}]
+ToOption := (?int)[component{}]
 ```
 <!-- #>-->
 
@@ -438,6 +413,10 @@ Base:physics_component = physics_component{Velocity := 10.0}
 BaseComp:component = component(Base) # upcast during expression
 # or
 AlsoBaseComp:component = Base # upcast during assignment
+
+# Both still refer to the original instance
+physics_component[BaseComp].Velocity = 10.0
+physics_component[AlsoBaseComp].Velocity = 10.0
 ```
 
 Any type can be infallibly cast to `void`, which discards the value:
@@ -461,25 +440,7 @@ Types in Verse are first-class values, which means you can store types
 in variables and use them dynamically for casting. This enables
 powerful patterns for runtime polymorphism:
 
-<!--versetest
-component := class<castable>{}
-physics_component := class<castable>(component){}
-render_component := class<castable>(component){}
-
-ComponentType:castable_subtype(component) = physics_component
-
-TestComponent(Comp:component, ExpectedType:castable_subtype(component)):logic =
-    if (Specific := ExpectedType[Comp]):
-        true
-    else:
-        false
-
-assert:
-   P := physics_component{}
-   TestComponent(P, physics_component)
-   TestComponent(P, render_component)
-<#
--->
+<!--versetest-->
 <!-- 18 -->
 ```verse
 # Type hierarchy
@@ -487,22 +448,20 @@ component := class<castable>{}
 physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 
-# Store types as values
+# Store a type as a value
 ComponentType:castable_subtype(component) = physics_component
 
 # Cast using the stored type
-Test(Comp:component, ExpectedType:castable_subtype(component)):logic =
-    if (Specific := ExpectedType[Comp]):
+IsType(Comp:component, ExpectedType:castable_subtype(component))<computes>:logic =
+    if (ExpectedType[Comp]):
         true  # Component matches expected type
     else:
         false
 
-# Use with different types
 P := physics_component{}
-Test(P, physics_component)  # true
-Test(P, render_component)   # false
+IsType(P, ComponentType)?
+not IsType(P, render_component)?
 ```
-<!-- #> -->
 
 This pattern is particularly powerful when the type to check is not
 known until runtime:
@@ -513,14 +472,12 @@ component := class<castable>:
     Owner:entity
 physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
-Components:[]component=array{}
-ProcessSpecific(:component)<computes>:void={}
-LoadedConfig:string=""
+LoadedConfig:string="physics"
 -->
 <!-- 19 -->
 ```verse
 # Select type based on configuration
-GetComponentType(Config:string):castable_subtype(component) =
+GetComponentType(Config:string)<computes>:castable_subtype(component) =
     if (Config = "physics"):
         physics_component
     else if (Config = "render"):
@@ -528,12 +485,16 @@ GetComponentType(Config:string):castable_subtype(component) =
     else:
         component
 
+Components:[]component = array{
+    physics_component{Owner := entity{}},
+    render_component{Owner := entity{}}}
+
 # Use the dynamically selected type
 RequiredType := GetComponentType(LoadedConfig)
-for (Comp : Components):
-    if (Specific := RequiredType[Comp]):
-        # Process components of the required type
-        ProcessSpecific(Specific)
+Selected := for (Comp : Components, Specific := RequiredType[Comp]):
+    Specific
+
+Selected.Length = 1  # Only the physics component matched
 ```
 
 This bridges compile-time type safety with runtime flexibility,
@@ -561,19 +522,22 @@ Using the same type in multiple constraints is not yet supported, when
 implemented, it will allow to write code such as:
 
 <!--versetest
-assert_semantic_error(3588, 3588, 3503, 3503, 3506, 3532):
+assert_semantic_error(3588, 3588, 3503, 3503, 3532):
     printable := interface:
         PrintIt():void
+
+    # Multiple constraints on the same type - not supported
     F(In:t where t:subtype(comparable), t:subtype(printable)):t =
-        Print("Processing: {In}")
         In
 <#
 -->
 <!-- 21 -->
 ```verse
-# Multiple constraints on the same type
-F(In:t where t:subtype(comparable), t:subtype(printable)):t = # Not supported
-    Print("Processing: {In}")
+printable := interface:
+    PrintIt():void
+
+# Multiple constraints on the same type - not supported
+F(In:t where t:subtype(comparable), t:subtype(printable)):t =
     In
 ```
 <!-- #> -->
@@ -647,22 +611,27 @@ repeating the constraint expression each time.
 A refinement type defines a constrained subtype using value predicates:
 
 <!--versetest
-percent := type{_X:float where 0.0 <= _X, _X <= 1.0} 
+assert_semantic_error(3509):
+    _percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
+    BadPercent:_percent = 1.5
 -->
 <!-- 25 -->
 ```verse
 # Percentages: floats between 0.0 and 1.0
-# percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
+percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 
-# Valid assignments
 Opacity:percent = 0.5
-Alpha:percent = 1.0
+Alpha:percent   = 1.0
 
-# Invalid: out of range (runtime check fails)
-# BadPercent:percent = 1.5  # Fails at assignment
+# BadPercent:percent = 1.5  # Rejected: outside the range
 ```
 
-**Syntax structure:**
+Because the bound and the initializer are both literals, that last line
+is rejected by the compiler rather than at run time. A value that is
+only known at run time is checked with a fallible cast instead, as
+described below.
+
+### Syntax Structure
 
 <!--NoCompile-->
 <!-- 26 -->
@@ -676,63 +645,33 @@ TypeName := type{_Variable:BaseType where Constraint1, Constraint2, ...}
 
 Integer refinements restrict int values to specific ranges:
 
-<!--versetest
-age := type{_X:int where 0 <= _X, _X <= 120}
-ValidAge:age = 25
-positive_int := type{_X:int where _X > 0}
-Count:positive_int = 42
-small_int := type{_X:int where _X < 100}
-<#
--->
+<!--versetest-->
 <!-- 27 -->
 ```verse
 # Age between 0 and 120
 age := type{_X:int where 0 <= _X, _X <= 120}
 
 ValidAge:age = 25
-# InvalidAge:age = 150  # Fails constraint
-
-# Positive integers
-positive_int := type{_X:int where _X > 0}
-
-Count:positive_int = 42
-# Zero:positive_int = 0  # Fails: not positive
-
-# Range with single bound
-small_int := type{_X:int where _X < 100}
+not age[150]      # 150 is outside the range
 ```
-<!-- #> -->
 
-Float refinements handle continuous ranges with IEEE 754 semantics:
+Float refinements handle continuous ranges with IEEE 754 semantics,
+and a bound may be any float literal, including a negative one:
 
-<!--versetest
-normalized := type{_X:float where 0.0 <= _X, _X <= 1.0}
-positive := type{_X:float where _X > 0.0}
-celsius := type{_X:float where _X >= -273.15}
-<#
--->
+<!--versetest-->
 <!-- 28 -->
 ```verse
-# Unit interval [0.0, 1.0]
-normalized := type{_X:float where 0.0 <= _X, _X <= 1.0}
-
-# Positive floats
-positive := type{_X:float where _X > 0.0}
-
-# Temperature in Celsius above absolute zero
+# Temperature in Celsius, above absolute zero
 celsius := type{_X:float where _X >= -273.15}
+
+Freezing:celsius = 0.0
+not celsius[-300.0]
 ```
-<!-- #> -->
 
-Finite Floats (Excluding Infinity):
+The special values `Inf` and `-Inf` are float literals too, so a
+refinement can exclude them and so describe exactly the finite floats:
 
-<!--versetest
-finite := type{_X:float where -Inf < _X, _X < Inf}
-assert:
-	MaxFinite:finite = 1.7976931348623157e+308
-	MinFinite:finite = -1.7976931348623157e+308
-<#
--->
+<!--versetest-->
 <!-- 29 -->
 ```verse
 # Finite values only (no ±Inf)
@@ -742,20 +681,19 @@ finite := type{_X:float where -Inf < _X, _X < Inf}
 MaxFinite:finite = 1.7976931348623157e+308
 MinFinite:finite = -1.7976931348623157e+308
 
-# Invalid: infinities excluded
-# Infinite:finite = Inf  # Fails constraint
+not finite[Inf]
 ```
-<!-- #> -->
 
 ### IEEE 754 Edge Cases
 
-**Negative and Positive Zero:**
+#### Negative and Positive Zero
 
 IEEE 754 distinguishes between `+0.0` and `-0.0`. In verse Zero is just Zero,
 with no distinction between positve or negative.
 
-<!--versetest-->
 When any expression evaluates to Zero, the sign is discarded:
+
+<!--versetest-->
 <!-- 30 -->
 ```verse
 # Integer Zero (type{0})
@@ -773,28 +711,22 @@ Value3 = Value4 # Succeeds
 -0.0 = +0.0     # Succeeds
 ```
 
-**Floating-Point Precision:**
+#### Floating-Point Precision
 
 Constraints respect exact IEEE 754 representations:
 
-<!--versetest
-small_float := type{_X:float where _X < 0.1}
-assert:
-    Tiny:small_float = 0.09999999999999999167332731531132594682276248931884765625
-<#
--->
+<!--versetest-->
 <!-- 31 -->
 ```verse
 # Values strictly less than 0.1
 small_float := type{_X:float where _X < 0.1}
 
-# Valid: largest float before 0.1
+# Valid: the largest float below 0.1
 Tiny:small_float = 0.09999999999999999167332731531132594682276248931884765625
 
-# Invalid: 0.1's actual representation is slightly above 0.1
-# NotSmall:small_float = 0.1000000000000000055511151231257827021181583404541015625
+# 0.1 itself is not below its own stored representation
+not small_float[0.1]
 ```
-<!-- #> -->
 
 The decimal `0.1` cannot be represented exactly in binary
 floating-point, so the actual stored value is slightly above the
@@ -803,14 +735,13 @@ mathematical 0.1.
 ### Constraint Expression Restrictions
 
 Refinement type constraints have strict limitations on what
-expressions are allowed:
+expressions are allowed.
 
-**Only Literal Values:** Constraints must use literal numbers, not
-variables or expressions:
+#### Only Literal Values
+
+Constraints must use literal numbers, not variables or expressions:
 
 <!--versetest
-bounded := type{_X:float where _X < 100.0}
-
 assert_semantic_error(3502):
     Limit:float = 100.0
     bad_type := type{_X:float where _X < Limit}
@@ -818,44 +749,34 @@ assert_semantic_error(3502):
 assert_semantic_error(3512, 3502):
     GetMax():float = 100.0
     bad_type := type{_X:float where _X < GetMax()}
-
-assert_semantic_error(3506, 3502):
-    Config := module{Max:float = 100.0}
-    bad_type := type{_X:float where _X < (Config:)Max}
-<#
 -->
 <!-- 32 -->
 ```verse
 # Valid: literal float
 bounded := type{_X:float where _X < 100.0}
 
-# Invalid: cannot use variables
-Limit:float = 100.0
-bad_type := type{_X:float where _X < Limit}  # ERROR
+# Invalid: a bound may not be a variable
+# Limit:float = 100.0
+# bad_type := type{_X:float where _X < Limit}
 
-# Invalid: cannot use function calls
-GetMax():float = 100.0
-bad_type := type{_X:float where _X < GetMax()}  # ERROR
-
-# Invalid: cannot use qualified names
-Config := module{Max:float = 100.0}
-bad_type := type{_X:float where _X < (Config:)Max}  # ERROR
+# Invalid: nor a function call
+# GetMax():float = 100.0
+# bad_type := type{_X:float where _X < GetMax()}
 ```
-<!-- #> -->
 
 This ensures constraints are statically known at compile time.
 
-**Float Literals Required for Float Types:** When constraining floats,
-bounds must be float literals (with decimal point):
+#### Float Literals Required for Float Types
+
+When constraining floats, bounds must be float literals, written with
+a decimal point:
 
 <!--versetest
-good_float := type{_X:float where _X <= 142.0}
-
-assert:
-     1
 assert_semantic_error(3502):
-    bad_float38 := type{_X:float where _X <= 142}
-<#
+    bad_float := type{_X:float where _X <= 142}
+
+assert_semantic_error(3502):
+    nan_type := type{_X:float where _X <= NaN}
 -->
 <!-- 33 -->
 ```verse
@@ -865,26 +786,14 @@ assert_semantic_error(3502):
 # Valid: float literal
 good_float := type{_X:float where _X <= 142.0}
 ```
-<!-- #> -->
 
-**NaN Not Allowed:** Not a Number cannot appear in
-constraints:
+#### NaN Not Allowed
 
-<!--versetest
-assert_semantic_error(3502):
-    nan_type39 := type{_X:float where _X <= NaN}
--->
-<!-- 34 -->
-```verse
-# Invalid: NaN in constraint
-# nan_type := type{_X:float where _X <= NaN}      # ERROR
-# nan_type := type{_X:float where NaN <= _X}      # ERROR
-# nan_type := type{_X:float where 0.0/0.0 <= _X}  # ERROR
-```
+Not a Number cannot appear in constraints, in any spelling: `_X <=
+NaN`, `NaN <= _X` and `_X <= 0.0/0.0` are all rejected. Since `NaN`
+comparisons are always false, such constraints would be meaningless.
 
-Since `NaN` comparisons are always false, such constraints would be meaningless.
-
-**Allowed Literal Forms:**
+The literal forms a constraint does allow are these:
 
 - Float literals: `1.0`, `3.14`, `-2.5`, `1.7976931348623157e+308`
 - Integer literals: `0`, `42`, `-100` (for int refinements)
@@ -894,27 +803,17 @@ Since `NaN` comparisons are always false, such constraints would be meaningless.
 
 Refinement types are checked at assignment and through fallible casts:
 
-<!--versetest-->
 <!--versetest
-percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
-GetInputFromUser<public>()<computes>:float = 50.0
-ProcessPercent<public>(P:percent):void = {}
-ShowError<public>(Msg:string):void = {}
-assert:
-   Valid:percent = 0.5
-   UserInput:float = GetInputFromUser()
-   if (Value := percent[UserInput]):
-       ProcessPercent(Value)
-   else:
-       ShowError()
-<#
+GetInputFromUser()<computes>:float = 50.0
+ProcessPercent(P:float):void = {}
+ShowError(Msg:string):void = {}
 -->
-<!-- 35 -->
+<!-- 34 -->
 ```verse
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 
 # Direct assignment (compile-time known)
-Valid:percent = 0.5  # OK
+Valid:percent = 0.5
 
 # Runtime check with fallible cast
 UserInput:float = GetInputFromUser()
@@ -923,9 +822,11 @@ if (Value := percent[UserInput]):
     ProcessPercent(Value)
 else:
     # Out of range
-    ShowError()
+    ShowError("out of range")
+
+percent[0.25] = 0.25  # The cast returns the value itself
+not percent[1.5]
 ```
-<!-- #> -->
 
 The cast `percent[UserInput]` returns `percent` succeeding if the
 value satisfies the constraint, or failing otherwise.
@@ -935,59 +836,44 @@ value satisfies the constraint, or failing otherwise.
 Refinement types work as parameter and return types:
 
 <!--versetest
-finite := type{_X:float where -Inf < _X, _X < Inf}
-Half(X:finite):float = X / 2.0
-assert:
-   Half(100.0)
-   Half(1.0)
 assert_semantic_error(3509):
-    finite41 := type{_X:float where -Inf < _X, _X < Inf}
-    Half41(X:finite41):float = X / 2.0
-    G41():void =
-        Half41(Inf)
-<#
+    _finite := type{_X:float where -Inf < _X, _X < Inf}
+    _Half(X:_finite):float = X
+    _G():void = _Half(Inf)
 -->
-<!-- 36 -->
+<!-- 35 -->
 ```verse
 finite := type{_X:float where -Inf < _X, _X < Inf}
 
 # Parameter with constraint
-Half(X:finite):float = X / 2.0
+Half(X:finite)<computes>:float = X / 2.0
 
-Half(100.0)  # Returns 50.0
-Half(1.0)    # Returns 0.5
+Half(100.0) = 50.0
+Half(1.0)   = 0.5
 
 # Cannot pass infinity
 # Half(Inf)  # ERROR: Inf not in finite
 ```
-<!-- #> -->
 
-**Coercion and Negation:**
+A refinement type also survives negation: the compiler negates the
+bounds along with the value, so a `percent` becomes a
+`negative_percent`.
 
-<!--versetest
-percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
-negative_percent := type{_X:float where _X <= 0.0, _X >= -1.0}
-
-assert:
-   MakePercent():percent = 0.5
-   NegValue:negative_percent = -MakePercent()
-   NegValue2:negative_percent = ---0.7
-<#
--->
-<!-- 37 -->
+<!--versetest-->
+<!-- 36 -->
 ```verse
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 negative_percent := type{_X:float where _X <= 0.0, _X >= -1.0}
 
-MakePercent():percent = 0.5
+MakePercent()<computes>:percent = 0.5
 
-# Negation preserves constraint compatibility
-NegValue:negative_percent = -MakePercent()  # -0.5 valid
+NegValue:negative_percent = -MakePercent()
+NegValue = -0.5
 
-# Multiple negations
-NegValue2:negative_percent = ---0.7  # Triple negation = -0.7
+# Repeated negation folds before the constraint is checked
+NegValue2:negative_percent = ---0.7
+NegValue2 = -0.7
 ```
-<!-- #> -->
 
 ### Overloading Restrictions
 
@@ -1000,46 +886,34 @@ assert_semantic_error(3532):
     not_infinity := type{_X:float where Inf > _X}
     F(X:percent):float = 0.0
     F(X:not_infinity):float = X
-<#
 -->
-<!-- 38 -->
+<!-- 37 -->
 ```verse
 percent := type{_X:float where 0.0 <= _X, _X <= 1.0}
 not_infinity := type{_X:float where Inf > _X}
 
-# ERROR: Cannot distinguish - percent ⊂ not_infinity
+# ERROR: cannot distinguish - percent is contained in not_infinity,
+# so a call such as F(0.5) would match both overloads
 # F(X:percent):float = 0.0
 # F(X:not_infinity):float = X
-
-# Calling F(0.5) would be ambiguous - which overload?
 ```
-<!-- #>-->
 
 However, **disjoint** refinement types can overload:
-<!--versetest
-positive := type{_X:float where _X > 0.0}
-negative := type{_X:float where _X < 0.0}
-F(X:positive):float = X
-F(X:negative):float = X + 1.0
-assert:
-   F(1.0)=1.0
-   F(-1.0)=0.0
-<#
--->
-<!-- 39 -->
+
+<!--versetest-->
+<!-- 38 -->
 ```verse
 positive := type{_X:float where _X > 0.0}
 negative := type{_X:float where _X < 0.0}
 
 # Valid: ranges do not overlap (zero excluded from both)
-F(X:positive):float = X
-F(X:negative):float = X + 1.0
+F(X:positive)<computes>:float = X
+F(X:negative)<computes>:float = X + 1.0
 
-F(1.0)   # Returns 1.0 (positive overload)
-F(-1.0)  # Returns 0.0 (negative overload)
-# F(0.0)  # Would fail - neither overload matches
+F(1.0)  = 1.0   # positive overload
+F(-1.0) = 0.0   # negative overload
+# F(0.0)        # Would fail - neither overload matches
 ```
-<!-- #> -->
 
 ## Comparable and Equality
 
@@ -1060,7 +934,7 @@ The equality operators `=` and `<>` are defined in terms of the
 comparable type:
 
 <!--NoCompile-->
-<!-- 40 -->
+<!-- 39 -->
 ```verse
 operator'='(X:t, Y:t where t:subtype(comparable))<decides>:t
 operator'<>'(X:t, Y:t where t:subtype(comparable))<decides>:t
@@ -1069,25 +943,23 @@ operator'<>'(X:t, Y:t where t:subtype(comparable))<decides>:t
 The signatures require that both operands be subtypes of comparable
 and the return type is the least upper bound of their types.
 
-<!--versetest
-assert:
-    0 = 0
-    0.0 = 0.0
-
-<#
--->
-<!-- 41 -->
+<!--versetest-->
+<!-- 40 -->
 ```verse
-0 = 0        # Succeeds - both are int
-0.0 = 0.0    # Succeeds - both are float
-0 = 0.0      # Fails - there is no implicit conversion from int to float
+0 = 0            # Succeeds - both are int
+0.0 = 0.0        # Succeeds - both are float
+not (0 = 0.0)    # Fails - there is no implicit conversion from int to float
 ```
-<!-- #> -->
+
+Note that `0 = 0.0` is not rejected by the compiler. Both operands are
+subtypes of `comparable`, so the comparison type-checks; it simply
+never succeeds, because an `int` and a `float` are never the same
+value.
 
 How the return type of `=` is computed:
 
 <!--versetest-->
-<!-- 42 -->
+<!-- 41 -->
 ```verse
 # The declared return types are what `=` actually produces, so these
 # signatures type-check; both comparisons then fail at runtime
@@ -1108,21 +980,8 @@ instances are not comparable because there's no universal way to
 define equality for user-defined types. However, you can make a class
 comparable using the `unique` specifier:
 
-<!--versetest
-entity := class<unique>:
-    ID:int
-    Name:string
-
-F()<decides>:void={
-Player1 := entity{ID := 1, Name := "Alice"}
-Player2 := entity{ID := 1, Name := "Alice"}
-Player3 := Player1
-
-Player1 = Player2  # Fails - different instances
-Player1 = Player3  # Succeeds - same instance
-}<#
--->
-<!-- 43 -->
+<!--versetest-->
+<!-- 42 -->
 ```verse
 entity := class<unique>:
     ID:int
@@ -1132,12 +991,9 @@ Player1 := entity{ID := 1, Name := "Alice"}
 Player2 := entity{ID := 1, Name := "Alice"}
 Player3 := Player1
 
-Player1 = Player2  # Fails - different instances
-Player1 = Player3  # Succeeds - same instance
+not (Player1 = Player2)  # Different instances, equal fields
+Player1 = Player3        # Same instance
 ```
-<!--versetest
-#>
--->
 
 With the `unique` specifier, instances are only equal to themselves
 (identity equality), not to other instances with the same field values
@@ -1149,19 +1005,8 @@ for class equality.
 The `comparable` type is commonly used as a constraint in generic
 functions to ensure operations like equality testing are available:
 
-<!--versetest
-Find(Items:[]t, Target:t where t:subtype(comparable))<decides>:int =
-    Results := for (Index->Item:Items, Item = Target):
-        Index
-    Results[0]
-
-assert:
-    # Works with any comparable type
-    Position := Find[array{"apple", "banana", "cherry"}, "banana"]  # Succeeds and returns 1
-    Position = 1
-<#
--->
-<!-- 44 -->
+<!--versetest-->
+<!-- 43 -->
 ```verse
 Find(Items:[]t, Target:t where t:subtype(comparable))<decides>:int =
     Results := for (Index->Item:Items, Item = Target):
@@ -1169,9 +1014,9 @@ Find(Items:[]t, Target:t where t:subtype(comparable))<decides>:int =
     Results[0]
 
 # Works with any comparable type
-Position := Find[array{"apple", "banana", "cherry"}, "banana"]  # Succeeds and returns 1
+Position := Find[array{"apple", "banana", "cherry"}, "banana"]
+Position = 1
 ```
-<!-- #>-->
 
 ### Array-Tuple Comparison
 
@@ -1179,7 +1024,7 @@ A notable feature of Verse's equality system is that arrays and tuples
 of comparable elements can be compared with each other:
 
 <!--versetest-->
-<!-- 45 -->
+<!-- 44 -->
 ```verse
 # Arrays can equal tuples
 array{1, 2, 3} = (1, 2, 3)       # Succeeds
@@ -1208,7 +1053,7 @@ assert_semantic_error(3532):
     G(X:comparable):void = {}
 <#
 -->
-<!-- 46 -->
+<!-- 45 -->
 ```verse
 # Not allowed - ambiguous overloads
 F(X:int):void = {}
@@ -1224,7 +1069,7 @@ G(X:comparable):void = {}  # ERROR: unique_class is comparable
 However, you can overload with non-comparable types:
 
 <!--versetest-->
-<!-- 47 -->
+<!-- 46 -->
 ```verse
 # This is allowed
 regular_class := class{}  # Not comparable
@@ -1239,7 +1084,7 @@ comparable values into the `comparable` type explicitly. These boxed
 values maintain their equality semantics:
 
 <!--versetest-->
-<!-- 48 -->
+<!-- 47 -->
 ```verse
 AsComparable(X:comparable):comparable = X
 
@@ -1281,14 +1126,7 @@ There is currently no way to make a regular class comparable by
 writing a custom comparison method. Only the `<unique>` specifier
 enables class comparability through identity equality.
 
-## Type Hierarchies
-
-The type system forms a lattice rather than a simple tree. This means
-types can have multiple supertypes, though multiple inheritance is
-currently limited to interfaces. Understanding these relationships
-helps you design flexible, reusable code.
-
-### Understanding void
+## Type `void`
 
 Unlike `any`, which erases type information, `void` serves as a
 "discard" type indicating that a value's specific type does not matter.
@@ -1303,7 +1141,7 @@ discarded by the type system:
 <!--versetest
 WriteToFile(:string)<transacts>:void = {}
 -->
-<!-- 49 -->
+<!-- 48 -->
 ```verse
 LogEvent(Message:string)<transacts>:void =
     WriteToFile(Message)
@@ -1319,7 +1157,7 @@ system. This ensures side effects and computations occur even when the
 return value is discarded:
 
 <!--versetest-->
-<!-- 50 -->
+<!-- 49 -->
 ```verse
 MakePair(X:string, Y:string):void = (X, Y)
 
@@ -1330,7 +1168,7 @@ MakePair("hello", "world")  # Still creates ("hello", "world")
 Functions with `void` parameters accept any argument type:
 
 <!--versetest-->
-<!-- 51 -->
+<!-- 50 -->
 ```verse
 Discard(X:void):int = 42
 
@@ -1343,7 +1181,7 @@ Class fields can be typed as `void`, accepting any initialization
 value:
 
 <!--versetest-->
-<!-- 52 -->
+<!-- 51 -->
 ```verse
 config := class:
     Setting:void = array{1, 2}  # Default with array
@@ -1352,7 +1190,7 @@ config := class:
 In function types, `void` participates in variance:
 
 <!--versetest-->
-<!-- 53 -->
+<!-- 52 -->
 ```verse
 IntIdentity(X:int):int = X
 
@@ -1371,22 +1209,22 @@ However, `void` in parameter position does NOT allow conversion the
 other way:
 
 <!--versetest
-# Test that this conversion is not allowed
 assert_semantic_error(3509):
     IntFunction(X:int):int = X
-    F:void->int = IntFunction  # ERROR: Cannot convert int->int to void->int
-<#
+    F:void->int = IntFunction
 -->
-<!-- 54 -->
+<!-- 53 -->
 ```verse
 IntFunction(X:int):int = X
-# F:void->int = IntFunction  # ERROR
-# Cannot convert int parameter to void parameter in function type
-```
-<!-- #>-->
 
-**void vs false**: The `false` type is the empty/bottom type
-(uninhabited type) with no values. It's the opposite of `void`:
+# F:void->int = IntFunction  # ERROR
+# Cannot convert an int parameter to a void parameter in a function type
+```
+
+### `void` and `false`
+
+The `false` type is the empty, or bottom, type: an uninhabited type
+with no values at all. It is the opposite of `void`:
 
 - **`void`**: Universal supertype - all types are subtypes of void, contains all values
 - **`false`**: Bottom type - subtype of all types, contains zero values
@@ -1407,7 +1245,7 @@ subtype of `?B`. This allows natural code like:
 <!--versetest
 RationalPrinter(X:rational):string=""
 -->
-<!-- 55 -->
+<!-- 54 -->
 ```verse
 ProcessNumbers(Nums:[]rational):void =
     for (N : Nums):
@@ -1423,28 +1261,14 @@ type `(T1)->R1` is a subtype of `(T2)->R2` if T2 is a subtype of T1
 (contravariance) and R1 is a subtype of R2 (covariance). This ensures
 that function subtyping preserves type safety:
 
-<!--versetest
-function_type1 := type{_(:any):int}
-function_type2 := type{_(:int):any}
-# Concrete function that matches function_type1
-ConcreteFunc(Input:any):int = 42
-# Function that takes function_type2 and uses it
-UseFunction(F:function_type2, Value:int):void =
-    Result:any = F(Value)  # Call with int, get any
-TestSubtyping():void =
-    UseFunction(ConcreteFunc, 5)
-<#
--->
-<!-- 56 -->
+<!--versetest-->
+<!-- 55 -->
 ```verse
 function_type1 := type{_(:any):int}
 function_type2 := type{_(:int):any}
 
-# function_type1 is a subtype of function_type2
-# It accepts more general input (any vs int) - contravariance
-# And returns more specific output (int vs any) - covariance
-
-# Demonstrate: a function matching type1 can be used where type2 is expected
+# function_type1 is a subtype of function_type2: it accepts more
+# general input (any vs int) and returns more specific output (int vs any)
 ConcreteFunc(Input:any):int = 42
 
 UseFunction(F:function_type2, Value:int):void =
@@ -1452,7 +1276,6 @@ UseFunction(F:function_type2, Value:int):void =
 
 UseFunction(ConcreteFunc, 5)  # Works: function_type1 <: function_type2
 ```
-<!-- #>-->
 
 ## Type Aliases
 
@@ -1463,25 +1286,10 @@ frequently-used type combinations.
 
 A type alias is created using simple assignment syntax at module scope:
 
-<!--versetest
-# At module scope
-entity:=struct{}
-
-# Simple type aliases
-coordinate := tuple(float, float, float)
-entity_map := [string]entity
-player_id := int
-
-# Function type aliases
-update_handler := type{_(:float):void}
-validator := int -> logic
-transformer := type{_(:string):int}
-<#
--->
-<!-- 57 -->
+<!--versetest-->
+<!-- 56 -->
 ```verse
-# At module scope
-entity:=struct{}
+entity := struct{}
 
 # Simple type aliases
 coordinate := tuple(float, float, float)
@@ -1491,26 +1299,23 @@ player_id := int
 # Function type aliases
 update_handler := type{_(:float):void}
 validator := int -> logic
-transformer := type{_(:string):int}
+
+Origin:coordinate = (0.0, 0.0, 0.0)
+Registry:entity_map = map{"hero" => entity{}}
 ```
-<!-- #> -->
 
 Type aliases are compile-time only - they create no runtime overhead
 and are purely for programmer convenience and code clarity.
 
-**Type aliases are alternative names, not new types.** They do not
-create distinct types like `newtype` in some languages. Values of the
-alias and the original type are completely interchangeable:
+A type alias is an alternative name, not a new type. Aliases do not
+create distinct types the way `newtype` does in some languages. Values
+of the alias and the original type are completely interchangeable:
 
-<!--versetest
+<!--versetest-->
+<!-- 57 -->
+```verse
 player_id := int
 game_id := int
--->
-<!-- 58 -->
-```verse
-# Assume
-# player_id := int
-# game_id := int
 
 ProcessPlayer(ID:player_id):void = {}
 ProcessGame(ID:game_id):void = {}
@@ -1528,29 +1333,31 @@ ProcessGame(PID)        # OK - player_id is also int
 Type aliases can have access specifiers that control their visibility across modules:
 
 <!--versetest
+assert_semantic_error(3594):
+    ProtectedAlias<protected> := float
 # Public alias - accessible from other modules
 PublicAlias<public> := int
 
 # Internal alias - only accessible within defining module
 InternalAlias<internal> := string
-
-# Note: Protected/private are for classes and interfaces, not type aliases at module scope
 <#
 -->
-<!-- 59 -->
+<!-- 58 -->
 ```verse
 # Public alias - accessible from other modules
 PublicAlias<public> := int
 
 # Internal alias - only accessible within defining module
 InternalAlias<internal> := string
-
-# Protected/private also work
-ProtectedAlias<protected> := float  # only in classes and interfaces
 ```
 <!-- #> -->
 
-**Type aliases cannot be more public than the types they alias:**
+Only `<public>` and `<internal>` are available here. Writing
+`ProtectedAlias<protected> := float` at module scope is an error,
+because `protected` and `private` are meaningful only inside a class
+or an interface.
+
+A type alias cannot be more public than the type it aliases:
 
 <!--versetest
 private_class := class{}
@@ -1558,34 +1365,33 @@ private_class := class{}
 InternalToInternal<internal> := private_class
 InternalAlias := private_class  # Defaults to internal
 
-# Test that public alias to internal type produces error
 assert_semantic_error(3593):
     M<public> := module:
         internal_class := class{}
         PublicToInternal<public> := internal_class
 <#
 -->
-<!-- 60 -->
+<!-- 59 -->
 ```verse
 private_class := class{}      # No specifier = internal scope
 
-# INVALID: Public alias to internal type
+# INVALID: public alias to an internal type
 # PublicToPrivate<public> := private_class
 
-# VALID: Same or less visibility
+# VALID: same or less visibility
 InternalToInternal<internal> := private_class
 InternalAlias := private_class  # Defaults to internal
 ```
 <!-- #> -->
 
-### Requirement
+#### Requirements
 
-- **Type aliases can only be defined at module scope.** They cannot be
+- Type aliases can only be defined at module scope. They cannot be
 defined inside classes, functions, or any nested scope.
 This restriction ensures type aliases have consistent visibility and
 prevents scope-dependent type interpretations.
 
-- Type aliases must be defined **before** they are used. Forward
+- Type aliases must be defined before they are used. Forward
 references are not allowed.
 
 - Type aliases are not first-class values and cannot be used as such.
@@ -1606,37 +1412,21 @@ which are specialized for classes and interfaces, `subtype(T)` works
 with **any type** in Verse, including primitives, enums, collections,
 and function types.
 
-<!--versetest
-animal := class<computes> {}
-dog := class<computes>(animal) {}
-
-registry := class<computes><allocates>:
-    var AnimalType:subtype(animal) = animal
-
-    # Assign class types
-    F0()<transacts>:void = set AnimalType = animal
-    F1()<transacts>:void = set AnimalType = dog
-
-    # Accept as parameter
-    F3(ClassArg:subtype(animal))<transacts>:void = set AnimalType = ClassArg
-<#
--->
-<!-- 61 -->
+<!--versetest-->
+<!-- 60 -->
 ```verse
 animal := class {}
 dog := class(animal) {}
 
-# Example of using subtype as a field type
-var AnimalType:subtype(animal)  # Can hold animal, dog, or any subtype of animal
+registry := class:
+    # Can hold animal, dog, or any subtype of animal
+    var AnimalType:subtype(animal) = animal
 
-# Assign class types
-F0():void = set AnimalType = animal
-F1():void = set AnimalType = dog  # dog is subtype of animal
+    SetToDog()<transacts>:void = set AnimalType = dog
 
-# Accept as parameter
-F3(ClassArg:subtype(animal)):void = set AnimalType = ClassArg
+    # A type value can also arrive as a parameter
+    SetTo(ClassArg:subtype(animal))<transacts>:void = set AnimalType = ClassArg
 ```
-<!-- #>-->
 
 The key capability of `subtype(T)` is holding type values at runtime
 while maintaining type safety through the subtype relationship.
@@ -1644,40 +1434,40 @@ while maintaining type safety through the subtype relationship.
 Unlike the other metatypes, `subtype(T)` accepts any type as its parameter:
 
 <!--versetest
-my_enum := enum { A, B, C }
-my_class := class {}
-my_interface := interface {}
+assert_semantic_error(3549):
+    ArrayType:subtype([]int) = []int
 -->
-<!-- 62 -->
+<!-- 61 -->
 ```verse
-# Primitives
-IntType:subtype(int) = int
-LogicType:subtype(logic) = logic
-FloatType:subtype(float) = float
+my_enum      := enum { A, B, C }
+my_interface := interface {}
+int_array    := []int
+void_fn      := type{_():void}
 
-# Enums
-EnumType:subtype(my_enum) = my_enum
-
-# Classes and interfaces
-ClassType:subtype(my_class) = my_class
+IntType:subtype(int)                = int
+EnumType:subtype(my_enum)           = my_enum
 InterfaceType:subtype(my_interface) = my_interface
-
-# Note: Collection types and function types in subtype() currently have issues:
-# ArrayType:subtype([]int) = []int  # Error: cannot be defined
-# OptionType:subtype(?string) = ?string  # Error: cannot be defined
-# FuncType:subtype(type{_():void}) = type{_():void}  # Error: cannot be defined
+ArrayType:subtype(int_array)        = int_array
+FuncType:subtype(void_fn)           = void_fn
 ```
+
+Collection and function types have to be named by an alias first. The
+compound type may not be written inline in the annotation of a
+definition, because `ArrayType:subtype([]int) = []int` is parsed as an
+indexing expression on the left-hand side and rejected. Naming the
+type sidesteps the ambiguity; there is no restriction on the metatype
+itself.
 
 This universality makes `subtype(T)` the most flexible of the metatypes, suitable for any scenario where you need to store or pass type values.
 
-**Subtyping Relationship:**
+#### Subtyping Relationship
 
 The `subtype` constructor preserves the subtyping relationship:
 `subtype(T) <: subtype(U)` if and only if `T <: U`. This means you can
 assign a more specific subtype to a less specific one:
 
 <!--versetest-->
-<!-- 63 -->
+<!-- 62 -->
 ```verse
 super_class := class{}
 sub_class := class(super_class) {}
@@ -1693,7 +1483,7 @@ SupertypeVar:subtype(super_class) = SubtypeVar  # Valid
 This also applies to interfaces:
 
 <!--versetest-->
-<!-- 64 -->
+<!-- 63 -->
 ```verse
 super_interface := interface{}
 sub_interface := interface(super_interface) {}
@@ -1705,12 +1495,12 @@ SpecificType:subtype(sub_interface) = class_impl
 GeneralType:subtype(super_interface) = SpecificType  # Valid
 ```
 
-**Using with Interfaces:**
+#### Using with Interfaces
 
 When working with interfaces, `subtype(T)` can hold any class that implements the interface:
 
 <!--versetest-->
-<!-- 65 -->
+<!-- 64 -->
 ```verse
 printable := interface:
     PrintIt():void
@@ -1722,12 +1512,12 @@ document := class(printable):
 DocumentType:subtype(printable) = document
 ```
 
-**Relationship to `type`:**
+#### Relationship to `type`
 
 Both `subtype(T)` and `castable_subtype(T)` are subtypes of `type`, meaning they can be used where `type` is expected:
 
 <!--versetest-->
-<!-- 66 -->
+<!-- 65 -->
 ```verse
 c := class:
     f(C:subtype(c)):type = return(C)  # Valid: subtype(c) <: type
@@ -1736,15 +1526,12 @@ t := interface {}
 g(x:subtype(t)):type = x  # Valid: subtype(t) <: type
 ```
 
-**Restrictions:**
+#### Restrictions
 
-While `subtype(T)` is flexible, it has important restrictions:
-
-1. **Cannot use as value:** `subtype(T)` is a type constructor, not a
-   value. You cannot use `subtype(T)` itself as a value.
-2. **Exactly one argument:** `subtype` requires exactly one type argument.
-3. **Cannot use with attributes:** `subtype` cannot be used with
-   classes that inherit from `attribute`.
+While `subtype(T)` is flexible, it has important restrictions. It is a
+type constructor, not a value, so you cannot use `subtype(T)` itself
+as a value. It requires exactly one type argument. And it cannot be
+used with classes that inherit from `attribute`.
 
 ### concrete_subtype
 
@@ -1754,7 +1541,7 @@ is one that can be instantiated directly—it has the `<concrete>`
 specifier and provides default values for all fields:
 
 <!--versetest-->
-<!-- 67 -->
+<!-- 66 -->
 ```verse
 # Abstract base class
 entity := class<abstract>:
@@ -1778,8 +1565,9 @@ spawner := class:
         # Instantiate using the stored type
         EntityType{}
 
-# Use it
-# NewEntity := spawner{EntityType := player}.Spawn()
+NewEntity := spawner{EntityType := player}.Spawn()
+NewEntity.Name = "Player"
+spawner{EntityType := enemy}.Spawn().Name = "Enemy"
 ```
 
 The key feature of `concrete_subtype` is that it ensures the stored type can be instantiated. Without this constraint, you couldn't safely call `EntityType{}` because abstract classes cannot be instantiated.
@@ -1791,21 +1579,25 @@ interface type. Additionally, the actual type value assigned must be a
 concrete class—one marked with `<concrete>` and having all fields with
 defaults:
 
-<!--versetest-->
-<!-- 68 -->
+<!--versetest
+assert_semantic_error(3509):
+    abstract_base := class<abstract>:
+        Value:int
+    BaseType:concrete_subtype(abstract_base) = abstract_base
+-->
+<!-- 67 -->
 ```verse
 # Valid: concrete class with all defaults
 config := class<concrete>:
     MaxPlayers:int = 8
     TimeLimit:float = 300.0
 
-ConfigType:concrete_subtype(config) = config  # Valid
+ConfigType:concrete_subtype(config) = config
 
-# Invalid: abstract class cannot be concrete_subtype
+# Invalid: an abstract class is not a concrete_subtype
 abstract_base := class<abstract>:
     Value:int
 
-# This would be an error:
 # BaseType:concrete_subtype(abstract_base) = abstract_base
 ```
 
@@ -1813,8 +1605,17 @@ When you have a `concrete_subtype`, you can instantiate it with the
 empty archetype `{}`, but you cannot provide field initializers—the
 concrete class must provide all necessary defaults:
 
-<!--versetest-->
-<!-- 69 -->
+<!--versetest
+assert_semantic_error(3552):
+    entity_base := class<abstract>:
+        Health:int
+    warrior := class<concrete>(entity_base):
+        Health<override>:int = 100
+    holder := class:
+        EntityType:concrete_subtype(entity_base)
+        Bad():entity_base = EntityType{Health := 150}
+-->
+<!-- 68 -->
 ```verse
 entity_base := class<abstract>:
     Health:int
@@ -1822,13 +1623,16 @@ entity_base := class<abstract>:
 warrior := class<concrete>(entity_base):
     Health<override>:int = 100
 
-EntityType:concrete_subtype(entity_base) = warrior
+spawner := class:
+    EntityType:concrete_subtype(entity_base)
 
-# Valid: empty archetype uses defaults
-# Instance := EntityType{}
+    # Valid: the empty archetype uses the concrete class's defaults
+    Spawn():entity_base = EntityType{}
 
-# Invalid: cannot initialize fields through metatype
-# Instance := EntityType{Health := 150}
+    # Invalid: cannot initialize fields through the metatype
+    # Spawn2():entity_base = EntityType{Health := 150}
+
+spawner{EntityType := warrior}.Spawn().Health = 100
 ```
 
 ### castable_subtype
@@ -1846,7 +1650,7 @@ cast syntax regardless of `<castable>`:
 entity:=class{}
 vector3:=class{}
 -->
-<!-- 70 -->
+<!-- 69 -->
 ```verse
 # Castable base class
 component := class<abstract><castable>:
@@ -1881,7 +1685,7 @@ representatives for families of related types:
 entity:=class{}
 vector3:=class{}
 -->
-<!-- 71 -->
+<!-- 70 -->
 ```verse
 component := class<castable>:
     Owner:entity
@@ -1905,7 +1709,7 @@ By marking `physics_component` as `<final_super>`, you declare it as the canonic
 The `GetCastableFinalSuperClass` function queries the type hierarchy to find the `<final_super>` class between a base type and a derived type. Two variants exist:
 
 <!--NoCompile-->
-<!-- 72 -->
+<!-- 71 -->
 ```verse
 # Takes an instance
 GetCastableFinalSuperClass(BaseType, instance)<decides>:castable_subtype(BaseType)
@@ -1927,7 +1731,7 @@ Consider this hierarchy:
 <!--versetest
 vector3:=class{}
 -->
-<!-- 73 -->
+<!-- 72 -->
 ```verse
 component := class<castable>:
     ID:int
@@ -1948,19 +1752,27 @@ Query results:
 
 
 <!--versetest
-entity:=class{}
-vector3:=class{}
-component:=class{}
-character_body:=class(component){ID :int, Velocity :vector3, Mass :float, Health :int}
+vector3 := class{}
+component := class<castable>:
+    ID:int
+physics_component := class<final_super>(component):
+    Velocity:vector3
+rigid_body := class(physics_component):
+    Mass:float
+character_body := class(rigid_body):
+    Health:int
 -->
-<!-- 74 -->
+<!-- 73 -->
 ```verse
 # All instances in the physics_component family return physics_component
 Body := character_body{ID:=1, Velocity:=vector3{}, Mass:=10.0, Health:=100}
 
 if (Family := GetCastableFinalSuperClass[component, Body]):
-    # Family = physics_component (the final_super anchor)
-    # Even though Body is character_body, the family anchor is physics_component
+    # Family = physics_component (the final_super anchor), even though
+    # Body is a character_body
+    Family[Body]
+else:
+    false  # Never taken - the query succeeds
 ```
 
 The function "walks up" the inheritance chain from `character_body` → `rigid_body` → `physics_component` and stops at `physics_component` because:
@@ -1968,51 +1780,33 @@ The function "walks up" the inheritance chain from `character_body` → `rigid_b
 1. It has `<final_super>`
 2. It directly inherits from the queried base (`component`)
 
-**When Queries Succeed and Fail?**
+#### When Queries Succeed and Fail
 
-**Succeeds when:**
+A query succeeds when a `<final_super>` class directly inherits from
+the base type and the instance or type inherits from that
+`<final_super>` class:
 
-- A `<final_super>` class directly inherits from the base type
-- The instance/type inherits from that `<final_super>` class
-
-<!--versetest
-base := class<castable>:
-    Value:int=1
-anchor := class<final_super>(base):
-    Extra:string=""
-derived := class(anchor){ More:string="" }
-
-# Test that the calls succeed (do not fail)
-TestQueries()<decides>:void =
-    if:
-        Result1 := GetCastableFinalSuperClass[base, derived{}]  # Returns anchor
-        Result2 := GetCastableFinalSuperClass[base, anchor{}]   # Returns anchor
-    then:
-        void
-<#
--->
-<!-- 75 -->
+<!--versetest-->
+<!-- 74 -->
 ```verse
 base := class<castable>:
-    Value:int
+    Value:int = 0
 
 anchor := class<final_super>(base):
-    Extra:string
+    Extra:string = ""
 
 derived := class(anchor):
-    More:string
+    More:string = ""
 
 # Valid: anchor is final_super of base, derived inherits from anchor
-GetCastableFinalSuperClass[base, derived{}]  # Returns anchor
-GetCastableFinalSuperClass[base, anchor{}]   # Returns anchor
+if (GetCastableFinalSuperClass[base, derived{}]) {} else { false }
+if (GetCastableFinalSuperClass[base, anchor{}])  {} else { false }
 ```
-<!-- #>-->
 
-**Fails when:**
-
-- No `<final_super>` class exists between base and instance
-- The queried type itself is the instance type (cannot query from same level)
-- Instance is not a subtype of the base
+It fails when no `<final_super>` class exists between base and
+instance, when the queried type is itself the instance type, so that
+there is no level to walk up from, or when the instance is not a
+subtype of the base.
 
 
 #### Multiple Final Supers
@@ -2020,45 +1814,27 @@ GetCastableFinalSuperClass[base, anchor{}]   # Returns anchor
 You can have multiple `<final_super>` classes at different levels. The
 function returns the one directly inheriting from the queried base:
 
-<!--versetest
-base := class<castable>:
-    ID:int=1
-first_anchor := class<final_super>(base):
-    Category:string=""
-second_anchor := class<final_super>(first_anchor):
-    Subcategory:string=""
-leaf := class(second_anchor){ Specific:string="" }
-
-# Test that the calls succeed
-TestQueries()<decides>:void =
-    if:
-        Result1 := GetCastableFinalSuperClass[base, leaf{}]  # Returns first_anchor
-        Result2 := GetCastableFinalSuperClass[first_anchor, leaf{}]  # Returns second_anchor
-    then:
-        void
-<#
--->
-<!-- 76 -->
+<!--versetest-->
+<!-- 75 -->
 ```verse
 base := class<castable>:
-    ID:int
+    ID:int = 0
 
 first_anchor := class<final_super>(base):
-    Category:string
+    Category:string = ""
 
 second_anchor := class<final_super>(first_anchor):
-    Subcategory:string
+    Subcategory:string = ""
 
 leaf := class(second_anchor):
-    Specific:string
+    Specific:string = ""
 
 # Query from base returns first_anchor
-GetCastableFinalSuperClass[base, leaf{}]  # Returns first_anchor
+if (GetCastableFinalSuperClass[base, leaf{}]) {} else { false }
 
 # Query from first_anchor returns second_anchor
-GetCastableFinalSuperClass[first_anchor, leaf{}]  # Returns second_anchor
+if (GetCastableFinalSuperClass[first_anchor, leaf{}]) {} else { false }
 ```
-<!-- #>-->
 
 
 This layered approach allows hierarchical categorization where
@@ -2069,28 +1845,16 @@ different levels represent different granularities of type families.
 The type-based variant works identically but takes a type instead of instance:
 
 <!--versetest
-component:=class<castable>{}
+component := class<castable>{}
 physics_component := class<final_super>(component){}
 rigid_body := class(physics_component){}
-
-# Test both functions work
-TestBothVariants()<decides>:void =
-    if:
-        TypeFamily := GetCastableFinalSuperClassFromType[component, rigid_body]
-        InstanceFamily := GetCastableFinalSuperClass[component, rigid_body{}]
-    then:
-        void
-<#
 -->
-<!-- 77 -->
+<!-- 76 -->
 ```verse
-# Same behavior, different syntax
+# Same behaviour, different argument: both return physics_component
 TypeFamily := GetCastableFinalSuperClassFromType[component, rigid_body]
-InstanceFamily := GetCastableFinalSuperClass[component, rigid_body{}]
-
-# Both return the same castable_subtype
+if (GetCastableFinalSuperClass[component, rigid_body{}]) {} else { false }
 ```
-<!-- #>-->
 
 This is useful when working with type values directly rather than instances.
 
@@ -2101,49 +1865,42 @@ The `castable_concrete_subtype(t)` type constructor combines the requirements of
 - Marked with `<castable>` (enabling runtime type queries)
 - Marked with `<concrete>` (enabling instantiation)
 
-This is useful when you need to ensure that type parameters are both castable and concrete:
+This is useful when you need a stored type to be both castable and concrete:
 
 <!--versetest
 entity := class{}
-
-component := class<abstract>:
-    Owner:entity
+-->
+<!-- 77 -->
+```verse
+component := class<abstract><castable>:
+    Owner:entity = entity{}
 
 physics_component := class<castable><concrete>(component):
     Velocity:float = 0.0
 
-assert:
-    # Must be both castable (for type queries) and concrete (for instantiation)
-    CreateAndCast(CompType:castable_concrete_subtype(component)):component =
-        # Can instantiate because it is concrete
+factory := class:
+    # Must be both castable (for type queries) and concrete (to instantiate)
+    CompType:castable_concrete_subtype(component)
+
+    CreateAndCast():component =
+        # Can instantiate because CompType is <concrete>
         Instance := CompType{}
-        # Can cast because it is castable
+        # Can cast because CompType is <castable>
         if (Specific := CompType[Instance]):
             Specific
         else:
             Instance
--->
-<!--NoCompile-->
-<!-- 78 -->
-```verse
-entity := class{}
 
-component := class<abstract>:
-    Owner:entity
-
-physics_component := class<castable><concrete>(component):
-    Velocity:float = 0.0
-
-# Function that requires both <castable> and <concrete>
-CreateAndCast(CompType:castable_concrete_subtype(component)):component =
-    # Can instantiate because CompType is <concrete>
-    Instance := CompType{}
-    # Can cast because CompType is <castable>
-    if (Specific := CompType[Instance]):
-        Specific
-    else:
-        Instance
+Made := factory{CompType := physics_component}.CreateAndCast()
+physics_component[Made].Velocity = 0.0
 ```
+
+The type value has to be held in a class *field*, as it is here. A
+`concrete_subtype` or `castable_concrete_subtype` that arrives as a
+function *parameter* cannot be instantiated: writing `CompType{}` on a
+parameter is rejected with "CompType is not a macro". Casting with a
+parameter, as in the `castable_subtype` example above, works fine; it
+is only the archetype syntax that is restricted to fields.
 
 ### classifiable_subset
 
@@ -2191,7 +1948,7 @@ physics_component := class<final_super>(component){}
 rigid_body := class(physics_component){}
 render_component := class<castable>(component){}
 -->
-<!-- 79 -->
+<!-- 78 -->
 ```verse
 # Immutable set, initially empty
 EmptySet:classifiable_subset(component) = MakeClassifiableSubset()
@@ -2207,25 +1964,18 @@ DynamicSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
 The base type `t` must be `<castable>`, ensuring runtime type queries
 are possible. This restriction is enforced at compile time:
 
-<!--versetest
-component:=class<computes><castable>{}
-f()<reads>:void =
-    ComponentSet:classifiable_subset(component) = MakeClassifiableSubset()
-
-<#
--->
-<!-- 80 -->
+<!--versetest-->
+<!-- 79 -->
 ```verse
+component := class<castable>{}
 ComponentSet:classifiable_subset(component) = MakeClassifiableSubset()
 
 # Invalid: non-castable types cannot be used
 regular_class := class:
     Value:int
 
-# This would be an error:
 # BadSet:classifiable_subset(regular_class) = MakeClassifiableSubset()
 ```
-<!-- #> -->
 
 You cannot subclass these types or create instances through ordinary
 construction syntax. This ensures that all sets use the proper
@@ -2249,7 +1999,7 @@ physics_component := class<castable>(component):
 rigid_body_component := class<castable>(physics_component):
     Mass:float=0.0
 -->
-<!-- 81 -->
+<!-- 80 -->
 ```verse
 # Add a rigid body instance
 Set:classifiable_subset(component) =
@@ -2276,7 +2026,7 @@ rigid_body_component := class<castable>(physics_component){ }
 render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 -->
-<!-- 82 -->
+<!-- 81 -->
 ```verse
 # Add multiple different types
 TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
@@ -2296,7 +2046,7 @@ component := class<castable>{}
 physics_component := class<castable>(component){}
 rigid_body_component := class<castable>(physics_component){ }
 -->
-<!-- 83 -->
+<!-- 82 -->
 ```verse
 # Add multiple instances of same type
 TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
@@ -2309,16 +2059,36 @@ TheSet.Remove[Key1]
 TheSet.Contains[physics_component]  # still succeeds - Key2 remains
 
 TheSet.Remove[Key2]
-# TheSet.Contains[physics_component]  # fail - last instance removed
+not TheSet.Contains[physics_component]  # fails - last instance removed
 ```
 
 #### Core Operations
 
 The `classifiable_subset` types provide several operations for
-querying and manipulating type sets:
+querying and manipulating type sets.
 
-**Contains** checks whether any type in the set matches or is a
+##### Contains
+
+`Contains` checks whether any type in the set matches or is a
 subtype of the queried type:
+
+<!--versetest
+component := class<castable>{}
+physics_component := class<castable>(component){}
+render_component := class<castable>(component){}
+-->
+<!-- 83 -->
+```verse
+TheSet:classifiable_subset(component) =
+    MakeClassifiableSubset(array{physics_component{}})
+
+TheSet.Contains[component]             # a physics_component is a component
+not TheSet.Contains[render_component]  # no render component was added
+```
+
+##### ContainsAll
+
+`ContainsAll` verifies that all types in an array are present in the set:
 
 <!--versetest
 component := class<castable>{}
@@ -2330,112 +2100,78 @@ render_component := class<castable>(component){}
 TheSet:classifiable_subset(component) =
     MakeClassifiableSubset(array{physics_component{}})
 
-if (TheSet.Contains[component]):
-    # Physics component is present (and is a component)
-
-if (TheSet.Contains[render_component]):
-    # No render component present
+TheSet.ContainsAll[array{physics_component, component}]
+not TheSet.ContainsAll[array{physics_component, render_component}]
 ```
 
-**ContainsAll** verifies that all types in an array are present in the set:
+##### ContainsAny
+
+`ContainsAny` checks whether at least one type from an array is present:
 
 <!--versetest
 component := class<castable>{}
 physics_component := class<castable>(component){}
-render_component := class<castable>(component){}
+audio_component := class<castable>(component){}
 -->
 <!-- 85 -->
 ```verse
 TheSet:classifiable_subset(component) =
     MakeClassifiableSubset(array{physics_component{}})
 
-if (TheSet.ContainsAll[array{physics_component, render_component}]):
-    # Both physics and render components are present
+# Physics is present, audio is not, so at least one matches
+TheSet.ContainsAny[array{physics_component, audio_component}]
 ```
 
-**ContainsAny** checks whether at least one type from an array is present:
+##### Add and Remove
 
-<!--NoCompile-->
-<!-- 86 -->
-```verse
-if (TheSet.ContainsAny[array{physics_component, audio_component}]):
-    # Either physics or audio component (or both) is present
-```
-
-**Add** (mutable sets only) adds an instance and returns a key for later removal:
-
-
-<!--versetest
-component := class<castable>{ Name:string = "Component"}
-physics_component := class<castable>(component){}
--->
-<!-- 87 -->
-```verse
-TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
-Key := TheSet.Add(physics_component{})
-# Can later remove using Key
-```
-
-**Remove** (mutable sets only) removes a previously added instance by its key:
+`Add`, on mutable sets only, adds an instance and returns a key for
+later removal. `Remove`, also on mutable sets only, takes such a key
+and removes the instance it identifies. It fails if the key is not
+present, either because it was never added or because it has already
+been removed:
 
 <!--versetest
 component := class<castable>{}
 physics_component := class<castable>(component){}
 -->
-<!-- 88 -->
+<!-- 86 -->
 ```verse
 TheSet:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
 
 Key := TheSet.Add(physics_component{})
-
-if (TheSet.Remove[Key]):
-    # Successfully removed
-else:
-    # Key was not present (already removed or never added)
+TheSet.Remove[Key]      # Succeeds
+not TheSet.Remove[Key]  # Fails - the key is already spent
 ```
 
-**FilterByType** creates a new set containing only types that are compatible (assignable to or from) the specified type:
+##### FilterByType
 
+`FilterByType` creates a new set containing only types that are compatible (assignable to or from) the specified type:
 
 <!--versetest
 component := class<castable>{}
 physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
-
-# Test FilterByType
-TestFilterByType()<decides>:void =
-    TheSet:classifiable_subset(component) = MakeClassifiableSubset(array{
-        physics_component{}, render_component{}, audio_component{}})
-
-    # Filter to physics-related types
-    PhysicsSet := TheSet.FilterByType(physics_component)
-    if:
-        PhysicsSet.Contains[physics_component]  # true
-        not PhysicsSet.Contains[render_component]   # false - unrelated sibling
-        PhysicsSet.Contains[component]          # true - base type compatible
-    then:
-        void
-<#
 -->
-<!-- 89 -->
+<!-- 87 -->
 ```verse
 TheSet:classifiable_subset(component) = MakeClassifiableSubset(array{
     physics_component{}, render_component{}, audio_component{}})
 
 # Filter to physics-related types
 PhysicsSet := TheSet.FilterByType(physics_component)
-PhysicsSet.Contains[physics_component]  # true
-PhysicsSet.Contains[render_component]   # false - unrelated sibling
-PhysicsSet.Contains[component]          # true - base type compatible
+PhysicsSet.Contains[physics_component]
+not PhysicsSet.Contains[render_component]  # unrelated sibling
+PhysicsSet.Contains[component]             # base type is compatible
 ```
-<!-- #>-->
 
 The filtering respects both upward and downward compatibility in the
 type hierarchy, keeping types that could be assigned to or from the
 filter type.
 
-**Union** combines two sets using the `+` operator:
+##### Union
+
+Two sets are combined with the `+` operator:
 
 <!--versetest
 component := class<castable>{}
@@ -2444,7 +2180,7 @@ render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 entity := class{}
 -->
-<!-- 90 -->
+<!-- 88 -->
 ```verse
 Set1:classifiable_subset(component) =
     MakeClassifiableSubset(array{physics_component{}})
@@ -2464,7 +2200,7 @@ physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 -->
-<!-- 91 -->
+<!-- 89 -->
 ```verse
 Set1:classifiable_subset_var(component) = MakeClassifiableSubsetVar()
 Set1.Add(physics_component{})
@@ -2498,7 +2234,7 @@ physics_component := class<castable>(component){}
 render_component := class<castable>(component){}
 audio_component := class<castable>(component){}
 -->
-<!-- 92 -->
+<!-- 90 -->
 ```verse
 render_set:classifiable_subset(render_component) = MakeClassifiableSubset()
 physics_comp:physics_component = physics_component{}

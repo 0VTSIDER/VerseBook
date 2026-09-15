@@ -47,7 +47,10 @@ markdown_extensions:
  - def_list
  - toc:
      permalink: true
-     toc_depth: 3
+     # Right-hand table of contents lists h2 and h3 only. The page title (h1)
+     # and the h4/h5 subheadings still get ids and permalinks, so links to
+     # them keep working; they just do not clutter the sidebar.
+     toc_depth: 2-3
 #  - pymdownx.highlight:
 #       default_lang: verse
 #       linenums: false

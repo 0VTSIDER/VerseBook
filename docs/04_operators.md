@@ -4,9 +4,9 @@ Operators are functions that perform actions on their operands. They provide con
 
 ## Operator Formats
 
-Verse operators come in three formats based on their position relative to their operands:
+Verse operators come in three formats, distinguished by their position relative to their operands.
 
-### Prefix Operators
+#### Prefix Operators
 
 Prefix operators appear before their single operand:
 
@@ -14,7 +14,7 @@ Prefix operators appear before their single operand:
 - `-Value` - Numeric negation
 - `+Value` - Numeric positive (for alignment)
 
-### Infix Operators
+#### Infix Operators
 
 Infix operators appear between their two operands:
 
@@ -23,7 +23,7 @@ Infix operators appear between their two operands:
 - `A = B` - Equality comparison
 - `A and B` - Logical AND
 
-### Postfix Operators
+#### Postfix Operators
 
 Postfix operators bind to the expression on their left. While some (like `.`) appear between two elements, they are classified as postfix because they operate on the left-hand expression:
 

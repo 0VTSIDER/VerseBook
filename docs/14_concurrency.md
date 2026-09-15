@@ -70,14 +70,13 @@ assert_semantic_error(3512):
 -->
 <!-- 01 -->
 ```verse
-# Function marked with suspends can use async expressions
-MyAsyncFunction()<suspends>:void =
-    Sleep(1.0)  # Pause execution
+# Marked suspends, so it may call Sleep
+Announce()<suspends>:void =
+    Sleep(1.0)
     Print("One second later!")
 
-# Regular functions cannot use async expressions
-MyImmediateFunction():void =
-    # Sleep(1.0)  # ERROR: Cannot use Sleep without suspends
+# No suspends, so Sleep(1.0) here would be an error
+AnnounceNow():void =
     Print("This happens immediately")
 ```
 
@@ -119,16 +118,13 @@ assert_semantic_error(3512):
 -->
 <!-- 02 -->
 ```verse
-# Valid: structured concurrency in suspends function
 ProcessConcurrently()<suspends>:void =
     sync:
         Operation1()
         Operation2()
 
-# Invalid: cannot use sync without suspends
-# ProcessImmediate():void =
-#     sync:  # ERROR: sync requires suspends
-#         Operation1()
+# Dropping <suspends> from the signature above is an error:
+# the sync calls Operation1 and Operation2, which suspend.
 ```
 
 ### The sync Expression
@@ -140,29 +136,35 @@ execution, `sync` provides a clean way to express this parallelism
 while maintaining deterministic behavior.
 
 <!--versetest
-AsyncOperation1()<suspends>:int=1
-AsyncOperation2()<suspends>:int=1
-AsyncOperation3()<suspends>:int=1
-F()<suspends>:void={
-Results := sync:
-    AsyncOperation1()
-    AsyncOperation2()
-    AsyncOperation3()
-Print("All operations complete with results: {Results(0)} {Results(1)} {Results(2)}")
-}
-<#
+cell<public> := class:
+    var Ids:tuple(int, int, int) = (0, 0, 0)
+FetchTextures()<suspends>:int =
+    Sleep(0.0)
+    1
+FetchSounds()<suspends>:int =
+    Sleep(0.0)
+    2
+FetchModels()<suspends>:int =
+    Sleep(0.0)
+    3
 -->
 <!-- 03 -->
 ```verse
-# All expressions start simultaneously and must all complete
-Results := sync:
-    AsyncOperation1()  # Returns value1
-    AsyncOperation2()  # Returns value2
-    AsyncOperation3()  # Returns value3
-
-Print("All operations complete with results: {Results(0)} {Results(1)} {Results(2)}")
+# All three arms start together; sync waits for every one of them
+LoadAssets()<suspends>:tuple(int, int, int) =
+    sync:
+        FetchTextures()
+        FetchSounds()
+        FetchModels()
 ```
-<!-- #> -->
+<!--versetest
+Loaded := cell{}
+RunLoad()<suspends>:void =
+    set Loaded.Ids = LoadAssets()
+spawn{RunLoad()}
+# Results arrive in the order the arms were written, not the order they finished.
+Loaded.Ids = (1, 2, 3)
+-->
 
 Inside a `sync` block, all subexpressions begin execution at
 essentially the same moment. The sync expression then waits patiently
@@ -192,45 +194,43 @@ ProcessData(:int,:int,:int):void={}
 FetchDataA()<suspends>:int=1
 FetchDataB()<suspends>:int=1
 FetchDataC():int=1
-F()<suspends>:void={
-sync:
-    block:  # Task 1 - sequential operations
-        LoadTexture()
-        ApplyTexture()
-    block:  # Task 2 - parallel to task 1
-        LoadSound()
-        PlaySound()
-    LoadModel()  # Task 3 - parallel to tasks 1 and 2
-ProcessData(sync:
-    FetchDataA()
-    FetchDataB()
-    FetchDataC()
-)
-}
-<#
+assert_semantic_error(3538):
+    OnlyAsyncArm()<suspends>:void = {}
+    ImmediateArm():void = {}
+    TooFewAsync()<suspends>:void =
+        sync:
+            OnlyAsyncArm()
+            ImmediateArm()
 -->
 <!-- 04 -->
 ```verse
-# Nested blocks for complex operations
-sync:
-    block:  # Task 1 - sequential operations
-        LoadTexture()
-        ApplyTexture()
-    block:  # Task 2 - parallel to task 1
-        LoadSound()
-        PlaySound()
-    LoadModel()  # Task 3 - parallel to tasks 1 and 2
+# An arm can be a block of steps that run in order
+PrepareScene()<suspends>:void =
+    sync:
+        block:
+            LoadTexture()
+            ApplyTexture()
+        block:
+            LoadSound()
+            PlaySound()
+        LoadModel()      # Immediate, so this arm just runs
 
-# Using sync results directly as function arguments
-ProcessData(sync:
-    FetchDataA()
-    FetchDataB()
-    FetchDataC()
-)
+# A sync can be used directly as an argument list
+Gather()<suspends>:void =
+    ProcessData(sync:
+        FetchDataA()
+        FetchDataB()
+        FetchDataC()
+    )
 ```
-<!--versetest
-#>
--->
+
+An arm does not have to be async. `LoadModel` and `FetchDataC` above are
+ordinary immediate functions, and a `sync` is happy to include them: they
+simply run to completion at once and contribute their value to the result
+tuple. What the compiler does insist on is that at least two of the arms be
+async. A `sync` in which only one arm can suspend has nothing to overlap, so
+the compiler rejects it and suggests writing the arms in
+sequence instead.
 
 ### The race Expression
 
@@ -244,31 +244,34 @@ mechanisms, and any situation where you want the fastest possible
 response.
 
 <!--versetest
-SlowOperation()<suspends>:int=0
-FastOperation()<suspends>   :int=0
-MediumOperation()<suspends>   :int=0
-
-TestRace()<suspends>:void =
-    # First to complete wins, others are canceled
-    Winner := race:
-        SlowOperation()     # Takes 5 seconds
-        FastOperation()     # Takes 1 second - wins!
-        MediumOperation()   # Takes 3 seconds
-
-    Print("Winner result: {Winner}")  # Prints FastOperation's result 
-<#
+cell<public> := class:
+    var Winner:int = 0
+SlowOperation()<suspends>:int =
+    NextTick()
+    1
+FastOperation()<suspends>:int =
+    Sleep(0.0)
+    2
+MediumOperation()<suspends>:int =
+    NextTick()
+    3
 -->
 <!-- 05 -->
 ```verse
-# First to complete wins, others are canceled
-Winner := race:
-    SlowOperation()     # Takes 5 seconds
-    FastOperation()     # Takes 1 second - wins!
-    MediumOperation()   # Takes 3 seconds
-
-Print("Winner result: {Winner}")  # Prints FastOperation's result
+# First to complete wins; the other two are cancelled
+Fastest()<suspends>:int =
+    race:
+        SlowOperation()     # 1, slowest
+        FastOperation()     # 2, finishes first and wins
+        MediumOperation()   # 3, in between
 ```
-<!-- #> -->
+<!--versetest
+Race := cell{}
+RunRace()<suspends>:void =
+    set Race.Winner = Fastest()
+spawn{RunRace()}
+Race.Winner = 2
+-->
 
 The power of race becomes apparent when you consider real game
 scenarios. Imagine querying multiple servers for data, where you want
@@ -283,7 +286,7 @@ begin cleanup. This is not just an optimization; it is crucial for
 resource management and preventing unwanted side effects from
 operations that are no longer needed.
 
-**Type handling in race:**
+#### The Result Type of a race
 
 The type system handles race elegantly. Since only one subexpression's
 result will be returned, the result type of a race is the most
@@ -292,117 +295,119 @@ safety while maintaining flexibility in what kinds of operations you
 can race against each other:
 
 <!--versetest
-base_class := class:
-    Value:int
-
-derived_a := class(base_class):
-    Name:string = "A"
-
-derived_b := class(base_class):
-    Name:string = "B"
-
-GetA()<suspends>:derived_a = derived_a{Value := 1}
-GetB()<suspends>:derived_b = derived_b{Value := 2}
-
-F()<suspends>:void={
-Result:base_class = race:
-    GetA()
-    GetB()
-SameTypeResult:int = race:
-    block:
-        Sleep(1.0)
-        42
-    block:
-        Sleep(2.0)
-        100
-}
-<#
+cell<public> := class:
+    var Sides:int = 0
 -->
 <!-- 06 -->
 ```verse
-base_class := class:
-    Value:int
+shape := class:
+    Sides:int
 
-derived_a := class(base_class):
-    Name:string = "A"
+triangle := class(shape):
+    Sides<override>:int = 3
 
-derived_b := class(base_class):
-    Name:string = "B"
+square := class(shape):
+    Sides<override>:int = 4
 
-GetA()<suspends>:derived_a = derived_a{Value := 1}
-GetB()<suspends>:derived_b = derived_b{Value := 2}
+GetTriangle()<suspends>:triangle =
+    NextTick()              # Never finishes here
+    triangle{}
 
-# Result type is base_class (common supertype)
-Result:base_class = race:
-    GetA()  # Returns derived_a
-    GetB()  # Returns derived_b
-# Result is base_class, can hold either derived type
+GetSquare()<suspends>:square =
+    Sleep(0.0)
+    square{}
 
-# If all expressions return the same type, that is the result type
-SameTypeResult:int = race:
-    block:
-        Sleep(1.0)
-        42
-    block:
-        Sleep(2.0)
-        100
-# Result type is int
+# Two different arm types, so the result is their common supertype
+PickShape()<suspends>:shape =
+    race:
+        GetTriangle()
+        GetSquare()
 ```
-<!-- #> -->
+<!--versetest
+Picked := cell{}
+RunPick()<suspends>:void =
+    set Picked.Sides = PickShape().Sides
+spawn{RunPick()}
+# The square won, and the shape-typed result really is the square.
+Picked.Sides = 4
+-->
+
+The rule degenerates pleasantly in the common case. When every arm already has
+the same type, the most specific common supertype of that set is the type
+itself, so racing two arms that both produce an `int` gives you an `int` with
+no widening and no casting at the other end.
 
 A pattern involves adding identifiers to determine which subexpression won:
 
 <!--versetest
-SlowOperation()<suspends>:int=0
-FastOperation()  <suspends> :int=0
-InfiniteOperation()  <suspends> :int=0
-F()<suspends>:void={
-WinnerID := race:
-    block:
-        SlowOperation()
-        1
-    block:
-        FastOperation()
-        2
-    block:
-        loop:
-            InfiniteOperation()
-        3
-
-case(WinnerID):
-    1 => Print("Slow operation won somehow!")
-    2 => Print("Fast operation won as expected")
-    _ => Print("Impossible!")
-}
-<#
+cell<public> := class:
+    var Id:int = 0
+SlowOperation()<suspends>:void = NextTick()
+FastOperation()<suspends>:void = Sleep(0.0)
+Forever()<suspends>:void = loop { NextTick() }
 -->
 <!-- 07 -->
 ```verse
-# Adding identifiers to determine which expression won
-WinnerID := race:
-    block:
-        SlowOperation()
-        1  # Return 1 if this wins
-    block:
-        FastOperation()
-        2  # Return 2 if this wins
-    block:
-        loop:
-            InfiniteOperation()
-        3  # Never returns
-
-case(WinnerID):
-    1 => Print("Slow operation won somehow!")
-    2 => Print("Fast operation won as expected")
-    _ => Print("Impossible!")
+# Tag each arm so the winner identifies itself
+WhoWon()<suspends>:int =
+    race:
+        block:
+            SlowOperation()
+            1
+        block:
+            FastOperation()
+            2
+        block:
+            Forever()
+            3       # Unreachable
 ```
-<!-- #> -->
+<!--versetest
+Won := cell{}
+RunWho()<suspends>:void =
+    set Won.Id = WhoWon()
+spawn{RunWho()}
+Won.Id = 2
+-->
 
 #### Resolution Stops Unstarted Arms
 
 `race` starts its arms in order. If the race resolves before every arm has
-started — which happens when one arm completes another synchronously — the
-remaining arms **never start at all**. Their side effects do not run.
+started — which happens when one arm completes without ever suspending — the
+remaining arms never start at all. Their side effects do not run.
+
+<!--versetest
+cell<public> := class:
+    var ArmThreeRan:logic = false
+    var Winner:int = 0
+SlowStart()<suspends>:void = NextTick()
+-->
+<!-- 08 -->
+```verse
+Trace := cell{}
+
+RaceThree()<suspends>:int =
+    race:
+        block:
+            SlowStart()                  # Suspends, so it cannot win
+            1
+        block:
+            Sleep(0.0)                   # Completes at once, and wins
+            2
+        block:
+            set Trace.ArmThreeRan = true  # Never evaluated
+            Sleep(0.0)
+            3
+```
+<!--versetest
+RunThree()<suspends>:void =
+    set Trace.Winner = RaceThree()
+spawn{RunThree()}
+Trace.Winner = 2
+Trace.ArmThreeRan = false
+-->
+
+Arm two wins on the first pass through the arm list, before arm three has been
+entered even once, so the assignment in arm three never happens.
 
 An arm that is already executing when the race resolves is not cut off
 mid-statement: it continues to its next suspension point and is then cancelled
@@ -425,32 +430,59 @@ interesting pattern where you can start multiple operations, proceed
 as soon as one provides a result, while allowing the others to
 continue their work in the background.
 
+The difference is worth seeing as a single keyword change. In the pair below,
+the first arm parks on an event that nobody has signalled yet, so the second
+arm wins. What happens to the first arm afterwards is decided entirely by
+whether the expression is `rush` or `race`:
+
 <!--versetest
-LongBackgroundTask()<suspends>:int=0
-QuickCheck() <suspends>  :int=0
-MediumTask() <suspends>  :int=0
-F()<suspends>:void={
-FirstResult := rush:
-    LongBackgroundTask()
-    QuickCheck()
-    MediumTask()
-
-Print("First result: {FirstResult}")
-}
-<#
+cell<public> := class:
+    var Trace:int = 0
 -->
-<!-- 08 -->
+<!-- 09 -->
 ```verse
-# First to complete allows continuation, others keep running
-FirstResult := rush:
-    LongBackgroundTask()   # Continues after rush completes
-    QuickCheck()          # Finishes first
-    MediumTask()          # Also continues after rush
+Trail := cell{}
+Gate := event(int){}
 
-Print("First result: {FirstResult}")
-# LongBackgroundTask and MediumTask are still running!
+FirstOneWins()<suspends>:int =
+    Winner := rush:              # Swap in `race` and the +100 never happens
+        block:
+            Gate.Await()         # Parked: cannot win
+            set Trail.Trace += 100
+            1
+        block:
+            Sleep(0.0)           # Wins at once
+            2
+    Gate.Signal(0)               # Wake the losing arm, if it is still alive
+    Sleep(0.0)
+    Winner
 ```
-<!-- #> -->
+<!--versetest
+RunRush()<suspends>:void =
+    set Trail.Trace += FirstOneWins()
+spawn{RunRush()}
+# rush: arm two returned 2, and the loser resumed and added 100.
+Trail.Trace = 102
+# The same code with `race`: the loser is cancelled, so the +100 never happens.
+RaceLog := cell{}
+RaceGate := event(int){}
+RaceVersion()<suspends>:int =
+    Winner := race:
+        block:
+            RaceGate.Await()
+            set RaceLog.Trace += 100
+            1
+        block:
+            Sleep(0.0)
+            2
+    RaceGate.Signal(0)
+    Sleep(0.0)
+    Winner
+RunRaceVersion()<suspends>:void =
+    set RaceLog.Trace += RaceVersion()
+spawn{RunRaceVersion()}
+RaceLog.Trace = 2
+-->
 
 Rush shines in scenarios where you want to be responsive while still
 completing all operations eventually. Consider preloading game assets:
@@ -477,80 +509,129 @@ iteration.
 
 ### Returning from Concurrent Arms
 
-A `return` statement inside a `sync`, `race`, or `rush` arm causes
-the enclosing *function* to return, not just the arm. The structured
+A `return` statement written directly inside a `sync`, `race`, or `rush` arm
+causes the enclosing *function* to return, not just the arm. The structured
 concurrency expression is abandoned, defers in arms that have already
 started execute, and arms that have not yet started are simply
 skipped.
 
-<!--versetest-->
-<!-- 09 -->
+<!--versetest
+cell<public> := class:
+    var ArmTwoRan:int = 0
+    var PastSync:int = 0
+    var Result:int = 0
+-->
+<!-- 10 -->
 ```verse
-Log(Msg:string):void = {}
-WaitTicks(N:int)<suspends>:void = {}
+Trace := cell{}
 
-MaybeReturn(Delay:int, Value:?string)<suspends>:string =
-    defer { Log("a") }
-    WaitTicks(Delay)
-    if (V := Value?):
-        return V         # Returns from MaybeReturn
-    Log("done")
-    "no-return"
-
-Wrapper(Value:?string)<suspends>:string =
-    defer { Log("z") }
-    R := sync:
+Abandon()<suspends>:int =
+    sync:
         block:
-            MaybeReturn(0, Value)   # Arm 1
+            Sleep(0.0)
+            return 5                  # Returns from Abandon, not from this arm
         block:
-            defer { Log("b") }
-            WaitTicks(1)
-            2
-    "{R(0)}"
+            Sleep(0.0)
+            set Trace.ArmTwoRan = 1
+    set Trace.PastSync = 1
+    0
 ```
+<!--versetest
+RunAbandon()<suspends>:void =
+    set Trace.Result = Abandon()
+spawn{RunAbandon()}
+# Arm two never got to run, the code after the sync never ran, and 5 came out.
+Trace.ArmTwoRan = 0
+Trace.PastSync = 0
+Trace.Result = 5
+-->
 
-When `Value` is set, arm 1 executes `return V` inside
-`MaybeReturn`. This exits `Wrapper` entirely — the `sync` is
-abandoned, arm 2 never completes, and defers run during unwinding.
-When `Value` is not set, arm 1 completes normally and `sync` waits
-for both arms to finish.
+What matters is where the `return` is *written*, not where it eventually
+executes. A `return` inside a function that an arm merely *calls* belongs to
+that function and stops there. The call hands a value back to the arm, the arm
+completes in the ordinary way, and the `sync` carries on waiting for its
+siblings as though nothing unusual had happened:
+
+<!--versetest
+cell<public> := class:
+    var ArmTwoRan:int = 0
+    var PastSync:int = 0
+    var Result:int = 0
+-->
+<!-- 11 -->
+```verse
+Steps := cell{}
+
+Finish()<suspends>:int =
+    Sleep(0.0)
+    return 5                          # Returns from Finish only
+
+KeepWaiting()<suspends>:int =
+    R := sync:
+        Finish()
+        block:
+            Sleep(0.0)
+            set Steps.ArmTwoRan = 1
+            2
+    set Steps.PastSync = 1
+    R(0)
+```
+<!--versetest
+RunKeep()<suspends>:void =
+    set Steps.Result = KeepWaiting()
+spawn{RunKeep()}
+# This time both arms finished and execution continued past the sync.
+Steps.ArmTwoRan = 1
+Steps.PastSync = 1
+Steps.Result = 5
+-->
+
+Wrapping a `return` in a helper function is therefore a way to *keep* the
+concurrency expression alive rather than a way to escape it, which is the
+opposite of what the shape of the code suggests at a glance.
 
 #### Detached Bodies Cannot Return
 
 The behaviour above applies to `sync`, `race` and `rush` arms, which run as part
 of the enclosing function's frame. `spawn`, `branch` and `defer` bodies are
 *detached* from that frame, so there is nothing for a `return` to return from,
-and the compiler rejects it:
+and the compiler rejects it, with a separate diagnostic for each of the three:
 
 <!--versetest
 assert_semantic_error(3551):
-    Wait()<suspends>:void = {}
-    F():void =
+    Wait51()<suspends>:void = {}
+    Spawner()<suspends>:void =
         spawn:
-            Wait()
+            Wait51()
+            return
+assert_semantic_error(3556):
+    Wait56()<suspends>:void = {}
+    Brancher()<suspends>:void =
+        branch:
+            Wait56()
             return
 assert_semantic_error(3566):
-    F():void =
+    Deferrer():void =
         defer:
             return
         return
 <#
 -->
-<!-- 10 -->
+<!-- 12 -->
 ```verse
-F():void =
+Spawner()<suspends>:void =
     spawn:
         Wait()
-        return       # ERROR  - cannot return out of spawn
+        return       # ERROR - cannot return out of spawn
 
-G()<suspends>:void =
+Brancher()<suspends>:void =
     branch:
         Wait()
-        return       # ERROR  - cannot return out of branch
+        return       # ERROR - cannot return out of branch
 
-H():void =
+Deferrer():void =
     defer:
-        return       # ERROR  - cannot return out of defer
+        return       # ERROR - cannot return out of defer
     return
 ```
 <!-- #> -->
@@ -561,6 +642,7 @@ early, use `break` in a loop or restructure with a failable expression.
 | Construct | `return` behaviour |
 |---|---|
 | `sync`, `race`, `rush` arm | Returns from the enclosing function; the expression is abandoned |
+| Function *called by* an arm | Returns from that function only; the arm and the expression continue |
 | `spawn`, `branch`, `defer`, class / archetype body block | Rejected at compile time |
 
 ### The branch Expression
@@ -573,30 +655,32 @@ waiting, no result collection, just a task spinning off to do its work
 while the main flow proceeds unimpeded.
 
 <!--versetest
-AsyncOperation1()<computes><suspends>:int=0
-ImmediateOperation()<computes> :int=0
-AsyncOperation2() <suspends><computes>  :int=0
-F()<suspends>:void={
-branch:
-    AsyncOperation1()
-    ImmediateOperation()
-    AsyncOperation2()
-}
-<#
+cell<public> := class:
+    var MainFlowContinued:int = 0
+    var BodyFinished:int = 0
+    var CleanedUp:int = 0
 -->
-<!-- 11 -->
+<!-- 13 -->
 ```verse
-branch:
-    # This block runs independently
-    AsyncOperation1()
-    ImmediateOperation()
-    AsyncOperation2()
+Trace := cell{}
 
-# Execution continues immediately here
-Print("Branch started, continuing main flow")
-# Branch block is still running in background
+FireAndForget()<suspends>:void =
+    branch:
+        defer { set Trace.CleanedUp = 1 }
+        NextTick()
+        set Trace.BodyFinished = 1     # Never reached
+    set Trace.MainFlowContinued = 1    # Reached without waiting
 ```
-<!-- #> -->
+<!--versetest
+RunFire()<suspends>:void =
+    FireAndForget()
+spawn{RunFire()}
+# The main flow did not wait for the branch. And when FireAndForget returned,
+# the branch was cancelled: its defer ran, but its last line never did.
+Trace.MainFlowContinued = 1
+Trace.BodyFinished = 0
+Trace.CleanedUp = 1
+-->
 
 
 Branch excels at handling side effects that shouldn't interrupt the
@@ -639,14 +723,13 @@ for typical concurrent patterns.
 <!--versetest
 LongRunningTask()  <suspends> :int=0
 -->
-<!-- 12 -->
+<!-- 14 -->
 ```verse
-# spawn returns a task(t) object you can control
+# spawn returns a task(t) you can hold on to
 BackgroundTask:task(int) = spawn{LongRunningTask()}
 
-# Or fire-and-forget without capturing the task
+# Or fire and forget, discarding the task
 spawn{LongRunningTask()}
-Print("Spawned task continues even after this scope exits")
 ```
 
 What makes spawn unique is its ability to work anywhere. Unlike all
@@ -668,20 +751,16 @@ assert_semantic_error(3511, 3538):
     G12()<suspends>:void =
         spawn{FailableWork12()}
 -->
-<!-- 13 -->
+<!-- 15 -->
 ```verse
 AsyncWork()<suspends>:void =
     Sleep(1.0)
     Print("Background work complete")
 
-FailableWork()<decides>:void =
-    false?  # Might fail
+spawn{AsyncWork()}      # Valid
 
-# Valid: spawning suspends function
-spawn{AsyncWork()}
-
-# Invalid: cannot spawn decides function
-# spawn{FailableWork()}  # ERROR: spawn requires suspends, not decides
+# A <decides> function here is rejected twice over:
+# the call needs square brackets, and spawn needs an async body.
 ```
 
 This restriction exists because spawned tasks run independently
@@ -694,7 +773,7 @@ handles the failure internally:
 <!--versetest
 FailableWork<public>()<computes><decides>:void = {}
 -->
-<!-- 14 -->
+<!-- 16 -->
 ```verse
 SafeFailableWork()<suspends>:void =
     if (FailableWork[]):
@@ -719,7 +798,39 @@ outlive their creating scope—use it when the work *must* complete
 regardless of what happens to the code that started it. Choose branch
 when cancellation is acceptable; choose spawn when it is not.
 
-**Working with spawned tasks:**
+Set side by side, the two differ in one line and in nothing else. Replacing
+the `branch` of the previous example with a `spawn` of the same work leaves
+the background task running after its creator has returned, so the `defer`
+that fired under `branch` has not fired here:
+
+<!--versetest
+cell<public> := class:
+    var MainFlowContinued:int = 0
+    var BodyFinished:int = 0
+    var CleanedUp:int = 0
+-->
+<!-- 17 -->
+```verse
+Trace := cell{}
+
+Background()<suspends>:void =
+    defer { set Trace.CleanedUp = 1 }
+    NextTick()
+    set Trace.BodyFinished = 1
+
+FireAndForget()<suspends>:void =
+    spawn{Background()}
+    set Trace.MainFlowContinued = 1
+```
+<!--versetest
+RunFire()<suspends>:void =
+    FireAndForget()
+spawn{RunFire()}
+# Still suspended at the NextTick, neither finished nor cleaned up: alive.
+Trace.MainFlowContinued = 1
+Trace.BodyFinished = 0
+Trace.CleanedUp = 0
+-->
 
 The `spawn` expression returns a `task(t)` object where `t` is the
 return type of the spawned function. This task object provides methods
@@ -736,19 +847,9 @@ The `task(t)` type represents a handle to an executing async
 operation, where `t` is the return type of the operation. While Verse
 creates tasks automatically behind the scenes for all async
 expressions, only `spawn` gives you direct access to a task object
-that you can control and query.
-
-<!--versetest-->
-<!-- 15 -->
-```verse
-# spawn returns task(t) where t is the return type
-BackgroundWork()<suspends>:int =
-    Sleep(2.0)
-    42
-
-MyTask:task(int) = spawn{BackgroundWork()}
-# MyTask is a handle to the spawned operation
-```
+that you can control and query. The annotated form in the previous section,
+`BackgroundTask:task(int) = spawn{LongRunningTask()}`, is that handle: the
+`int` comes from the return type of the function being spawned.
 
 Task objects provide a rich interface for managing async operations:
 you can cancel them, wait for their completion, and query their
@@ -756,27 +857,18 @@ current state. This control is essential for implementing robust
 concurrent systems where you need to coordinate multiple independent
 operations.
 
+A task moves through several distinct states during its lifetime. It is
+*active* while it is running or suspended but has not yet finished, still
+doing work or waiting to resume. It is *completed* once it has finished
+successfully and returned a result; completion is terminal, and a completed
+task never changes state again. It is *canceled* if it was stopped before it
+could complete, which is likewise terminal — canceled tasks cannot resume.
 
-A task moves through several distinct states during its lifetime:
-
-**Active**: The task is currently running or suspended, but has not
-yet finished. It's still doing work or waiting to resume.
-
-**Completed**: The task finished successfully and returned a
-result. Once completed, a task never changes state again. (Terminal state)
-
-**Canceled**: The task was canceled before it could complete. This is
-a terminal state — canceled tasks cannot resume.
-
-**Settled**: A task is settled if it has reached either the Completed
-or Canceled state. Settled tasks are no longer executing. (Terminal state)
-
-**Uninterrupted**: A task is uninterrupted if it completed
-successfully without being canceled. This is equivalent to the
-Completed state. (alias)
-
-**Interrupted**: A task is interrupted if it was canceled. This is
-equivalent to the Canceled state. (alias)
+Two further words name unions of those states rather than states of their own.
+A task is *settled* if it has reached either the completed or the canceled
+state, which is to say that it is no longer executing. It is *uninterrupted*
+if it completed successfully without being canceled, and *interrupted* if it
+was canceled; these last two are simply aliases for completed and canceled.
 
 ### Task.Cancel()
 
@@ -784,30 +876,34 @@ equivalent to the Canceled state. (alias)
     The Cancel() method has not been released at this time.
 	
 The `Cancel()` method requests cancellation of a task. This is a safe
-operation that can be called on any task in any state:
+operation that can be called on any task in any state. It does carry the
+`<suspends>` effect itself, though, so it can only be called from a suspending
+context — an immediate function cannot cancel a task, and trying is rejected:
 
 <!--versetest
-BackgroundWork()<transacts><suspends>:void={Sleep(1.0)}
-F()<suspends>:void= {
-LongTask:task(void) = spawn{BackgroundWork()}
-LongTask.Cancel()
-LongTask.Cancel()
-}
-<#
+cell<public> := class:
+    var CleanedUp:int = 0
 -->
-<!-- 16 -->
+<!-- 18 -->
 ```verse
-LongTask:task(void) = spawn{BackgroundWork()}
+Trace := cell{}
 
-# Request cancellation
-LongTask.Cancel()
+Watcher()<suspends>:void =
+    defer { set Trace.CleanedUp = 1 }
+    NextTick()
 
-# Safe to call multiple times
-LongTask.Cancel()  # No error
-
-# Safe to call on completed tasks (has no effect)
+StopWatching()<suspends>:void =
+    LongTask:task(void) = spawn{Watcher()}
+    LongTask.Cancel()
+    LongTask.Cancel()      # Safe: cancelling twice is not an error
 ```
-<!-- #> -->
+<!--versetest
+RunStop()<suspends>:void =
+    StopWatching()
+spawn{RunStop()}
+# The cancelled task unwound, so its defer ran.
+Trace.CleanedUp = 1
+-->
 
 Cancellation is cooperative—the task does not stop
 immediately. Instead, it receives a cancellation signal that is
@@ -824,68 +920,43 @@ conditions between completion and cancellation.
 The `Await()` method suspends the calling context until the task
 completes, then returns the task's result:
 
+Four behaviours are worth holding on to. `Await()` blocks until completion: if
+the task is still running, it suspends until the task finishes. It returns
+immediately if the task is already complete, handing back the cached result
+instantly — the result is sticky. It can therefore be called multiple times,
+and awaiting the same task repeatedly always gives the same result. And it
+propagates cancellation: if the awaited task was canceled, `Await()` passes
+that cancellation on to the caller.
+
 <!--versetest
 BackgroundWork()<computes><suspends>:int=42
-F()<suspends>:void={
-ComputeTask:task(int) = spawn{BackgroundWork()}
-Result:int = ComputeTask.Await()
-Print("Task returned: {Result}")
-}
-<#
 -->
-<!-- 17 -->
+<!-- 19 -->
 ```verse
-ComputeTask:task(int) = spawn{BackgroundWork()}
-
-# Wait for task to complete and get result
-Result:int = ComputeTask.Await()
-Print("Task returned: {Result}")
+AwaitTwice()<suspends>:tuple(int, int) =
+    ComputeTask:task(int) = spawn{BackgroundWork()}
+    First := ComputeTask.Await()     # Suspends until the task finishes
+    Second := ComputeTask.Await()    # Returns the cached result at once
+    (First, Second)
 ```
-<!-- #> -->
-
-**Key behaviors of Await():**
-
-- **Blocks until completion**: If the task is still running, `Await()`
-  suspends until it finishes
-- **Returns immediately if complete**: If the task already finished,
-  `Await()` returns the cached result instantly (Sticky)
-- **Can be called multiple times**: You can await the same task
-  repeatedly, always getting the same result
-- **Propagates cancellation**: If the awaited task was canceled,
-  `Await()` propagates the cancellation to the caller
-
 <!--versetest
-ComputeValue<public>()<suspends>:int = 42
-F()<suspends>:void={
-MyTask:task(int) = spawn{ComputeValue()}
-FirstResult := MyTask.Await()
-SecondResult := MyTask.Await()
-}
-<#
+var Pair:tuple(int, int) = (0, 0)
+RunAwait()<suspends>:void =
+    set Pair = AwaitTwice()
+spawn{RunAwait()}
+Pair(0) = 42
+Pair(0) = Pair(1)
 -->
-<!-- 18 -->
-```verse
-MyTask:task(int) = spawn{ComputeValue()}
-
-# First await - waits for completion
-FirstResult := MyTask.Await()
-
-# Second await - returns cached result immediately
-SecondResult := MyTask.Await()
-
-# FirstResult = SecondResult
-```
-<!-- #> -->
-
 
 ### Common Task Patterns
 
-**Canceling a task after timeout:**
+A task can be given a deadline by awaiting it in one arm of a `race` and
+cancelling it from the other:
 
 <!--versetest
 ProcessData()<suspends>:void={}
 -->
-<!-- 19 -->
+<!-- 20 -->
 ```verse
 StartTask()<suspends>:void =
     DataTask:task(void) = spawn{ProcessData()}
@@ -900,28 +971,34 @@ StartTask()<suspends>:void =
             Print("Task timed out and was canceled")
 ```
 
-**Waiting for multiple spawned tasks:**
+Several independent tasks can be joined back together by awaiting all of them
+inside a single `sync`:
 
 <!--versetest
+cell<public> := class:
+    var Ids:tuple(int, int, int) = (0, 0, 0)
 Task1()<suspends>:int=1
 Task2()<suspends>:int=2
 Task3()<suspends>:int=3
 -->
-<!-- 20 -->
+<!-- 21 -->
 ```verse
-RunMultipleTasks()<suspends>:void =
+AwaitAll()<suspends>:tuple(int, int, int) =
     T1 := spawn{Task1()}
     T2 := spawn{Task2()}
     T3 := spawn{Task3()}
-
-    # Wait for all to complete
-    Results := sync:
+    sync:
         T1.Await()
         T2.Await()
         T3.Await()
-
-    Print("All tasks complete: {Results(0)}, {Results(1)}, {Results(2)}")
 ```
+<!--versetest
+Joined := cell{}
+RunAll()<suspends>:void =
+    set Joined.Ids = AwaitAll()
+spawn{RunAll()}
+Joined.Ids = (1, 2, 3)
+-->
 
 
 ### Suspension Points and Cancellation
@@ -941,101 +1018,90 @@ pause and resume. These are the only places where:
 - Cancellation signals are checked and processed
 - The runtime can switch between concurrent tasks
 
-Common suspension points include:
-
-**Timing operations:**
-
-<!--versetest
-F()<suspends>:void=
-    Sleep(1.0)
-    NextTick() 
-<#
--->
-<!-- 21 -->
-```verse
-Sleep(1.0)  # Suspends for duration, checks cancellation when resuming
-NextTick()  # Waits one simulation update, checks cancellation
-```
-<!-- #> -->
-
-**Calling suspends functions:**
-
-<!--versetest
-SomeAsyncFunction<public>()<suspends>:void = {}
-F()<suspends>:void={
-Result := SomeAsyncFunction()
-}
-<#
--->
-<!-- 22 -->
-```verse
-Result := SomeAsyncFunction()  # Suspension point at the call
-```
-<!-- #> -->
-
-**Structured concurrency expressions:**
-
-<!--versetest
-Op1()<suspends>:void = {}
-Op2()<suspends>:void = {}
-M()<suspends>:void =
-    sync:
-        Op1()
-        Op2()
-<#
--->
-<!-- 23 -->
-```verse
-sync:  # Suspension point when entering sync
-    Op1()
-    Op2()
-# Suspension point when sync completes
-```
-<!-- #> -->
-
-**Task operations:**
+There are four kinds of them. The timing operations `Sleep` and `NextTick`
+suspend — for a duration and for one simulation update respectively — and
+check for cancellation when they resume. A call to any suspending function is
+a suspension point at the call itself. A structured concurrency expression
+suspends both when it is entered and when it completes. And a task operation
+such as `Await()` suspends for as long as it is waiting.
 
 <!--versetest
 ComputeValue<public>()<suspends>:int = 42
-F()<suspends>:void={
-MyTask:task(int) = spawn{ComputeValue()}
-Result := MyTask.Await()
-}
-<#
+Op1()<suspends>:void = {}
+Op2()<suspends>:void = {}
 -->
-<!-- 24 -->
+<!-- 22 -->
 ```verse
-Result := MyTask.Await()  # Suspension point while waiting
+EveryKind()<suspends>:int =
+    Sleep(1.0)                          # Timing
+    NextTick()                          # Timing
+    Op1()                               # Call to a suspending function
+    sync:                               # Entering and leaving the sync
+        Op1()
+        Op2()
+    MyTask:task(int) = spawn{ComputeValue()}
+    MyTask.Await()                      # Task operation
 ```
-<!-- #> -->
 
-**Important:** Immediate code between suspension points runs without
-interruption. If you write a long computation loop without any
-suspension points, that task cannot be canceled until it reaches the
-next suspension point:
+Immediate code between suspension points runs without interruption. If you
+write a long computation loop without any suspension points, that task cannot
+be canceled until it reaches the next suspension point:
 
 <!--versetest
-ComputeExpensiveOperation(:int):void={}
+cell<public> := class:
+    var Steps:int = 0
 -->
-<!-- 25 -->
+<!-- 23 -->
 ```verse
-# Cannot be canceled during the loop
-LongComputation()<suspends>:void =
-    for (I := 0..1000000):
-        # No suspension points - runs to completion
-        ComputeExpensiveOperation(I)
-    Sleep(0.0)  # First cancellation check happens here!
+Counted := cell{}
 
-# Can be canceled every iteration
-ResponsiveComputation()<suspends>:void =
-    for (I := 0..1000000):
-        ComputeExpensiveOperation(I)
-        Sleep(0.0)  # Cancellation checked every iteration
+# No suspension point in the loop, so cancellation cannot land inside it
+LongComputation()<suspends>:void =
+    for (I := 0..9):
+        set Counted.Steps += 1
+    NextTick()                # First cancellation check happens here
+
+CancelEarly()<suspends>:void =
+    Task := spawn{LongComputation()}
+    Task.Cancel()
 ```
+<!--versetest
+RunCancel()<suspends>:void =
+    CancelEarly()
+spawn{RunCancel()}
+# All ten iterations ran despite the cancellation arriving immediately.
+Counted.Steps = 10
+-->
 
 If you need to make long-running computations cancellable, insert
 periodic suspension points using `Sleep(0.0)` or `NextTick()`, which
 yield control without actual delay but allow cancellation checking.
+Moving the suspension point inside the loop changes the outcome
+completely — the task is now cancelled after its first iteration:
+
+<!--versetest
+cell<public> := class:
+    var Steps:int = 0
+-->
+<!-- 24 -->
+```verse
+Counted := cell{}
+
+ResponsiveComputation()<suspends>:void =
+    for (I := 0..9):
+        set Counted.Steps += 1
+        NextTick()            # Cancellation checked every iteration
+
+CancelEarly()<suspends>:void =
+    Task := spawn{ResponsiveComputation()}
+    Task.Cancel()
+```
+<!--versetest
+RunCancel()<suspends>:void =
+    CancelEarly()
+spawn{RunCancel()}
+Counted.Steps = 1
+-->
 
 Cancellation cascades through the task hierarchy. When a parent task
 is canceled, all its child tasks receive cancellation signals
@@ -1058,7 +1124,7 @@ including execution order, scope rules, and restrictions, see
 
 This section focuses on how `defer` interacts with concurrency.
 
-**defer: with cancellation:**
+#### defer with Cancellation
 
 When a concurrent task is canceled (e.g., a losing `race` arm or a
 cancelled `spawn`), defer blocks execute as the stack unwinds from the
@@ -1066,12 +1132,17 @@ cancellation point. This makes `defer` essential for resource cleanup
 in concurrent code:
 
 <!--versetest
-AcquireResource():int=42
-ReleaseResource(:int):void={}
-LongRunningTask(:int)<suspends>:void={loop{NextTick()}}
+cell<public> := class:
+    var Released:int = 0
 -->
-<!-- 26 -->
+<!-- 25 -->
 ```verse
+Trace := cell{}
+
+AcquireResource()<computes>:int = 42
+ReleaseResource(R:int):void = set Trace.Released = R
+LongRunningTask(:int)<suspends>:void = loop { NextTick() }
+
 ProcessWithTimeout()<suspends>:void =
     race:
         block:
@@ -1079,53 +1150,44 @@ ProcessWithTimeout()<suspends>:void =
             defer:
                 ReleaseResource(Resource)  # Runs when this arm is cancelled
             LongRunningTask(Resource)
-        block:
-            Sleep(10.0)  # Timeout
-    # If timeout wins, first block is cancelled and defer runs
+        Sleep(10.0)                        # Timeout arm
 ```
-
 <!--versetest
-Setup():void={}
-Teardown():void={}
-LongOperation()<suspends>:void={loop{NextTick()}}
+RunTimeout()<suspends>:void =
+    ProcessWithTimeout()
+spawn{RunTimeout()}
+# The timeout won, the first arm was cancelled, and the resource came back.
+Trace.Released = 42
 -->
-<!-- 27 -->
-```verse
-CancellableWork()<suspends>:void =
-    Setup()
 
-    defer:
-        Teardown()
-        Print("Cleanup after cancellation")
+#### No Suspending in defer
 
-    # If this task is canceled, defer runs during unwinding
-    LongOperation()
-```
-
-**No suspending in defer:**
-
-defer blocks **cannot** contain suspending operations. This ensures
-cleanup happens immediately without delay:
+defer blocks cannot contain suspending operations. This ensures
+cleanup happens immediately without delay. Each suspending call inside a
+`defer` is reported separately:
 
 <!--versetest
 ValidDefer()<suspends>:void =
     defer:
         Print("Cleanup happens immediately")
     Sleep(1.0)
-assert_semantic_error(3512, 3567):
-    Nap44(:float)<transacts><suspends>:void = {}
-    G44()<suspends>:void =
+assert_semantic_error(3512, 3512):
+    Nap(:float)<transacts><suspends>:void = {}
+    Tick()<transacts><suspends>:void = {}
+    BadDefer()<suspends>:void =
         defer:
-            Nap44(1.0)
+            Nap(1.0)
+            Tick()
+        Nap(2.0)
 <#
 -->
-<!-- 28 -->
+<!-- 26 -->
 ```verse
-# ERROR: Cannot use suspending operations in defer
 BadDefer()<suspends>:void =
     defer:
-        Sleep(1.0)  # ERROR: defer blocks cannot suspend
-        NextTick()  # ERROR: defer blocks cannot suspend
+        Sleep(1.0)      # ERROR - a defer cannot suspend
+        NextTick()      # ERROR - nor can it wait a tick
+    Sleep(2.0)
 ```
 <!-- #> -->
 
@@ -1136,113 +1198,45 @@ fire-and-forget async operations.
 
 ## Timing Functions
 
-The fundamental timing function that suspends execution for a specified duration:
+The fundamental timing function suspends execution for a specified duration:
 
 <!--versetest
-M()<suspends>:void =
-    Sleep(1.0)
-
-    Sleep(0.0)
-<#
--->
-<!-- 29 -->
-```verse
-# Suspend for 1 second
-Sleep(1.0)
-
-# Suspend for one frame (smallest possible delay)
-Sleep(0.0)
-```
-<!-- #> -->
-
-The `Sleep(0.0)` pattern deserves special attention. While it does not
-add actual delay, it serves two critical purposes:
-
-1. **Creates a suspension point** for cancellation checking
-2. **Yields control** to other concurrent tasks, preventing one task from monopolizing execution
-
-This makes `Sleep(0.0)` essential for responsive concurrent code:
-
-<!--versetest
-ProcessFrame():void={}
 ExpensiveOperation(:int):void={}
 -->
-<!-- 30 -->
+<!-- 27 -->
 ```verse
-# Without Sleep(0.0) - cannot be cancelled during loop
-UnresponsiveLoop()<suspends>:void =
-    for (I := 0..10000):
-        ExpensiveOperation(I)
-    # Cancellation only checked after all iterations
-
-# With Sleep(0.0) - responsive to cancellation
-ResponsiveLoop()<suspends>:void =
-    for (I := 0..10000):
-        ExpensiveOperation(I)
-        Sleep(0.0)  # Yields and checks cancellation each iteration
+Pace()<suspends>:void =
+    Sleep(1.0)      # One second
+    Sleep(0.0)      # One frame, the smallest possible delay
 ```
 
-**Best practice:** Insert `Sleep(0.0)` in long-running loops to ensure
-tasks remain responsive to cancellation and share execution time
-fairly with other concurrent operations.
+The `Sleep(0.0)` pattern deserves special attention. While it does not
+add actual delay, it serves two critical purposes. It creates a suspension
+point, which is where cancellation gets checked, and it yields control to
+other concurrent tasks, so that no single task can monopolize execution.
+Insert it into long-running loops to keep tasks responsive to cancellation
+and to share execution time fairly with other concurrent operations, exactly
+as in the cancellable-loop example above.
 
 ### NextTick()
 
 !!! note "Unreleased Feature"
-    NextTick() have not yet been released. 
+    NextTick() has not yet been released. 
 
 The `NextTick()` function suspends execution until the next simulation
 update (tick). Unlike `Sleep(0.0)` which yields control and may resume
 in the same tick if no other work is pending, `NextTick()` guarantees
-that at least one simulation update will occur before resuming:
-
-<!--versetest
-M()<suspends>:void =
-    NextTick()
-
-    NextTick()
-    NextTick()
-    NextTick()
-<#
--->
-<!-- 31 -->
-```verse
-# Wait for exactly one simulation tick
-NextTick()
-
-# Multiple ticks
-NextTick()  # Wait 1 tick
-NextTick()  # Wait another tick
-NextTick()  # Wait a third tick
-```
-<!-- #> -->
-
-`NextTick()` is essential for game logic that needs to be synchronized with simulation updates:
+that at least one simulation update will occur before resuming. It is
+essential for game logic that needs to be synchronized with simulation
+updates:
 
 <!--versetest
 ProcessGameLogic():void={}
 UpdatePhysics():void={}
 CheckCollisions():void={}
 PerformAction():void={}
-
-GameLoop()<suspends>:void =
-    loop:
-        ProcessGameLogic()
-        UpdatePhysics()
-        CheckCollisions()
-        NextTick()
-
-DelayByTicks(TickCount:int)<suspends>:void =
-    for (I := 1..TickCount):
-        NextTick()
-
-# Test the delay function
-TestDelay()<suspends>:void =
-    DelayByTicks(5)
-    PerformAction()
-<#
 -->
-<!-- 32 -->
+<!-- 28 -->
 ```verse
 # Process game logic every tick
 GameLoop()<suspends>:void =
@@ -1250,20 +1244,21 @@ GameLoop()<suspends>:void =
         ProcessGameLogic()
         UpdatePhysics()
         CheckCollisions()
-        NextTick()  # Wait for next simulation update
+        NextTick()      # Wait for the next simulation update
 
-# Delay action by specific number of ticks
+# Delay an action by a specific number of ticks
 DelayByTicks(TickCount:int)<suspends>:void =
     for (I := 1..TickCount):
         NextTick()
 
-# Wait 5 ticks before executing action
-DelayByTicks(5)
-PerformAction()
+ActAfterFiveTicks()<suspends>:void =
+    DelayByTicks(5)
+    PerformAction()
 ```
-<!-- #> -->
 
-**Sleep(0.0) vs NextTick():**
+The two yielding calls promise different things, and the difference
+matters as soon as a piece of code has to line up with the simulation
+clock rather than merely get out of the way:
 
 | Feature   | Sleep(0.0)              | NextTick() |
 |---------  |------------             |------------|
@@ -1275,50 +1270,32 @@ Both create suspension points for cancellation, but `NextTick()`
 provides stronger timing guarantees when you need to align with the
 simulation clock.
 
-<!--versetest
-ProcessFrame()<computes>:logic=false
--->
-<!-- 33 -->
-```verse
-# Common patterns
-LoopWithDelay()<suspends>:void =
-    loop:
-        ProcessFrame()
-        Sleep(0.033)  # ~30 FPS
-
-TickBasedLoop()<suspends>:void =
-    loop:
-        if (ProcessFrame()=false): 
-             break
-        NextTick()  # Once per simulation tick	
-```
-
-Timing Patterns are:
+Three timing patterns cover most of what gameplay code needs — acting after
+a delay, running a loop until it is told to stop, and stepping an animation
+one frame at a time:
 
 <!--versetest
 DoAction():void={}
-UpdateLogic()<computes>:void={}
+ProcessFrame()<computes>:logic=false
 Float(:int)<computes>:float=0.0
 SetPosition(:float):void={}
 -->
-<!-- 34 -->
+<!-- 29 -->
 ```verse
-# Delayed action
 PerformDelayedAction()<suspends>:void =
-    Sleep(2.0)  # Wait 2 seconds
+    Sleep(2.0)
     DoAction()
 
-# Periodic execution
-PeriodicUpdate()<suspends>:void =
+TickBasedLoop()<suspends>:void =
     loop:
-        UpdateLogic()
-        Sleep(1.0)  # Update every second
+        if (ProcessFrame() = false):
+            break
+        NextTick()      # Once per simulation tick
 
-# Animation timing
-AnimateMovement(Start:float,End:float)<suspends>:void =
+AnimateMovement(Start:float, End:float)<suspends>:void =
     for (T := 0..10):
-        SetPosition(Lerp(Start, End, Float(T)/10.0))
-        Sleep(0.0)  # One frame
+        SetPosition(Lerp(Start, End, Float(T) / 10.0))
+        Sleep(0.0)      # One frame per step
 ```
 
 ### Getting Current Time: GetSecondsSinceEpoch
@@ -1329,62 +1306,42 @@ timestamp—the number of seconds elapsed since January 1, 1970,
 measuring durations, and synchronizing with external systems that use
 Unix time.
 
-<!--versetest
-LogEvent(Message:string):void =
-    Timestamp := GetSecondsSinceEpoch()
-    Print("[{Timestamp}] {Message}")
-<#
--->
-<!-- 35 -->
+<!-- 30 -->
 ```verse
-# Get current timestamp
-CurrentTime := GetSecondsSinceEpoch()
-# Returns something like 1716411409.0 (May 22, 2024)
-
-# Log an event with timestamp
-LogEvent(Message:string):void =
+LogEvent(Message:string)<transacts>:void =
     Timestamp := GetSecondsSinceEpoch()
     Print("[{Timestamp}] {Message}")
 ```
-<!-- #> -->
+<!--versetest
+LogEvent("match started")
+GetSecondsSinceEpoch() > 0.0
+-->
 
-**Critical transactional behavior:**
+#### Time Is Frozen Within a Transaction
 
-Within a single transaction, `GetSecondsSinceEpoch()` returns the
-**same value** every time it is called. This ensures deterministic
-behavior and prevents time-related race conditions:
+Within a single transaction, `GetSecondsSinceEpoch()` returns the same
+value every time it is called. This ensures deterministic behavior and
+prevents time-related race conditions. Two readings taken either side
+of an arbitrary amount of work therefore always differ by zero:
 
 <!--versetest
 DoExpensiveWork()<transacts>:void = {}
 PerformDatabaseUpdates()<transacts>:void = {}
-
-MeasureTransactionTime()<transacts>:void =
-    StartTime := GetSecondsSinceEpoch()
-
-    DoExpensiveWork()
-    PerformDatabaseUpdates()
-
-    EndTime := GetSecondsSinceEpoch()
-
-    Duration := EndTime - StartTime
-<#
 -->
-<!-- 36 -->
+<!-- 31 -->
 ```verse
-MeasureTransactionTime()<transacts>:void =
+MeasureTransactionTime()<transacts>:float =
     StartTime := GetSecondsSinceEpoch()
 
-    # Perform complex operations
     DoExpensiveWork()
     PerformDatabaseUpdates()
 
     EndTime := GetSecondsSinceEpoch()
-
-    # StartTime = EndTime!
-    # Time is "frozen" within the transaction
-    Duration := EndTime - StartTime  # Always 0.0
+    EndTime - StartTime            # Always 0.0
 ```
-<!-- #> -->
+<!--versetest
+MeasureTransactionTime() = 0.0
+-->
 
 This transactional consistency is intentional—it prevents
 non-deterministic behavior where transaction retry could produce
@@ -1392,45 +1349,14 @@ different results due to time progression. If the transaction fails
 and is retried, all calls to `GetSecondsSinceEpoch()` in the retried
 attempt will return a new consistent timestamp.
 
-**Use cases:**
+The timestamp is useful anywhere real-world time has to be recorded
+rather than measured: logging and debugging, session tracking, rate
+limiting, and absolute timestamps handed to external systems,
+databases, or APIs that speak Unix time. Session tracking is the
+simplest of these—stamp the object on creation and subtract later:
 
-**Event logging and debugging:**
-
-<!--versetest
-logger := class:
-    var EventLog:[]tuple(float, string) = array{}
-
-    Log(Message:string)<transacts>:void =
-        Timestamp := GetSecondsSinceEpoch()
-        set EventLog = EventLog + array{(Timestamp, Message)}
-
-    GetRecentEvents(LastSeconds:float)<transacts>:[]string =
-        Now := GetSecondsSinceEpoch()
-        Cutoff := Now - LastSeconds
-        for (Entry : EventLog, Entry(0) >= Cutoff):
-            Entry(1)
-<#
--->
-<!-- 37 -->
-```verse
-logger := class:
-    var EventLog:[]tuple(float, string) = array{}
-
-    Log(Message:string)<transacts>:void =
-        Timestamp := GetSecondsSinceEpoch()
-        set EventLog = EventLog + array{(Timestamp, Message)}
-
-    GetRecentEvents(LastSeconds:float)<transacts>:[]string =
-        Now := GetSecondsSinceEpoch()
-        Cutoff := Now - LastSeconds
-        for ((Time, Message) : EventLog, Time >= Cutoff):
-            Message
-```
-<!-- #> -->
-
-**Session tracking:**
 <!--versetest-->
-<!-- 38 -->
+<!-- 32 -->
 ```verse
 player_session := class:
     LoginTime:float
@@ -1441,99 +1367,56 @@ MakeSession()<transacts>:player_session =
 GetSessionDuration(S:player_session)<transacts>:float =
     GetSecondsSinceEpoch() - S.LoginTime
 ```
+<!--versetest
+GetSessionDuration(MakeSession()) = 0.0
+-->
 
-**Rate limiting:**
+Rate limiting is the same idea with a comparison attached. Because the
+clock does not move inside a transaction, a limiter consulted twice in
+the same transaction always refuses the second request:
 
 <!--versetest
-PerformAction():void={}
-ShowCooldownMessage():void={}
-rate_limiter := class:
-    var LastAction:float = 0.0
-    Cooldown:float = 5.0
-
-    CanAct()<transacts><decides>:void =
-        Now := GetSecondsSinceEpoch()
-        TimeSinceLastAction := Now - LastAction
-        TimeSinceLastAction >= Cooldown
-        set LastAction = Now
-
-assert:
-   Limiter := rate_limiter{}
-   if (Limiter.CanAct[]):
-       PerformAction()
-   else:
-       ShowCooldownMessage()
-<#
+PerformAction()<transacts>:void={}
+ShowCooldownMessage()<transacts>:void={}
 -->
-<!-- 39 -->
+<!-- 33 -->
 ```verse
 rate_limiter := class:
     var LastAction:float = 0.0
-    Cooldown:float = 5.0  # 5 second cooldown
+    Cooldown:float = 5.0            # Five second cooldown
 
     CanAct()<transacts><decides>:void =
         Now := GetSecondsSinceEpoch()
-        TimeSinceLastAction := Now - LastAction
-        TimeSinceLastAction >= Cooldown
+        Now - LastAction >= Cooldown
         set LastAction = Now
 
-Limiter := rate_limiter{}
-
-if (Limiter.CanAct[]):
-    PerformAction()
-else:
-    ShowCooldownMessage()
+TryAct(Limiter:rate_limiter)<transacts>:void =
+    if (Limiter.CanAct[]):
+        PerformAction()
+    else:
+        ShowCooldownMessage()
 ```
-<!-- #> -->
-
-**Absolute timestamps for external systems:**
-
-When interfacing with external systems, databases, or APIs that use Unix timestamps:
-
 <!--versetest
-MyPlayerID:string = "player123"
-SendToAnalytics<public>(EventType:string, Timestamp:float, PlayerID:string):void = {}
-FetchServerTime():float = 1716411409.0
-
-M():void =
-    SendToAnalytics("player_action", GetSecondsSinceEpoch(), MyPlayerID)
-
-    ServerTime := FetchServerTime()
-    LocalTime := GetSecondsSinceEpoch()
-    ClockSkew := LocalTime - ServerTime
-<#
+Gate := rate_limiter{}
+Gate.CanAct[]
+not Gate.CanAct[]
 -->
-<!-- 40 -->
-```verse
-# Timestamp for external analytics
-AnalyticsEvent := map{
-    "event_type" => "player_action",
-    "timestamp" => GetSecondsSinceEpoch(),
-    "player_id" => MyPlayerID
-}
-SendToAnalytics(AnalyticsEvent)
 
-# Comparing with server timestamps
-ServerTime := FetchServerTime()
-LocalTime := GetSecondsSinceEpoch()
-ClockSkew := LocalTime - ServerTime
-```
-<!-- #> -->
+A few properties of the function are worth remembering. It returns a
+`float` of seconds, which may have fractional parts for millisecond
+precision. It lives in the `/Verse.org/Verse` module, so reaching it
+needs `using { /Verse.org/Verse }`. It is not affected by `Sleep()` or
+by any other suspension, because it measures real-world time. It is
+consistent within a transaction for determinism, and each new
+transaction gets a fresh timestamp.
 
-**Important notes:**
-
-- Returns `float` representing seconds (may have fractional parts for millisecond precision)
-- Located in `/Verse.org/Verse` module—use `using { /Verse.org/Verse }` to access
-- Not affected by `Sleep()` or other suspension—measures real-world time
-- Consistent within transactions for determinism
-- Each new transaction gets a fresh timestamp
-
-**Combining with Sleep for time-based logic:**
+Combined with `Sleep`, it gives you wall-clock scheduling: poll the
+real time from a loop that yields, and act once the deadline passes.
 
 <!--versetest
 PerformAction<public>()<suspends>:void = {}
 -->
-<!-- 41 -->
+<!-- 34 -->
 ```verse
 # Wait until a specific time
 WaitUntil(TargetTime:float)<suspends>:void =
@@ -1569,50 +1452,45 @@ signal values and consumers await them. Each signal delivers one value
 to each awaiting task:
 
 <!--versetest
-ProcessValue(:int):void={}
-F()<suspends>:void={
-GameEvent := event(int){}
-
-ProducerTask()<suspends>:void =
-    Sleep(1.0)
-    GameEvent.Signal(42)
-
-ConsumerTask()<suspends>:void =
-    Value := GameEvent.Await()
-    ProcessValue(Value)
-
-sync:
-    ProducerTask()
-    ConsumerTask()
-}
-<#
+cell<public> := class:
+    var Received:int = 0
 -->
-<!-- 42 -->
+<!-- 35 -->
 ```verse
-# Create an event channel for integers
-GameEvent := event(int){}
+Consumed := cell{}
+GameEvent := event(int){}          # A channel carrying integers
+
+# Consumer: awaits values from the event
+ConsumerTask()<suspends>:void =
+    set Consumed.Received = GameEvent.Await()
 
 # Producer: signals values to the event
 ProducerTask()<suspends>:void =
     Sleep(1.0)
     GameEvent.Signal(42)
 
-# Consumer: awaits values from the event
-ConsumerTask()<suspends>:void =
-    Value := GameEvent.Await()
-    ProcessValue(Value)
-
-sync:
-    ProducerTask()
-    ConsumerTask()
+Exchange()<suspends>:void =
+    sync:
+        ConsumerTask()
+        ProducerTask()
 ```
-<!-- #> -->
+<!--versetest
+Run()<suspends>:void =
+    Exchange()
+spawn{Run()}
+Consumed.Received = 42
+-->
 
 When `Await()` is called on an event, the calling task suspends until
 another task calls `Signal()` with a value. The signaled value is
 delivered to one waiting task, and execution resumes. If multiple
 tasks await the same event, each `Signal()` wakes exactly one
 awaiter—signals and awaits pair up one-to-one.
+
+The pairing is strictly one-way in time: a `Signal()` that arrives
+while nobody is waiting is discarded rather than queued. A basic event
+is a rendezvous, not a mailbox, which is why the consumer above is
+started first and the producer only signals after a delay.
 
 This one-to-one matching makes events perfect for task
 coordination. Think of a player action system: the input handler
@@ -1625,30 +1503,36 @@ within `sync` blocks to coordinate parallel operations, or combine
 them with `race` to implement timeouts on event waiting:
 
 <!--versetest
-F()<suspends>:void={
-GameEvent:event(int)=event(int){}
-Result := race:
-    block:
-        Value := GameEvent.Await()
-        option{Value}
-    block:
-        Sleep(5.0)
-        false
-}
-<#
+cell<public> := class:
+    var Got:?int = false
 -->
-<!-- 43 -->
+<!-- 36 -->
 ```verse
-# Wait for event with timeout
-Result := race:
-    block:
-        Value := GameEvent.Await()
-        option{Value}
-    block:
-        Sleep(5.0)
-        false  # Timeout - no value received
+Outcome := cell{}
+GameEvent := event(int){}
+
+AwaitWithTimeout()<suspends>:?int =
+    race:
+        block:
+            Value := GameEvent.Await()
+            option{Value}
+        block:
+            Sleep(5.0)
+            false                    # Timed out, no value received
 ```
-<!-- #> -->
+<!--versetest
+Run()<suspends>:void =
+    set Outcome.Got = AwaitWithTimeout()
+spawn{Run()}
+not Outcome.Got?
+-->
+
+Declaring the result type as `?int` is what makes the two arms agree:
+one yields `option{Value}` and the other yields the empty option
+`false`. Without that declaration the inferred common supertype widens
+all the way to `comparable`, and unwrapping the result with `?` is
+rejected with "No overload of the function `operator'?'`
+matches the provided arguments (:comparable)".
 
 ### Sticky Events
 
@@ -1660,7 +1544,7 @@ While basic events deliver each signal to exactly one awaiter,
 all subsequent awaits until a new value is signaled:
 
 <!--NoCompile-->
-<!-- 44 -->
+<!-- 37 -->
 ```verse
 StateEvent := sticky_event(int){}
 
@@ -1705,7 +1589,7 @@ register callback functions that execute automatically when values are
 signaled:
 
 <!--NoCompile-->
-<!-- 45 -->
+<!-- 38 -->
 ```verse
 LogScore(:int):void={}
 UpdateUI(:int):void={}
@@ -1741,10 +1625,14 @@ signal reaches all interested parties.
 
 ### The awaitable and signalable Interfaces
 
-Events are built on two fundamental interfaces that you can use to create custom synchronization types:
+Events are built on two fundamental interfaces that you can use to
+create custom synchronization types. Both already exist in
+`/Verse.org/Concurrency`, so the declarations below are shown for
+reference rather than written out again — repeating them in your own
+code is rejected as an ambiguous definition:
 
 <!--NoCompile-->
-<!-- 46 -->
+<!-- 39 -->
 ```verse
 awaitable(t:type) := interface:
     Await()<suspends>:t
@@ -1770,19 +1658,25 @@ assert_semantic_error(3506):
     G65b(Target:signalable(int))<suspends>:void =
         Value := Target.Await()
 -->
-<!-- 47 -->
+<!-- 40 -->
 ```verse
 # This function can only await, not signal
 ConsumerFunction(Source:awaitable(int))<suspends>:void =
     Value := Source.Await()
     ProcessValue(Value)
-    # Source.Signal(123)  # ERROR: awaitable does not have Signal
+    # Source.Signal(123)  is an error: awaitable has no Signal
 
 # This function can only signal, not await
 ProducerFunction(Target:signalable(int)):void =
     Target.Signal(42)
-    # Value := Target.Await()  # ERROR: signalable does not have Await
+    # Value := Target.Await()  is an error: signalable has no Await
 ```
+<!--versetest
+Channel := event(int){}
+Reader:awaitable(int) = Channel      # event(t) implements both
+Writer:signalable(int) = Channel
+ProducerFunction(Writer)
+-->
 
 This separation creates clear interfaces for producer-consumer
 relationships. A queue implementation might expose an `awaitable`
@@ -1796,46 +1690,27 @@ Event subscriptions participate in Verse's transactional system. If a
 transaction containing a `Subscribe()` call fails and rolls back, the
 subscription never takes effect:
 
+Similarly, `Cancel()` operations are transactional. If you cancel a
+subscription within a transaction that later fails, the subscription
+remains active. Both directions are visible in the same fragment:
+
 <!--NoCompile-->
-<!-- 48 -->
+<!-- 41 -->
 ```verse
 Handler(:int):void={}
 
 MyEvent := subscribable_event(int){}
 
-# Subscription in a failing transaction
 if:
     Sub := MyEvent.Subscribe(Handler)
-    false?  # Transaction fails and rolls back
+    false?                  # Transaction fails, so the subscribe is undone
+MyEvent.Signal(100)         # Handler is not called
 
-# Subscription was rolled back - handler not called
-MyEvent.Signal(100)
-```
-
-Similarly, `Cancel()` operations are transactional. If you cancel a subscription within a transaction that later fails, the subscription remains active:
-
-<!--versetest
-subscription := class:
-    Cancel()<transacts>:void = {}
-
-subscribable_event(t:type) := class:
-    Subscribe(Handler:t->void)<transacts>:subscription = subscription{}
-    Signal(Value:t)<transacts>:void = {}
--->
-<!-- 49 -->
-```verse
-Handler(:int):void={}
-
-MyEvent := subscribable_event(int){}
-Sub := MyEvent.Subscribe(Handler)
-
-# Cancel in a failing transaction
+Live := MyEvent.Subscribe(Handler)
 if:
-    Sub.Cancel()
-    false?  # Transaction fails
-
-# Cancel was rolled back - subscription still active
-MyEvent.Signal(100)  # Handler still gets called
+    Live.Cancel()
+    false?                  # Transaction fails, so the cancel is undone
+MyEvent.Signal(100)         # Handler is called after all
 ```
 
 This transactional integration ensures that event subscriptions
@@ -1847,113 +1722,69 @@ preventing partial setups that could cause subtle bugs.
 
 ### Event Patterns and Use Cases
 
-**Request-Response:** Use basic events to implement request-response patterns between systems:
+Basic events implement request-response patterns between systems. A
+service loops on a request channel and answers on a reply channel,
+while the caller does the mirror image. The one detail that has to be
+right is the order: because a signal with no awaiter is dropped, the
+caller must already be parked on `PathResponse` before it signals
+`PathRequest`. Spawning the await first arranges exactly that, since a
+spawned body runs up to its first suspension point immediately:
 
 <!--versetest
-FindPath(Start:int, Goal:int):void = {}
-
-pathfinding_system := class:
-    PathRequest:event(tuple(int, int)) = event(tuple(int, int)){}
-    PathResponse:event(int) = event(int){}
-
-    PathfindingService()<suspends>:void =
-        loop:
-            Request := PathRequest.Await()
-            Start := Request(0)
-            Goal := Request(1)
-            FindPath(Start, Goal)
-            PathResponse.Signal(42)
-
-    RequestPath(Start:int, Goal:int)<suspends>:int =
-        PathRequest.Signal((Start, Goal))
-        PathResponse.Await()
-<#
+FindPath(Start:int, Goal:int)<computes>:int = Start * 10 + Goal
+cell<public> := class:
+    var Path:int = 0
 -->
-<!-- 50 -->
+<!-- 42 -->
 ```verse
-PathRequest := event(tuple(int, int)){}  # (start, goal)
-PathResponse := event(int){}             # path result
+Found := cell{}
+PathRequest := event(tuple(int, int)){}   # (start, goal)
+PathResponse := event(int){}              # Path result
 
 PathfindingService()<suspends>:void =
     loop:
-        (Start, Goal) := PathRequest.Await()
-        FindPath(Start, Goal)
-        PathResponse.Signal(42)
+        Request := PathRequest.Await()
+        PathResponse.Signal(FindPath(Request(0), Request(1)))
 
 RequestPath(Start:int, Goal:int)<suspends>:int =
+    Reply:task(int) = spawn{PathResponse.Await()}   # Park first
     PathRequest.Signal((Start, Goal))
-    PathResponse.Await()
+    Reply.Await()
 ```
-<!-- #> -->
-
-**State Broadcasting:** Use sticky events for state that multiple systems need to observe:
-
 <!--versetest
-game_phase := enum{Menu, Playing, Paused, GameOver}
-UIUpdate(P:game_phase)<transacts>:void={}
-AIUpdate(P:game_phase)<transacts>:void={}
-AudioUpdate(P:game_phase)<transacts>:void={}
-
-sticky_event(t:type) := class:
-    var CurrentValue:?t = false
-    Signal(Value:t)<transacts>:void = set CurrentValue = option{Value}
-    Await()<suspends><transacts>:t =
-        loop:
-            if (V := CurrentValue?):
-                return V
+Ask()<suspends>:void =
+    set Found.Path = RequestPath(3, 7)
+spawn{PathfindingService()}
+spawn{Ask()}
+Found.Path = 37
 -->
-<!-- 51 -->
+
+Signalling before parking loses the answer and the caller waits
+forever. Sticky events avoid that hazard entirely, which is what makes
+them the right choice for state that several systems need to observe:
+every system that awaits the phase sees the current one, whether it
+started awaiting before or after the change was signalled.
+
+<!--NoCompile-->
+<!-- 43 -->
 ```verse
 PhaseChange := sticky_event(game_phase){}
 
-# Systems await current phase without missing updates
+# Both systems see the current phase, whenever they start awaiting
 UISystem()<suspends>:void =
     loop:
-        Phase := PhaseChange.Await()
-        UIUpdate(Phase)
+        UIUpdate(PhaseChange.Await())
 
 AISystem()<suspends>:void =
     loop:
-        Phase := PhaseChange.Await()
-        AIUpdate(Phase)
-
-AudioSystem()<suspends>:void =
-    loop:
-        Phase := PhaseChange.Await()
-        AudioUpdate(Phase)
+        AIUpdate(PhaseChange.Await())
 ```
 
-**Multi-System Notifications:** Use subscribable events when many
-systems need to react to the same events:
-
-<!--versetest
-subscription := class:
-    Cancel()<transacts>:void = {}
-
-subscribable_event(t:type) := class:
-    Subscribe(Handler:t->void)<transacts>:subscription = subscription{}
-    Signal(Value:t)<transacts>:void = {}
--->
-<!-- 52 -->
-```verse
-UpdateInventoryUI(:int):void={}
-PlayPickupSound(:int):void={}
-CheckCollectionAchievement(:int):void={}
-LogItemPickup(:int):void={}
-
-ItemPickedUp := subscribable_event(int){}
-
-# Each system subscribes independently
-InitializeSystems():void =
-    ItemPickedUp.Subscribe(UpdateInventoryUI)
-    ItemPickedUp.Subscribe(PlayPickupSound)
-    ItemPickedUp.Subscribe(CheckCollectionAchievement)
-    ItemPickedUp.Subscribe(LogItemPickup)
-
-# Single signal reaches all systems
-OnPlayerPickupItem(ItemID:int):void =
-    ItemPickedUp.Signal(ItemID)
-```
+Subscribable events cover the remaining case, where many systems must
+react to the same occurrence without any of them awaiting: each
+registers a handler with `Subscribe`, as in the inventory, audio,
+achievement and logging systems of the earlier example, and a single
+`Signal` reaches all of them.
 
 Events complement structured concurrency by providing communication
 channels that outlive individual concurrent operations. While `sync`,
@@ -1968,7 +1799,7 @@ Implement operations with timeouts using `race`:
 <!--versetest
 ActualOperation()<suspends>:void={}
 -->
-<!-- 53 -->
+<!-- 44 -->
 ```verse
 PerformWithTimeout()<suspends>:logic =
     race:
@@ -1987,17 +1818,8 @@ LoadAssets()<suspends>:void={}
 ConnectToServer()<suspends>:void={}
 InitializeUI()<suspends>:void={}
 PrepareAudio()<suspends>:void={}
-
-InitializeGame()<suspends>:void =
-    sync:
-        LoadAssets()
-        ConnectToServer()
-        InitializeUI()
-        PrepareAudio()
-    Print("Game ready!")
-<#
 -->
-<!-- 54 -->
+<!-- 45 -->
 ```verse
 InitializeGame()<suspends>:void =
     sync:
@@ -2007,7 +1829,6 @@ InitializeGame()<suspends>:void =
         PrepareAudio()
     Print("Game ready!")
 ```
-<!-- #>-->
 
 Start background tasks that do not block gameplay:
 
@@ -2016,7 +1837,7 @@ MonitorPlayerStats()<suspends>:void={}
 UpdateLeaderboards()<suspends>:void={}
 ProcessAchievements()<suspends>:void={}
 -->
-<!-- 55 -->
+<!-- 46 -->
 ```verse
 StartBackgroundSystems()<suspends>:void =
     branch:
@@ -2033,7 +1854,7 @@ Spawn entities with delays:
 <!--versetest
 enemy_class := class {     Spawn()<suspends>:void={} }
 -->
-<!-- 56 -->
+<!-- 47 -->
 ```verse
 SpawnWave(Enemies:[]enemy_class)<suspends>:void =
     for (Enemy : Enemies):
@@ -2074,22 +1895,21 @@ assert_semantic_error(3552):
                 Op76()
 <#
 -->
-<!-- 57 -->
+<!-- 48 -->
 ```verse
-# Not allowed
 for (I := 0..10):
-    rush:  # ERROR: Cannot use rush in loop
+    rush:                    # ERROR: rush is not allowed in a loop
         Operation1()
         Operation2()
 
-# Workaround - wrap in function
+# Wrapping the rush in a function is the way round it
 ProcessWithRush(I:int)<suspends>:void =
     rush:
         Operation1()
         Operation2()
 
 for (I := 0..10):
-    ProcessWithRush(I)  # OK
+    ProcessWithRush(I)
 ```
 <!-- #> -->
 
@@ -2122,9 +1942,36 @@ crucial.
 
 The effect system that makes Verse's concurrency safe also introduces
 some restrictions. The `decides` effect, which marks functions that
-can fail, cannot be combined with the `suspends` effect. This
-separation keeps the failure model and the concurrency model
-orthogonal, preventing complex interactions that would be difficult to
-reason about. Transactional operations and certain device-specific
-operations may also have restrictions when used in concurrent
-contexts, ensuring that operations that must be atomic remain so.
+can fail, cannot be combined with the `suspends` effect; writing both
+on one signature reports "The suspends and decides effects are
+mutually exclusive and may not be used together." This separation
+keeps the failure model and the concurrency model orthogonal,
+preventing complex interactions that would be difficult to reason
+about. The remedy is to split the two halves apart, deciding in one
+function and suspending in another:
+
+<!--versetest
+assert_semantic_error(3656):
+    Nap(:float)<transacts><suspends>:void = {}
+    G80(Count:int)<decides><suspends>:void =
+        Nap(1.0)
+        Count > 0
+-->
+<!-- 49 -->
+```verse
+HasAmmo(Count:int)<transacts><decides>:void =
+    Count > 0
+
+ReloadWeapon()<suspends>:void =
+    Sleep(2.0)
+
+FireOrReload(Count:int)<suspends>:void =
+    if (HasAmmo[Count]):
+        Print("Bang")
+    else:
+        ReloadWeapon()
+```
+
+Transactional operations and certain device-specific operations may
+also have restrictions when used in concurrent contexts, ensuring that
+operations that must be atomic remain so.

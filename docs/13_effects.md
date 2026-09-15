@@ -53,7 +53,7 @@ propagation ensures that effects can't be hidden or laundered through
 intermediate functions, so the true nature of an operation is always
 visible at every level of the call stack.
 
-### Why Effects Matter
+#### Why Effects Matter
 
 Making effects explicit serves both human understanding and compiler
 optimization. For developers, effects act as documentation that can't

@@ -33,29 +33,20 @@ point{X:=0.0, Y:=1.0}                        # Float literals in object construc
 
 #### Integer Literals
 
-Integer literals represent whole numbers and can be written in two formats:
-
-*Decimal notation* uses standard digits:
+Integer literals represent whole numbers and can be written in two
+formats. Decimal notation uses standard digits, while hexadecimal
+notation uses the `0x` prefix followed by hex digits (0-9, a-f, A-F):
 
 <!--versetest-->
 <!-- 02 -->
 ```verse
-Count := 42
+Count := 42                          # Decimal
 Negative := -17
-Zero := 0
-Large := 9223372036854775807                # Maximum 64-bit signed integer literals
-```
-
-*Hexadecimal notation* uses the `0x` prefix followed by hex digits
-(0-9, a-f, A-F):
-
-<!--versetest-->
-<!-- 03 -->
-```verse
-Byte := 0xFF
-Address := 0x1F4A
-LowercaseHex := 0xabcdef
-UppercaseHex := 0xABCDEF
+Large := 9223372036854775807         # Maximum 64-bit signed integer literal
+Byte := 0xFF                         # Hexadecimal
+Byte = 255
+LowercaseHex := 0xabcdef             # Either case of hex digit works
+LowercaseHex = 0xABCDEF
 ```
 
 Integer literals must fit within a 64-bit signed integer range
@@ -70,61 +61,70 @@ or persisted).
 #### Float Literals
 
 Floating-point literals represent decimal numbers, they must include a
-decimal point and in some cases the `f64` suffix.
+decimal point and in some cases the `f64` suffix. Scientific notation
+expresses very large or small numbers using exponents:
 
 <!--versetest-->
-<!-- 04 -->
+<!-- 03 -->
 ```verse
 Pi := 3.14159
-Half := 0.5
 Explicit := 12.34f64    # Explicit bit-depth suffix
-```
-
-Scientific notation expresses very large or small numbers using exponents:
-
-<!--versetest-->
-<!-- 05 -->
-```verse
 Large := 1.0e10         # 10,000,000,000 (sign optional)
 Small := 1.0e-5         # 0.00001
 WithSign := 2.5e+3      # 2,500 (explicit + sign)
-Compact := 1.5e2        # 150 (no sign defaults to +)
+WithSign = 2500.0
 ```
 
 Float literals must include a decimal point (`1.0` is valid, but `1` is an integer). A final decimal point without digits is invalid (`1.` is a syntax error). All floats are 64-bit (IEEE 754 double precision); the `f64` suffix is optional. Unary operators work as with integers: `-1.0`, `+1.0`.
 
 Float literals outside the IEEE 754 double-precision range produce
-**compile-time errors**:
+compile-time errors:
 
-<!--versetest-->
-<!-- 06 -->
+<!--versetest
+assert_semantic_error(3554):
+    TooBig := 1.7976931348623159e+308
+-->
+<!-- 04 -->
 ```verse
-#TooBig := 1.7976931348623159e+308    # Compile error: literal overflow
-Maximum := 1.7976931348623158e+308    # OK: Maximum finite float
+Maximum := 1.7976931348623158e+308    # OK: maximum finite float
+# TooBig := 1.7976931348623159e+308   # Error: literal overflow
 ```
 
-However, **runtime** float arithmetic follows standard IEEE 754 semantics:
+Runtime float arithmetic, however, follows standard IEEE 754 semantics:
 
 <!--versetest-->
-<!-- 07 -->
+<!-- 05 -->
 ```verse
-# Runtime overflow produces infinity
-Large := 1.0e308
-Overflow := Large * 10.0    # Overflow produces infinity
-
-# Division by zero produces infinity
-PosInf := 1.0 / 0.0
+PosInf := 1.0 / 0.0             # Division by zero produces infinity
 NegInf := -1.0 / 0.0
-
-# Underflow produces denormalized numbers or zero
-Small := 1.0e-320
-Smaller := Small / 1.0e10   # Underflows gracefully
+NegInf < -1.0e308
+Overflow := 1.0e308 * 10.0      # So does overflow
+Overflow = PosInf
+Tiny := 1.0e-320 / 1.0e10       # Underflow gives denormals, then zero
+Tiny = 0.0
 ```
 
 Float operations follow IEEE 754 semantics. Operations that would
 produce NaN (like `0.0 / 0.0`, `Inf - Inf`, or `Sqrt(-1.0)`) return
 NaN values rather than failing. NaN propagates through arithmetic
-operations.
+operations. Equality is one place where Verse parts company with IEEE
+754: a NaN compares equal to itself rather than to nothing at all.
+
+That departure looks less arbitrary once you remember what equality is
+for in Verse. `float` is a comparable type, so it may be used as a map
+key, and a key that could not be compared equal to itself would be a key
+you could never look up again. Reflexive equality is the price of
+letting every comparable type serve as a key, and NaN is not exempted
+from it.
+
+<!--versetest-->
+<!-- 06 -->
+```verse
+Nan := 0.0 / 0.0        # A value, not a failure
+not (Nan < 1.0)         # NaN is unordered: neither less nor greater
+Nan + 1.0 = Nan         # NaN propagates through arithmetic
+Nan = Nan               # But equality succeeds, unlike IEEE 754
+```
 
 #### Character Literals
 
@@ -133,23 +133,21 @@ Character literals represent individual text units. Verse has two character type
 `char` literals represent UTF-8 code units (single bytes, 0-255):
 
 <!--versetest-->
-<!-- 08 -->
+<!-- 07 -->
 ```verse
 LetterA := 'a'          # Printable ASCII character
-Space := ' '
 Tab := '\t'             # Escape sequence
-LetterAHex := 0o61      # Hexadecimal notation: 0oXX (97 decimal = 'a')
+LetterA = 0o61          # 0oXX is hexadecimal notation (0x61 = 97 = 'a')
 ```
 
 `char32` literals represent Unicode code points:
 
 <!--versetest-->
-<!-- 09 -->
+<!-- 08 -->
 ```verse
 Emoji := '😀'           # Non-ASCII automatically char32
 Accented := 'é'
-ChineseChar := '好'
-HexUnicode := 0u1f600   # Hex notation: 0uXXXXX (😀)
+Emoji = 0u1f600         # 0uXXXXXX is hexadecimal notation
 ```
 
 Type inference from literals:
@@ -188,7 +186,7 @@ Character literals cannot be empty or contain multiple characters.
 String literals represent text sequences and support interpolation for embedding expressions. Basic strings use double quotes:
 
 <!--versetest-->
-<!-- 10 -->
+<!-- 09 -->
 ```verse
 Greeting := "Hello, World!"
 Empty := ""
@@ -198,52 +196,44 @@ WithEscapes := "Line 1\nLine 2\tTabbed"
 String interpolation embeds expressions using curly braces:
 
 <!--versetest
-Format(D:float, ?Decimals:int):string=""
+Format(D:float, ?Decimals:int)<computes>:string=""
 -->
-<!-- 11 -->
+<!-- 10 -->
 ```verse
 Name := "Alice"
+Message := "Hello, {Name}!"
+Message = "Hello, Alice!"
+
 Age := 30
+Info := "Age next year: {Age + 1}"                      # Any expression
+Info = "Age next year: 31"
 
-# Simple interpolation
-Message := "Hello, {Name}!"                      # "Hello, Alice!"
-
-# Expression interpolation
-Info := "Age next year: {Age + 1}"               # "Age next year: 31"
-
-# Function calls
-Score := 100
-Text := "Score: {ToString(Score)}"               # "Score: 100"
-
-# Function calls with named arguments
-Distance := 5.5
-Formatted := "Distance: {Format(Distance, ?Decimals:=2)}"
+Formatted := "Distance: {Format(5.5, ?Decimals := 2)}"  # Call with named argument
 ```
 
-Multi-line strings can span multiple lines using interpolation braces for continuation:
+Multi-line strings can span multiple lines using interpolation braces
+for continuation. Whatever follows the closing brace, leading spaces
+included, is kept verbatim:
 
 <!--versetest-->
-<!-- 12 -->
+<!-- 11 -->
 ```verse
 LongMessage := "This is a multi-line {
 }string that continues across {
 }multiple lines."
-# Result: "This is a multi-line string that continues across multiple lines."
-
-OtherMessage := "Another message{
-}    with some empty{
-}    spaces."
-# Result := "Another message    with some empty    spaces."
+LongMessage = "This is a multi-line string that continues across multiple lines."
 ```
 
 The compiler ignores empty interpolants:
 
 <!--versetest-->
-<!-- 13 -->
+<!-- 12 -->
 ```verse
-Text1 := "ab{}cd"        # Same as "abcd"
+Text1 := "ab{}cd"
+Text1 = "abcd"
 Text2 := "ab{
-}cd"                    # Same as "abcd" (newline ignored)
+}cd"                    # A newline inside an interpolant disappears too
+Text2 = "abcd"
 ```
 
 Curly braces must be escaped (`"\{ \}"`) to appear as literal characters in strings. The `string` type is an alias for `[]char` (array of UTF-8 code units). Since UTF-8 code units are single bytes, strings are byte sequences rather than Unicode character sequences. For example, `"José".Length` returns `5` (5 code units/bytes, not 4 characters, since é takes 2 code units).
@@ -251,48 +241,41 @@ Curly braces must be escaped (`"\{ \}"`) to appear as literal characters in stri
 String-array equivalence:
 
 <!--versetest-->
-<!-- 14 -->
+<!-- 13 -->
 ```verse
-Test1 := logic{"abc" = array{'a', 'b', 'c'}}    # True
-Test2 := logic{"" = array{}}                    # True
+"abc" = array{'a', 'b', 'c'}
+"" = array{}
 ```
 
 The compiler removes comments from strings:
 
 <!--versetest-->
-<!-- 15 -->
+<!-- 14 -->
 ```verse
-Text1 := "abc<#comment#>def"     # Same as "abcdef"
+Text := "abc<#comment#>def"
+Text = "abcdef"
 ```
 
 #### Boolean Literals
 
-The `logic` type has two literal values:
-
-<!--versetest-->
-<!-- 16 -->
-```verse
-IsReady := true
-IsComplete := false
-```
-
-Use boolean values with the query operator `?` or in comparisons:
+The `logic` type has two literal values. Use boolean values with the
+query operator `?` or in comparisons:
 
 <!--versetest
 StartGame():void = {}
 ShowResults():void = {}
-IsReady:logic = true
-IsComplete:logic = false
 -->
-<!-- 17 -->
+<!-- 15 -->
 ```verse
+IsReady := true
+IsComplete := false
+
 if (IsReady?):
     StartGame()
 
 if (IsComplete = true):
     ShowResults()
 ```
-
 
 The `logic{}` expression creates boolean values from failable expressions (see [Failure](08_failure.md) for details on failable expressions):
 
@@ -302,12 +285,13 @@ Optional:?int = option{1}
 X:int = 1
 Y:int = 1
 -->
-<!-- 18 -->
+<!-- 16 -->
 ```verse
-# Converts <decides> expression to logic value
 Success := logic{Operation[]}        # True if succeeds, false if fails
 HasValue := logic{Optional?}         # True if optional has value
 IsEqual := logic{X = Y}              # True if equal, false otherwise
+Success = true
+IsEqual = true
 ```
 
 The `logic{}` expression requires at least a superficial possibility of failure. Pure expressions without `<decides>` effect cause errors:
@@ -318,7 +302,7 @@ assert_semantic_error(3513, 3547):
 assert_semantic_error(3660):
     Bad18b := logic{}
 -->
-<!-- 19 -->
+<!-- 17 -->
 ```verse
 # ERROR: logic{0} has no decides effect
 # ERROR: logic{} is empty
@@ -332,7 +316,7 @@ Multiple expressions inside `logic{}` can be separated by semicolons or commas (
 Path literals identify modules and packages using a hierarchical naming scheme:
 
 <!--NoCompile-->
-<!-- 20 -->
+<!-- 18 -->
 ```verse
 /Verse.org/Verse                    # Standard library path
 /YourGame/Player/Inventory          # Custom module path
@@ -350,17 +334,28 @@ The Modules chapter covers path literals in detail.
 ### Identifiers and References
 
 Identifiers serve as references to values, whether they are constants,
-variables, functions, or types. An identifier consists of:
-
-- **First character:** Letter (A-Z, a-z) or underscore (`_`)
-- **Subsequent characters:** Letters, digits (0-9), or underscores
-- **Reserved:** Single underscore `_` cannot be used as an identifier
+variables, functions, or types. An identifier begins with a letter
+(A-Z, a-z) or an underscore (`_`), and its subsequent characters are
+letters, digits (0-9), or underscores. The single underscore `_` is
+reserved and cannot be used as an identifier.
 
 Identifiers are case-sensitive and use only ASCII characters—Unicode
 characters are not supported in identifiers.
 
-<!--NoCompile-->
-<!-- 21 -->
+<!--versetest
+GetValue()<computes>:int = 1
+Counter:int = 2
+my_class := class{}
+_private:int = 3
+variable123:int = 4
+assert_semantic_error(3549):
+    HyphenName()<computes>:void =
+        my-variable := 3
+assert_semantic_error(3514):
+    UnderscoreName()<computes>:void =
+        _ := 3
+-->
+<!-- 19 -->
 ```verse
 int               # Reference to the int type
 GetValue          # Reference to a function
@@ -370,10 +365,10 @@ _private          # Leading underscore allowed
 variable123       # Digits allowed after first character
 
 # Invalid identifiers:
-# 123invalid      # Cannot start with digit
-# my-variable     # Hyphen not allowed
-# café            # Unicode not supported
-# _               # Single underscore is reserved
+# 123invalid      # Error: cannot start with a digit
+# my-variable     # Error: a hyphen reads as subtraction
+# café            # Error: Unicode not supported
+# _               # Error: single underscore is reserved
 ```
 
 The language does not syntactically distinguish between different kinds
@@ -396,9 +391,9 @@ Y:int = 10
 Positive:string = "positive"
 Negative:string = "negative"
 -->
-<!-- 22 -->
+<!-- 20 -->
 ```verse
-(A + B) * C       # Group addition before multiplication
+(A + B) * C = 9   # Group addition before multiplication: (1+2)*3, not 1+(2*3)
 if (X > 0 and Y > 0) then Positive else Negative
 ```
 
@@ -407,41 +402,26 @@ if (X > 0 and Y > 0) then Positive else Negative
 Tuples provide a way to group two or more values with little
 ceremony. The syntax distinguishes between parentheses used for
 grouping and those used for tuple construction through the presence of
-commas:
-
-<!--versetest
-X:int = 5
-Y:int = 10
--->
-<!-- 23 -->
-```verse
-(X, Y)            # Two-element tuple
-(1, "hello", true) # Mixed-type tuple
-```
-
-Tuples can be accessed using function-call syntax with a single integer argument:
+commas. Tuples themselves are accessed using function-call syntax with
+a single integer argument:
 
 <!--versetest-->
-<!-- 24 -->
+<!-- 21 -->
 ```verse
-Point := (10, 20)
-X := Point(0)     # Access first element
-Y := Point(1)     # Access second element
+Point := (10, 20)           # Two-element tuple
+Mixed := (1, "hello", true) # Mixed-type tuple
+Point(0) = 10               # Access first element
+Point(1) = 20               # Access second element
 ```
 
 Write tuple types as follows:
 
-<!--versetest
-GetPoint():tuple(int,int) = (10, 20)
-GetData():tuple(int,string,logic) = (42, "hello", true)
-<#
--->
-<!-- 25 -->
+<!--versetest-->
+<!-- 22 -->
 ```verse
-tuple(int,int)
-tuple(int,string,logic)
+Pair:tuple(int,int) = (10, 20)
+Record:tuple(int,string,logic) = (42, "hello", true)
 ```
-<!-- #> -->
 
 While the compiler accepts single-element tuple types like `tuple(int)`,
 there is currently no syntax to construct a single-element tuple value.
@@ -458,13 +438,18 @@ The dot operator provides access to members of objects, modules, and
 other structured values. Member access expressions evaluate to the
 value of the specified member:
 
-<!--NoCompile-->
-<!-- 26 -->
+<!--versetest
+shapes := module:
+    Area<public>(Width:int, Height:int)<computes>:int = Width * Height
+point := struct{X:float, Y:float}
+hero := class{Name:string, Position:point}
+-->
+<!-- 23 -->
 ```verse
-Player.Health           # Access field
-Config.MaxPlayers       # Access nested value
-math.Sqrt(16.0)         # Access module function
-Point.X                 # Access struct field
+Player := hero{Name := "Ada", Position := point{X := 1.0, Y := 2.0}}
+Player.Name = "Ada"             # Field of a class
+Player.Position.Y = 2.0         # Field of a nested struct
+shapes.Area(3, 4) = 12          # Function of a module
 ```
 
 Member access can be chained, creating paths through nested structures:
@@ -472,18 +457,14 @@ Member access can be chained, creating paths through nested structures:
 <!--versetest
 item := class{Name:string = "Sword"}
 inventory := class{Items:[]item = array{item{}}}
-player_type := class{Inventory:inventory = inventory{}}
-game := class{Players:[]player_type = array{player_type{}}}
-M()<decides>:void =
-    Game:game = game{}
-    Game.Players[0].Inventory.Items[0].Name
-<#
+player := class{Inventory:inventory = inventory{}}
+game := class{Players:[]player = array{player{}}}
 -->
-<!-- 27 -->
+<!-- 24 -->
 ```verse
-Game.Players[0].Inventory.Items[0].Name
+Game := game{}
+Game.Players[0].Inventory.Items[0].Name = "Sword"
 ```
-<!-- #> -->
 
 ### Computed Access
 
@@ -492,35 +473,25 @@ arrays, maps, or other indexable structures. Verse evaluates the expression with
 brackets to determine which element to access:
 
 <!--versetest
-ComputeIndex():int = 0
-M()<decides>:void =
-    Array:[]int = array{1, 2, 3}
-    Map:[string]int = map{"key" => 42}
-    Matrix:[][]int = array{array{1, 2}, array{3, 4}}
-    Row:int = 0
-    Col:int = 1
-    Data:[]int = array{10, 20, 30}
-    Array[0]
-    Map["key"]
-    Matrix[Row][Col]
-    Data[ComputeIndex()]
-<#
+ComputeIndex()<computes>:int = 0
+Values:[]int = array{1, 2, 3}
+Lookup:[string]int = map{"key" => 42}
+Grid:[][]int = array{array{1, 2}, array{3, 4}}
 -->
-<!-- 28 -->
+<!-- 25 -->
 ```verse
-Array[0]                # Array indexing
-Map["key"]              # Map lookup
-Matrix[Row][Col]        # Nested indexing
-Data[ComputeIndex()]    # Dynamic index computation
+Values[0] = 1               # Array indexing
+Lookup["key"] = 42          # Map lookup
+Grid[1][0] = 3              # Nested indexing
+Values[ComputeIndex()] = 1  # Dynamic index computation
 ```
-<!-- #> -->
 
 The square bracket syntax `Func[]` is **required** for calling
 functions that may fail (those with the `<decides>` effect). Use regular
 parentheses `Func()` for functions that always succeed. Array
 indexing also uses `[]` because it can fail when the index is out of bounds.
 
-<!-- 29 -->
+<!-- 26 -->
 ```verse
 GetValue()<transacts><decides>:int = 42
 GetData():int = 7
@@ -540,29 +511,20 @@ language treats function calls as expressions that evaluate to the
 function's return value:
 
 <!--versetest
-Sqrt(X:int):float = 4.0
-MaxOf(A:int, B:int):int = if (A > B) then A else B
-Initialize():void = {}
-GetData():int = 42
-Transform():int = 10
-Process(X:int, Y:int)<decides>:void = {}
-M()<decides>:void =
-    A:int = 5
-    B:int = 10
-    Sqrt(16)
-    MaxOf(A, B)
-    Initialize()
-    Process[GetData(), Transform()]
-<#
+Root(X:int)<computes>:int = X
+Larger(A:int, B:int)<computes>:int = if (A > B) then A else B
+Initialize()<computes>:void = {}
+GetData()<computes>:int = 42
+Transform()<computes>:int = 10
+Combine(X:int, Y:int)<computes><decides>:int = X + Y
 -->
-<!-- 30 -->
+<!-- 27 -->
 ```verse
-Sqrt(16)                        # Single argument
-MaxOf(A, B)                     # Multiple arguments
-Initialize()                    # No arguments
-Process[GetData(), Transform()] # Nested calls, outer call may fail
+Root(16) = 16                       # Single argument
+Larger(5, 10) = 10                  # Multiple arguments
+Initialize()                        # No arguments
+Combine[GetData(), Transform()] = 52 # Nested calls, outer call may fail
 ```
-<!-- #> -->
 
 ## Object Construction
 
@@ -575,7 +537,7 @@ point := struct{ X:int, Y:int }
 player := struct{Name:string, Level:int, Health:int}
 config := struct { MaxPlayers:int, Difficulty:string, EnablePvP:logic }
 -->
-<!-- 31 -->
+<!-- 28 -->
 ```verse
 point{X:=10, Y:=20}
 player{Name:="Hero", Level:=1, Health:=100}
@@ -598,7 +560,7 @@ player:=struct{ Position:point, Inventory:inventory}
 config:=struct{Difficulty:string}
 game_state:=struct{Player:player, Settings:config}
 -->
-<!-- 32 -->
+<!-- 29 -->
 ```verse
 Game := game_state{
     Player := player{
@@ -607,6 +569,7 @@ Game := game_state{
     },
     Settings := config{Difficulty:="hard"}
 }
+Game.Player.Inventory.Capacity = 20
 ```
 
 ## Control Flow as Expressions
@@ -622,14 +585,15 @@ The if-then-else construct is an expression that evaluates to one of
 two values based on a condition:
 
 <!--versetest
-ComputeA():int=1
-ComputeB():int=1
+ComputeA()<computes>:int=1
+ComputeB()<computes>:int=1
 X:int = 5
 Condition:logic = true
 -->
-<!-- 33 -->
+<!-- 30 -->
 ```verse
 Result := if (X > 0) then "positive" else "negative"
+Result = "positive"
 Value := if (Condition?) then ComputeA() else ComputeB()
 ```
 
@@ -643,7 +607,7 @@ Condition:logic = true
 Value1:int = 42
 Value2:int = 100
 -->
-<!-- 34 -->
+<!-- 31 -->
 ```verse
 # Standard form
 if (Condition?) then Value1 else Value2
@@ -663,12 +627,15 @@ For expressions iterate over collections and produce values. The basic
 form iterates over elements:
 
 <!--versetest
-Process(Item:int):void={}
+Process(Item:int)<computes>:void={}
 Collection:[]int = array{1, 2, 3}
 -->
-<!-- 35 -->
+<!-- 32 -->
 ```verse
 for (Item : Collection) { Process(Item) }
+
+Doubled := for (Item : Collection) { Item * 2 }
+Doubled = array{2, 4, 6}      # A for expression evaluates to an array
 ```
 
 An extended form provides access to both index and item--in the case
@@ -677,7 +644,7 @@ of a `Map`, indices are not limited to integers:
 <!--versetest
 Collection:[]int = array{1, 2, 3}
 -->
-<!-- 36 -->
+<!-- 33 -->
 ```verse
 for (Index -> Item : Collection) {
     Print("Item at {Index} is {Item}")
@@ -695,18 +662,11 @@ Loop expressions provide indefinite iteration, continuing until
 explicitly terminated through failure or other control flow:
 
 <!--versetest
-GetNext():int=1
+GetNext()<computes>:int=1
 Done(Value:int)<computes><decides>:void={}
-Process(Value:int):void={}
-M():void=
-    loop {
-        Value := GetNext()
-        if (Done[Value]) then break
-        Process(Value)
-    }
-<#
+Process(Value:int)<computes>:void={}
 -->
-<!-- 37 -->
+<!-- 34 -->
 ```verse
 loop {
     Value := GetNext()
@@ -714,22 +674,21 @@ loop {
     Process(Value)
 }
 ```
-<!-- #> -->
 
 The loop construct can use indented syntax for clarity.
 
 A loop expression produces a value of type `true`, regardless of what
 expressions appear in its body. This value has no practical use—loops are typically used for their side effects rather than their return value.
 
-<!-- 38 -->
+<!-- 35 -->
 ```verse
 var Count:int = 0
 
-Result := loop:
+Result := loop:          # Result has type 'true'
     set Count += 1
     if (Count >= 3):
         break
-# Result has type 'true' (and returns `true`)
+Count = 3
 ```
 
 ### Case
@@ -744,7 +703,7 @@ color := enum:
     Other
 Color:color = color.Red
 -->
-<!-- 39 -->
+<!-- 36 -->
 ```verse
 Description := case(Color) {
     color.Red => "Danger",
@@ -752,6 +711,7 @@ Description := case(Color) {
     color.Green => "Safe",
     _ => "Unknown"
 }
+Description = "Danger"
 ```
 
 The `_` pattern serves as a catch-all, ensuring the case expression is
@@ -771,11 +731,13 @@ identifiers. The `:=` operator creates immutable bindings, while `set
 =` performs mutable assignment:
 
 <!--versetest-->
-<!-- 40 -->
+<!-- 37 -->
 ```verse
 X := 42           # Immutable binding
 Y := X * 2        # Binding to computed value
+Y = 84
 Z := W := 10      # Right-associative chaining
+Z = W
 ```
 
 Assignment operators are right-associative, meaning that `a := b := c`
@@ -784,25 +746,18 @@ assignments while maintaining clarity about evaluation order.
 
 Compound assignments provide shorthand for common update patterns:
 
-<!--versetest
-F()<transacts>:void=
-    var Counter :int = 0
-    var Total :int = 0
-    Factor:=2
-    set Counter += 1
-    set Total *= Factor
-<#
--->
-<!-- 41 -->
+<!--versetest-->
+<!-- 38 -->
 ```verse
-set Counter += 1      # Equivalent to: set Counter = Counter + 1
-set Total *= Factor   # Equivalent to: set Total = Total * Factor
+var Total:int = 3
+set Total += 1        # Equivalent to: set Total = Total + 1
+set Total *= 2        # Equivalent to: set Total = Total * 2
+Total = 8
 ```
-<!-- #> -->
 
 Compound assignment operators evaluate the left-hand side expression only once, which is observable when the expression has side effects:
 
-<!-- 42 -->
+<!-- 39 -->
 ```verse
 var Values:[]int = array{10, 20, 30}
 var Index:int = 0
@@ -830,21 +785,16 @@ different elements.
 
 The range operator (`..`) creates integer ranges for iteration in
 `for` loops. Ranges are **inclusive on both ends** and can only appear
-directly in for loop iteration clauses:
+directly in for loop iteration clauses, where they must be bound with
+`:=` rather than `:`. The bounds themselves can be any integer
+expressions:
 
-<!-- 43 -->
+<!--versetest-->
+<!-- 40 -->
 ```verse
-Process(I:int):void = {}
-Count:int = 10
-
-# Ranges are inclusive at both ends, and appear only in a for clause,
-# which must bind with := rather than :
-for (I := 0..Count):
-    Process(I)
-
-# The bounds can be any integer expressions
-for (I := 1..Count - 1):
-    Process(I)
+Count := 4
+Squares := for (I := 1..Count - 1) { I * I }
+Squares = array{1, 4, 9}
 ```
 
 Ranges are not first-class values. They cannot be stored in variables
@@ -860,57 +810,57 @@ keyword operators (`and`, `or`, `not`) rather than symbols, improving
 readability:
 
 <!--versetest
-ProcessQuadrant()<computes>:void = {}
-Validated:logic= true
+Quadrant()<computes>:void = {}
+Validated:logic = true
 UseDefault()<computes><decides>:void = {}
-IsReady()<computes><decides>:void = {}
+Ready()<computes><decides>:void = {}
 Wait()<computes>:void = {}
-M()<transacts>:void =
-    X:int = 5
-    Y:int = 10
-    if (X > 0 and Y > 0) then ProcessQuadrant()
-    Result := logic{Validated? or UseDefault[]}
-    if (not IsReady[]) then Wait()
-<#
+X:int = 5
+Y:int = 10
 -->
-<!-- 44 -->
+<!-- 41 -->
 ```verse
-if (X > 0 and Y > 0) then ProcessQuadrant()
-Result := logic{Validated? or UseDefault[]}
-if (not IsReady[]) then Wait()
+if (X > 0 and Y > 0) then Quadrant()
+Chosen := logic{Validated? or UseDefault[]}
+if (not Ready[]) then Wait()
 ```
-<!-- #> -->
 
 The precedence ensures that `and` binds tighter than `or`, matching
 mathematical logic conventions, the `logic{}` expression turns success
 or failure into a value:
 
-<!--NoCompile-->
-<!-- 45 -->
+<!--versetest-->
+<!-- 42 -->
 ```verse
-# Evaluates as: (ExpA and ExpB) or (ExpC and ExpD)
-Condition := logic{ExpA and ExpB or ExpC and ExpD}
+# Evaluates as: (true and true) or (false and false)
+Grouped := logic{true? and true? or false? and false?}
+Grouped = true      # Would be false if the operators grouped left to right
 ```
 
 Variable bindings do not escape from logical operations.
 When you use `:=` inside `and`, `or`, or `not` expressions, those
 bindings are only evaluated for short-circuit control flow and are **not**
-accessible afterward:
+accessible afterward. A binding made directly by an `if`, on the other
+hand, is visible in the body of that `if`:
 
-<!--NoCompile-->
-<!-- 46 -->
+<!--versetest
+assert_semantic_error(3506, 3506):
+    EscapingBind()<computes><decides>:void =
+        Pair:[]int = array{10, 20}
+        if ((X := Pair[0]) and (Y := Pair[1])):
+            Z := X + Y
+-->
+<!-- 43 -->
 ```verse
-Arr:[]int = array{10, 20}
+Pair:[]int = array{10, 20}
 
-# ERROR: Bindings in logical operations are NOT accessible
-if ((X := Arr[0]) and (Y := Arr[1])):
-    # X and Y are not bound here - this will cause a compilation error!
-    Z := X + Y
+# ERROR: X and Y are unknown identifiers in the body
+# if ((X := Pair[0]) and (Y := Pair[1])):
+#     Z := X + Y
 
-# Simple if binding DOES work
-if (X := Arr[0]):
-    # OK: X is accessible here
-    Y := X + 1
+# OK: a simple if binding is accessible
+if (First := Pair[0]):
+    First = 10
 ```
 
 ### Comparison Operations
@@ -919,7 +869,7 @@ Comparison operators also either succeed or fail and can be chained
 for range checking:
 
 <!--versetest
-InRange():void={}
+InRange()<computes>:void={}
 Value:int = 50
 X:int = 75
 Minimum:int = 0
@@ -927,45 +877,30 @@ Maximum:int = 100
 A:int = 5
 B:int = 10
 -->
-<!-- 47 -->
+<!-- 44 -->
 ```verse
 if (0 <= Value <= 100) then InRange()
 IsValid := logic{X > Minimum and X < Maximum}
-Same := logic{A = B}
+IsValid = true
 Different := logic{A <> B}
+Different = true
 ```
 
 All comparison operators have the same precedence and evaluate
-**left-to-right**. Crucially, *comparison operators return their left
-operand* when the comparison succeeds, and *comparison chains have special
-syntax* that checks all adjacent pairs.
+left-to-right. Crucially, comparison operators return their left
+operand when the comparison succeeds, and comparison chains have special
+syntax that checks all adjacent pairs.
 
-<!--versetest
-assert:
-    X := 0 < 10
-    X = 0  # Returns left operand (0)
-
-    Value:int = 50
-    Result := 0 <= Value <= 100
-    Result = 0  # Chain returns leftmost operand (0)
-
-    # Chain checks BOTH comparisons
-    Value2:int = 75
-    not(10 <= Value2 <= 50)  # Fails because 75 > 50
-<#
--->
-<!-- 48 -->
+<!--versetest-->
+<!-- 45 -->
 ```verse
-X := 0 < 10
-# X equals 0 (the left operand)
+Left := 0 < 10
+Left = 0                  # A comparison returns its left operand
 
-0 <= Value <= 100
-# Special chain syntax that checks BOTH:
-#   - 0 <= Value (lower bound)
-#   - Value <= 100 (upper bound)
-# Returns 0 (leftmost operand) if both succeed
+Value := 50
+0 <= Value <= 100         # Chain checks BOTH 0 <= Value and Value <= 100
+not (10 <= Value <= 40)   # And fails when either half fails
 ```
-<!-- #> -->
 
 Verse does **not** evaluate the comparison chain `A <= B <= C` as `(A <= B) <= C`.
 Instead, it is special syntax that checks both `A <= B` **and** `B <= C`, while
@@ -983,15 +918,18 @@ A:int = 1
 B:int = 2
 C:int = 3
 -->
-<!-- 49 -->
+<!-- 46 -->
 ```verse
-Result := A + B * C      # Multiplication first
-Average := (A + B) / 2   # Parentheses override precedence
+Result := A + B * C          # Multiplication first
+Result = 7
+Average := (A + B + C) / 2   # Parentheses override precedence
+Average = 3
 ```
 
 Integer division by zero fails and has the `<decides>` effect.
 When dividing integers, `X / Y` can fail if `Y` is `0`, allowing you to handle
-this case safely:
+this case safely. Note that dividing two integers yields a `rational`,
+not an `int`, so the quotient cannot be assigned to an `int` variable:
 
 <!--versetest
 X:int = 10
@@ -999,7 +937,7 @@ Y:int = 0
 assert:
     not(Result := X / Y)
 -->
-<!-- 50 -->
+<!-- 47 -->
 ```verse
 if (Result := X / Y):
     Print("Division succeeded")
@@ -1018,11 +956,12 @@ Value:int = 1
 X:int = 1
 Y:int = 2
 -->
-<!-- 51 -->
+<!-- 48 -->
 ```verse
 Negative := -Value
 Inverted := logic{not Flag?}
 Result := -X * Y    # Unary minus applies to X only
+Result = -2
 ```
 
 ## Set Expressions
@@ -1032,41 +971,30 @@ requires mutation. Set expressions provide mutation of variables and
 fields:
 
 <!--versetest
-c := class { var Field:int = 0 }
-GetObj()<transacts>:c = c{}
-GetArr()<transacts>:[]int = array{1}
-GetMap()<transacts>:[string]string = map{ "hi" => "hp" }
-Element:int = 5
-Value:int = 100
-Index:int = 0
-Key:string = "key"
-MappedValue:string = "value"
-assert:
-    var X:int = 0
-    var Obj:c = GetObj()
-    var Arr:[]int = GetArr()
-    var Map:[string]string = GetMap()
-
-    set X = 10
-    set Obj.Field = Value
-    set Arr[Index] = Element
-    set Map[Key] = MappedValue
-<#
+counter := class { var Count:int = 0 }
 -->
-<!-- 52 -->
+<!-- 49 -->
 ```verse
-set X = 10                    # Variable assignment
-set Obj.Field = Value         # Field assignment
-set Arr[Index] = Element      # Array element assignment
-set Map[Key] = MappedValue    # Map entry assignment
+var Health:int = 0
+var Slots:[]int = array{0, 0}
+var Scores:[string]int = map{"Ana" => 0}
+Hero := counter{}
+
+set Health = 10         # Variable assignment
+set Hero.Count = 5      # Field assignment
+set Slots[0] = 99       # Array element assignment
+set Scores["Ana"] = 3   # Map entry assignment
+Health = 10
+Hero.Count = 5
+Slots[0] = 99
+Scores["Ana"] = 3
 ```
-<!-- #> -->
 
 Set expressions are themselves expressions that **return the value being
 assigned** (the right-hand side). For example, `set Obj.Field = Value`
 returns `Value`, not `Obj`. This allows chaining assignments:
 
-<!-- 53 -->
+<!-- 50 -->
 ```verse
 var X:int = 0
 var Y:int = 0
@@ -1085,23 +1013,17 @@ assigned to.
 Verse supports complex LValues, allowing updates deep within data structures:
 
 <!--versetest
-item := class{Name:string = "Item"}
+item := class{Name:string = "Sword"}
 inventory := class{var Items:[]item = array{item{}}}
-player := class{var Inventory:inventory = inventory{}}
-game := class{var Players:[]player = array{player{}}}
-M()<transacts><decides>:void =
-    Game:game = game{}
-    CurrentPlayer:int = 0
-    Slot:int = 0
-    NewItem:item = item{}
-    set Game.Players[CurrentPlayer].Inventory.Items[Slot] = NewItem
-<#
+player := class{Inventory:inventory = inventory{}}
+game := class{Players:[]player = array{player{}}}
 -->
-<!-- 54 -->
+<!-- 51 -->
 ```verse
-set Game.Players[CurrentPlayer].Inventory.Items[Slot] = NewItem
+Game := game{}
+set Game.Players[0].Inventory.Items[0] = item{Name := "Axe"}
+Game.Players[0].Inventory.Items[0].Name = "Axe"
 ```
-<!-- #> -->
 
 ## Semicolons vs Commas
 
@@ -1110,95 +1032,71 @@ but they have fundamentally different semantics in most
 situations. Understanding when each is appropriate is essential for
 writing correct Verse code.
 
-**Semicolons** (within parentheses) create *sequences* - they evaluate expressions in order and return the value of the last expression:
+Semicolons within parentheses create *sequences*: they evaluate expressions in order and return the value of the last expression.
 
 <!--versetest
-assert:
-    Result := (1; 2; 3)
-    Result = 3
 assert_semantic_error(3560, 3547):
     Result49 := 1; 2
 -->
-<!-- 55 -->
+<!-- 52 -->
 ```verse
-Result := (1; 2; 3)     # Evaluates 1, then 2, then 3; returns 3
-# Note: Parentheses are required
-# Result := 1; 2         # ERROR: Not valid without parentheses
+Sequence := (1; 2; 3)     # Evaluates 1, then 2, then 3
+Sequence = 3              # And returns the last one
+# Sequence := 1; 2        # ERROR: parentheses are required
 ```
 
-**Commas** (within parentheses) create *tuples* - they group multiple values into a single composite value:
+Commas within parentheses create *tuples*: they group multiple values into a single composite value.
 
 <!--versetest
 assert_semantic_error(3560, 3547):
     Result50 := 1, 2
 -->
-<!-- 56 -->
+<!-- 53 -->
 ```verse
-Result := (1, 2, 3)     # Creates a tuple of three elements
-# Result = (1, 2, 3) (type: tuple(int, int, int))
-# Note: Parentheses are required
-# Result := 1, 2         # ERROR: Not valid without parentheses
+Tuple := (1, 2, 3)        # Creates a tuple of three elements
+Tuple = (1, 2, 3)         # Type is tuple(int, int, int)
+# Tuple := 1, 2           # ERROR: parentheses are required
 ```
 
 ### Context-Specific Behavior
 
 In expression contexts (like assignments), semicolons and commas require
 parentheses to create sequences and tuples. The distinction is clear when
-comparing parenthesized expressions:
+comparing parenthesized expressions, and it applies to function return
+values as well:
 
 <!--versetest-->
-<!-- 57 -->
+<!-- 54 -->
 ```verse
-# Semicolon: sequence (returns last value)
-X := (0; 1)              # X = 1, type is int
-
-# Comma: tuple (groups values)
-Y := (0, 1)              # Y = (0, 1), type is tuple(int, int)
-```
-
-This applies to function return values as well:
-
-<!--versetest-->
-<!-- 58 -->
-```verse
-GetInt():int = (1.0; 2)                    # Returns 2 (int)
-GetTuple():tuple(float, int) = (1.0, 2)    # Returns (1.0, 2)
+GetInt():int = (1.0; 2)                    # Sequence: returns 2 (int)
+GetTuple():tuple(float, int) = (1.0, 2)    # Tuple: returns (1.0, 2)
+GetInt() = 2
+GetTuple() = (1.0, 2)
 ```
 
 Semicolons in argument position create a *sequence that executes
-before the call*, with only the last value passed as the argument:
+before the call*, with only the last value passed as the argument. This
+pattern enables side effects in argument position:
 
 <!--versetest
-Process(X:int):void={}
-LogEvent(S:string):int=1
+Process(X:int)<computes>:void={}
+LogEvent(S:string)<computes>:int=1
+MultiplyByTen(X:int)<computes>:int = X * 10
 -->
-<!-- 59 -->
+<!-- 55 -->
 ```verse
-# Semicolon executes side effects, then passes last value
 Process(LogEvent("called"); 42)   # Logs "called", then calls Process(42)
 
-# Equivalent to:
-LogEvent("called")
-Process(42)
-```
-
-This pattern enables side effects in argument position:
-
-<!--versetest
-MultiplyByTen(X:int):int = X * 10
--->
-<!-- 60 -->
-```verse
-Result := MultiplyByTen(2; 3)     # Evaluates 2 and discards it, then calls MultiplyByTen(3)
+Result := MultiplyByTen(2; 3)     # Discards 2, then calls MultiplyByTen(3)
 Result = 30
 ```
 
 Commas separate distinct arguments in the standard way:
 
 <!--versetest
-Add(A:int, B:int):int = A + B
+Add(A:int, B:int)<computes>:int = A + B
 -->
-<!-- 61 -->
+<!-- 56 -->
 ```verse
 Sum := Add(10, 20)                # Two separate arguments
 Sum = 30
@@ -1210,13 +1108,10 @@ Semicolons are *not allowed* in parameter lists - you must use commas:
 assert_semantic_error(3540):
     InvalidFunc(A:int; B:int):void = {}
 -->
-<!-- 62 -->
+<!-- 57 -->
 ```verse
-# VALID: Comma-separated parameters
-ValidFunc(A:int, B:int):void = {}
-
-# INVALID: Semicolon in parameters
-# InvalidFunc(A:int; B:int):void = {}
+ValidFunc(A:int, B:int):void = {}     # VALID: comma-separated parameters
+# InvalidFunc(A:int; B:int):void = {} # ERROR: semicolon in parameters
 ```
 
 ### In Specific Scopes
@@ -1224,7 +1119,7 @@ ValidFunc(A:int, B:int):void = {}
 Within block expressions (braces), semicolons and commas are interchangeable as separators between definitions:
 
 <!--versetest-->
-<!-- 63 -->
+<!-- 58 -->
 ```verse
 # In block scope, all three separators work:
 block:
@@ -1242,35 +1137,43 @@ In `logic{}` constructor - both semicolons and commas work, but with
 different semantics based on the construct's behavior:
 
 <!--versetest-->
-<!-- 64 -->
+<!-- 59 -->
 ```verse
 # Both evaluate all expressions and return logic value
 Result1 := logic{true?; true?}    # Sequence of queries
 Result2 := logic{true?, true?}    # Also valid
+Result1 = Result2
 ```
 
 In `option{}` constructor - follows the standard sequence vs tuple rule:
 
 <!--versetest-->
-<!-- 65 -->
+<!-- 60 -->
 ```verse
-# Semicolon: sequence, wraps last value
-Option1 := option{1; 2}?          # 2
-
-# Comma: tuple, wraps the tuple
-Option2 := option{1, 2}?          # (1, 2)
+Option1 := option{1; 2}?          # Semicolon: sequence, wraps last value
+Option1 = 2
+Option2 := option{1, 2}?          # Comma: tuple, wraps the tuple
+Option2 = (1, 2)
 ```
 
-In `for` expressions - semicolon typically separates the iteration clause from filter conditions, while commas separate multiple conditions:
+In `for` expressions - semicolon typically separates the iteration
+clause from filter conditions, while commas separate multiple
+conditions. The two cannot be mixed in one clause list: a semicolon
+regroups the list, which moves the range out of generator position and
+is rejected.
 
-<!--versetest-->
-<!-- 66 -->
+<!--versetest
+assert_semantic_error(3552, 3509, 3509):
+    MixedClauses()<computes>:void =
+        Vals := for (X := 1..3, X <> 2; X <> 3) { X }
+-->
+<!-- 61 -->
 ```verse
-# Semicolon separates iteration from filter
-for (X := 1..3; X <> 2) { X }
-
-# Comma separates multiple filter conditions
-for (X := 1..3, X <> 2) { X }      # Same meaning in this context
+Odd := for (X := 1..3; X <> 2) { X }    # Semicolon separates iteration from filter
+Odd = array{1, 3}
+Same := for (X := 1..3, X <> 2) { X }   # Comma means the same thing here
+Same = Odd
+# for (X := 1..3, X <> 2; X <> 3)       # ERROR: cannot mix separators
 ```
 
 In `array{}` constructors, you can separate elements with commas **or**
@@ -1280,11 +1183,11 @@ semicolons (but not mixed):
 assert_semantic_error(3547):
     MixedArray61 := array{1, 2; 3}
 -->
-<!-- 67 -->
+<!-- 62 -->
 ```verse
 CommaArray := array{1, 2, 3}       # Commas work
 SemiArray := array{1; 2; 3}        # Semicolons also work
-# MixedArray := array{1, 2; 3}     # ERROR: Cannot mix separators
+# MixedArray := array{1, 2; 3}     # ERROR: cannot mix separators
 ```
 
 ### Newlines as Separators
@@ -1294,17 +1197,14 @@ separators in compound expressions and blocks. Newlines behave like
 semicolons - they create sequences:
 
 <!--versetest-->
-<!-- 68 -->
+<!-- 63 -->
 ```verse
-# These are equivalent:
-Result1 := (1; 2; 3)
-
-Result2 := (
+Lines := (
     1
     2
     3
 )
-# Both return 3
+Lines = 3        # Same as (1; 2; 3)
 ```
 
 ## Compound and Block Expressions
@@ -1314,22 +1214,23 @@ into a single expression. The value of a compound expression is the
 value of its last sub-expression:
 
 <!--versetest
-ComputeIntermediate():int=3
-CalculateAdjustment(Base:int):int=3
+ComputeIntermediate()<computes>:int=3
+CalculateAdjustment(Base:int)<computes>:int=3
 -->
-<!-- 69 -->
+<!-- 64 -->
 ```verse
 Result := {
     Temp := ComputeIntermediate()
     Adjustment := CalculateAdjustment(Temp)
     Temp + Adjustment
 }
+Result = 6
 ```
 
 Compound expressions create new scopes for variables, allowing local bindings that do not affect the enclosing scope:
 
 <!--versetest-->
-<!-- 70 -->
+<!-- 65 -->
 ```verse
 block:
     X := 10    # Local to this block
@@ -1348,27 +1249,19 @@ rules:
 A:int = 1
 B:int = 2
 C:int = 3
-M():void =
-    X := { A; B; C }
-    Y := { A, B, C }
-    Z := {
-        A
-        B
-        C
-    }
-<#
 -->
-<!-- 71 -->
+<!-- 66 -->
 ```verse
-{ A; B; C }           # Semicolon separation (returns C)
-{ A, B, C }           # Comma separation (returns tuple (A, B, C))
-{                     # Newline separation (returns C)
+Semi := { A; B; C }   # Semicolon separation (returns C)
+Comma := { A, B, C }  # Comma separation (returns tuple (A, B, C))
+Lines := {            # Newline separation (returns C)
     A
     B
     C
 }
+Semi = Lines
+Comma = (A, B, C)
 ```
-<!-- #> -->
 
 ## Array Expressions
 
@@ -1376,7 +1269,7 @@ Array expressions create array values using the `array` keyword
 followed by elements in braces:
 
 <!--versetest-->
-<!-- 72 -->
+<!-- 67 -->
 ```verse
 NumArray := array{1, 2, 3, 4, 5}
 Empty := array{}
@@ -1387,7 +1280,7 @@ You can also construct arrays using indented syntax for clarity with
 longer lists:
 
 <!--versetest-->
-<!-- 73 -->
+<!-- 68 -->
 ```verse
 Colors := array:
     "red"

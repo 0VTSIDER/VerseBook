@@ -755,9 +755,11 @@ RemoveKeyFromMap(TheMap:[string]int, ToRemove:string):[string]int =
 RemoveKeyFromMap(map{"a" => 1, "b" => 2}, "a") = map{"b" => 2}
 ```
 
-The key type of a map must belong to the class `comparable`, which guarantees that two keys can be checked for equality. All basic scalar types such as `int`, `float`, `rational`, `logic`, `char`, and `char32` are comparable, and so are compound types like arrays, maps, tuples, and `struct`s whose components are comparable.  Classes and interfaces (without the `<unique>` specifier) cannot be used as keys, since their instances do not provide a built-in notion of equality. However, classes and interfaces marked with `<unique>` can be used as keys because they support identity-based equality.
+The key type of a map must belong to the class `comparable`, which guarantees that two keys can be checked for equality. Classes and interfaces without the `<unique>` specifier cannot be used as keys, since their instances do not provide a built-in notion of equality; marked `<unique>`, they can, because identity then supplies the missing equality.
 
-Not all types can be used as map keys. A type must be comparable—meaning values of that type can be checked for equality. Here's a comprehensive guide to what can and cannot be used as map keys:
+Comparability is necessary but not sufficient. Arrays and maps are both comparable — two arrays can be compared for equality, and so can two maps — yet neither may serve as a map key. The compiler rejects them with "Use of `[]int` as a map key is not yet implemented", the wording promising an eventual lifting of the restriction. The one exception is `string`, which is an array of `char` and is accepted as a key everywhere.
+
+Options, tuples and `struct`s carry no such restriction and nest freely, so an option of an option, or a struct whose fields are themselves structs, makes a perfectly good key. The restriction travels with the array, though: `?[]int` and `tuple(int, []int)` are rejected for the array buried inside them.
 
 These types are comparable, and so can be used as map keys:
 
@@ -767,10 +769,9 @@ These types are comparable, and so can be used as map keys:
 - `string` - text
 - Enumerations - custom enum types
 - Classes and Interfaces marked with `<unique>`
-- `?t` where `t` is comparable - optionals of comparable types
-- `[]t` where `t` is comparable - arrays of comparable elements
-- `tuple(t0, t1, ...)` where all elements are comparable - tuples of comparable types
-- `struct` types where all fields are comparable
+- `?t` where `t` is a valid key type - optionals
+- `tuple(t0, t1, ...)` where every element is a valid key type - tuples
+- `struct` types where every field is a valid key type
 
 ### Map Key Type Examples
 
@@ -778,7 +779,14 @@ The following examples demonstrate various comparable types used as map keys.
 
 A tuple of comparable elements makes a natural compound key, such as a coordinate pair:
 
-<!--versetest-->
+<!--versetest
+assert_semantic_error(3502):
+    ArrayKeyed:[[]int]string = map{}
+assert_semantic_error(3502):
+    MapKeyed:[[string]int]string = map{}
+assert_semantic_error(3502):
+    BuriedArray:[?[]int]string = map{}
+-->
 <!-- 52 -->
 ```verse
 Grid:[tuple(int, int)]string = map{

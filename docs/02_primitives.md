@@ -1099,7 +1099,7 @@ invalid type usage.
 
 ### Limitations
 
-While `type` enables powerful abstractions, there are some limitations:
+While `type` enables powerful abstractions, there are some limitations.
 
 There is no way to construct a value of an arbitrary type:
 

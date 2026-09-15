@@ -398,7 +398,7 @@ audited := class<final><persistable>:
 Instance := audited{Value := 1}
 
 # Deserialization does not: nothing is printed here
-if (Loaded := PersistenceModule.FromJson["{}", audited]):
+if (Loaded := PersistenceModule.FromJson["\{\}", audited]):
     Loaded.Value = 0
 ```
 
