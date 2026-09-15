@@ -35,6 +35,10 @@ if (!engine) {
 const result = spawnSync(process.execPath, [
   path.join(__dirname, 'verse_api'),
   '--format', 'html',
+  // Everything is generated, and the page hides what is not public behind a
+  // toggle. Readers who only want the callable surface see exactly that;
+  // readers debugging against internals no longer have to go read the digests.
+  '--access', 'all',
   '--out', OUTPUT,
 ], { cwd: REPO_ROOT, stdio: 'inherit' });
 

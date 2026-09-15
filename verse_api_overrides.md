@@ -397,8 +397,10 @@ Succeeds when `Lhs` is greater than `Rhs`, and produces `Lhs` when it does.
 Comparison is a failable expression rather than something returning `logic`,
 which is why it belongs in an `if` or a `for` filter rather than in a variable.
 
-Returning the operand is what lets comparisons chain: `0 <= I <= Length` reads
-as one expression because each comparison hands its value to the next.
+Chaining is separate syntax rather than repeated application. `0 <= I <= Length`
+is one expression that checks both `0 <= I` and `I <= Length`; it is not
+`(0 <= I) <= Length`, which would compare the returned `0` against `Length` and
+never look at `I` again.
 
 <!-- no documentation in the engine source -->
 ## MakeRationalFromInt

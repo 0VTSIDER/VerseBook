@@ -798,16 +798,27 @@ function isRuntimeSurface(decl) {
   return !!decl.owner && (decl.owner.isNative || decl.owner.isNativeCallable);
 }
 
+// The access a reader actually runs into. Reachability is conjunctive: a
+// `<public>` method of an `<internal>` class is no more callable than the class
+// is, so a declaration is as closed as the most closed thing enclosing it.
+function narrowerAccess(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return (ACCESS_RANK[a] ?? 0) <= (ACCESS_RANK[b] ?? 0) ? a : b;
+}
+
 // Declarations nest: a module holds classes, which hold their own members, so
 // the filter recurses. A type is kept when anything inside it is kept, even if
-// the type itself carries no <native> specifier.
-function filterDecl(decl, opts) {
+// the type itself carries no <native> specifier. `inherited` carries the
+// enclosing access down so each declaration can record the one a reader sees.
+function filterDecl(decl, opts, inherited = null) {
   if (!passesAccess(decl, opts.access)) return null;
-  const members = decl.members.map(m => filterDecl(m, opts)).filter(Boolean);
+  const displayAccess = narrowerAccess(effectiveAccess(decl), inherited);
+  const members = decl.members.map(m => filterDecl(m, opts, displayAccess)).filter(Boolean);
   if (isRuntimeSurface(decl) || (TYPE_KEYWORDS.includes(decl.kind) && members.length > 0)) {
-    return { ...decl, members, native: true };
+    return { ...decl, members, native: true, displayAccess };
   }
-  return opts.includeVerse ? { ...decl, members, native: false } : null;
+  return opts.includeVerse ? { ...decl, members, native: false, displayAccess } : null;
 }
 
 function collectSurface(decls, opts) {
@@ -1728,9 +1739,16 @@ const DOC_INTRO = [
 const TYPE_INTRO = [
   'A type is shown as its name, a description, and then its definition: the',
   'whole shape written as it would be written in Verse. Parameter defaults are',
-  'left out of those definitions to keep them readable, so a named parameter',
-  'shown as `?Radius:float` may well have one. Members with more to say than',
-  'their signature are described underneath.',
+  'left out of that shape to keep it readable; a member with an entry of its',
+  'own below shows its full signature, defaults included. Members with more to',
+  'say than their signature are described underneath.',
+];
+
+const ACCESS_INTRO = [
+  'Only what you can call from your own code is listed. Declarations below',
+  '`<public>` are generated too but folded away; the sidebar toggle brings',
+  'them back, which is worth doing when a public type behaves in a way its',
+  'public surface does not explain.',
 ];
 
 const INTRINSICS_INTRO = [
@@ -1867,18 +1885,30 @@ function withoutParameterDefaults(signature) {
 // The whole shape of a type on as few lines as possible, written the way it
 // would be written in Verse. This is the synopsis; members worth saying more
 // about are elaborated underneath it.
-function definitionText(type) {
+// The synopsis broken into its pieces, each member still paired with the
+// declaration it came from. The Markdown renderer wants one string and joins
+// them straight back up; the HTML renderer needs the declarations so it can
+// mark which lines are not public.
+function definitionParts(type) {
   const head = withoutParameterDefaults(type.decl.signature);
-  const members = type.members.map(m => withoutParameterDefaults(m.signature));
-  if (members.length === 0) return head;
+  const members = type.members.map(m => ({
+    text: withoutParameterDefaults(m.signature),
+    access: m.displayAccess,
+  }));
 
   // Enumerators are bare names, and Verse accepts them braced on one line.
-  if (type.decl.kind === 'enum') {
-    const oneLine = `${head}{${members.join(', ')}}`;
-    if (oneLine.length <= 100) return oneLine;
-  }
+  const oneLine = members.length > 0 && type.decl.kind === 'enum'
+    ? `${head}{${members.map(m => m.text).join(', ')}}`
+    : null;
 
-  return [`${head}:`, ...members.map(m => `    ${m}`)].join('\n');
+  return { head, members, oneLine: oneLine && oneLine.length <= 100 ? oneLine : null };
+}
+
+function definitionText(type) {
+  const { head, members, oneLine } = definitionParts(type);
+  if (members.length === 0) return head;
+  if (oneLine) return oneLine;
+  return [`${head}:`, ...members.map(m => `    ${m.text}`)].join('\n');
 }
 
 // How one file's declarations are organised: its native functions first, then
@@ -2378,7 +2408,21 @@ a:hover { text-decoration: underline; }
   border-radius: 6px;
 }
 #theme:hover { border-color: var(--accent); }
-#count { color: var(--fg-dim); font-size: 0.74rem; margin: -0.6rem 0 0.9rem; }
+#internal-label {
+  display: flex; align-items: center; gap: 0.35rem;
+  margin: -0.7rem 0 0.7rem;
+  color: var(--fg-dim); font-size: 0.74rem;
+  cursor: pointer; user-select: none;
+}
+#internal-label[hidden] { display: none; }
+#internal { margin: 0; accent-color: var(--accent); }
+#count { color: var(--fg-dim); font-size: 0.74rem; margin: -0.3rem 0 0.9rem; }
+
+/* Non-public members of an otherwise public type. The entries and synopsis
+   blocks are folded away by the filter, which has to count what survives; a
+   line inside a synopsis is not counted, so it folds away in CSS instead. */
+html:not([data-internal]) .definition code[data-access] { display: none; }
+.definition.bodyless .colon { display: none; }
 
 .sidebar nav ul { list-style: none; margin: 0; padding: 0; }
 .sidebar nav a {
@@ -2566,15 +2610,24 @@ td.notes code { color: var(--fg-dim); }
 const SCREEN_JS = `
 const filter = document.getElementById('filter');
 const count = document.getElementById('count');
+const internal = document.getElementById('internal');
+const internalLabel = document.getElementById('internal-label');
 const entries = [...document.querySelectorAll('[data-search]')];
 const groups = [...document.querySelectorAll('section')];
-const total = entries.length;
+
+// Offering the toggle only makes sense when the page was generated with
+// something below public in it: at --access public there is nothing to reveal.
+internalLabel.hidden = !document.querySelector('[data-access]');
 
 function applyFilter() {
   const query = filter.value.trim().toLowerCase();
+  const showInternal = internal.checked;
   let shown = 0;
+  let total = 0;
   for (const entry of entries) {
-    const match = !query || entry.dataset.search.includes(query);
+    const eligible = showInternal || !entry.dataset.access;
+    if (eligible) total++;
+    const match = eligible && (!query || entry.dataset.search.includes(query));
     entry.hidden = !match;
     if (match) shown++;
   }
@@ -2591,6 +2644,25 @@ function applyFilter() {
   }
 }
 filter.addEventListener('input', applyFilter);
+
+// The root attribute drives the synopsis lines, which are folded away in CSS
+// rather than counted; the checkbox drives everything the filter counts.
+function setInternal(on) {
+  internal.checked = on;
+  document.documentElement.toggleAttribute('data-internal', on);
+  for (const def of document.querySelectorAll('.definition')) {
+    const members = def.querySelectorAll('code.member').length;
+    const kept = def.querySelectorAll('code.member:not([data-access])').length;
+    def.classList.toggle('bodyless', !on && members > 0 && kept === 0);
+  }
+}
+setInternal(localStorage.getItem('verse-api-internal') === 'yes');
+internal.addEventListener('change', () => {
+  localStorage.setItem('verse-api-internal', internal.checked ? 'yes' : 'no');
+  setInternal(internal.checked);
+  applyFilter();
+});
+
 applyFilter();
 
 document.addEventListener('keydown', (event) => {
@@ -2754,10 +2826,22 @@ function searchKey(text) {
   return escapeHtml(text.toLowerCase());
 }
 
+// Anything a reader cannot actually call is marked, so the page can fold it
+// away behind the sidebar toggle. Public declarations carry no attribute: they
+// are the overwhelming majority, and leaving them bare keeps both the HTML and
+// the CSS rule to the exceptional case. A null access means the declaration
+// inherits one this generator cannot see, so it is left visible rather than
+// guessed at.
+function accessAttr(access) {
+  if (!access || access === 'public') return '';
+  return ` data-access="${escapeHtml(access)}"`;
+}
+
 function entryHtml(decl, parent) {
   const { doc } = declParts(decl);
   const body = (doc ? proseHtml(doc) : '') + badgesHtml(decl, parent);
-  return `<div class="entry" data-search="${searchKey(decl.signature)}">` +
+  return `<div class="entry" data-search="${searchKey(decl.signature)}"` +
+         `${accessAttr(decl.displayAccess)}>` +
          `<dt>${sigHtml(decl.signature, { wrap: true })}</dt>` +
          (body ? `<dd>${body}</dd>` : '') + `</div>`;
 }
@@ -2777,13 +2861,23 @@ function membersHtml(members, parent) {
 // for the column wraps with a hanging indent instead of being clipped or forcing
 // the block to scroll sideways.
 function definitionHtml(type) {
+  const { head, members, oneLine } = definitionParts(type);
   const text = definitionText(type);
-  const lines = text.split('\n').map(line => {
-    const member = line.startsWith('    ');
-    return `<code class="${member ? 'member' : 'head'}">` +
-           `${highlightVerse(member ? line.slice(4) : line)}</code>`;
-  });
-  return `<div class="definition" data-search="${searchKey(text)}">${lines.join('')}</div>`;
+
+  // A head with no members, and the braced one-line enum, are each a single run
+  // of text with nothing inside to mark separately.
+  // The colon introducing the member list is its own element: a type whose
+  // members are all non-public loses every line beneath it when they are folded
+  // away, and would otherwise be left announcing a body that is not there.
+  const lines = (members.length === 0 || oneLine)
+    ? [`<code class="head">${highlightVerse(text)}</code>`]
+    : [`<code class="head">${highlightVerse(head)}` +
+       `<span class="colon t-punct">:</span></code>`,
+       ...members.map(m => `<code class="member"${accessAttr(m.access)}>` +
+                           `${highlightVerse(m.text)}</code>`)];
+
+  return `<div class="definition" data-search="${searchKey(text)}"` +
+         `${accessAttr(type.decl.displayAccess)}>${lines.join('')}</div>`;
 }
 
 function tableHtml(headers, rows, classes) {
@@ -2845,7 +2939,8 @@ function renderHtml(model, opts) {
         const rendered = paragraphs.map(p => /^\*.*\*$/.test(p)
           ? `<p class="notes">${inlineHtml(p.slice(1, -1))}</p>`
           : proseHtml(p)).join('');
-        return `<div class="entry" data-search="${searchKey(signature)}">` +
+        return `<div class="entry" data-search="${searchKey(signature)}"` +
+               `${accessAttr(intrinsic.access)}>` +
                `<dt>${sigHtml(signature, { wrap: true })}</dt>` +
                (rendered ? `<dd>${rendered}</dd>` : '') + `</div>`;
       }).join('') + '</dl>');
@@ -2933,6 +3028,10 @@ ${screenCss()}
            autocomplete="off" spellcheck="false">
     <button id="theme" type="button" title="Switch theme">&#9789;</button>
   </div>
+  <label id="internal-label" hidden
+         title="Show declarations you cannot call from your own code">
+    <input id="internal" type="checkbox"> Show non-public declarations
+  </label>
   <p id="count"></p>
   <nav><ul>${nav}</ul></nav>
 </aside>
@@ -2941,6 +3040,8 @@ ${screenCss()}
   ${provenanceLines(model).map(inlineHtml).join(' ')}</div>
   <p class="intro">${DOC_INTRO.map(inlineHtml).join(' ')}</p>
   <p class="intro">${TYPE_INTRO.map(inlineHtml).join(' ')}</p>
+  ${opts.access === 'public' ? '' :
+    `<p class="intro">${ACCESS_INTRO.map(inlineHtml).join(' ')}</p>`}
 ${body.join('\n')}
 </main>
 </div>
