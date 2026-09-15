@@ -53,6 +53,8 @@ Options:
   --no-natives       Skip the .native.verse scan.
   --format <fmt>     md (default) for folding into docs/, or html for a
                      standalone, syntax-coloured page to read in a browser.
+  --book <url>       Where the book is, relative to the HTML page, for the
+                     back links. Default: ../
   -o, --out <file>   Output file. Default: build/verse_runtime_api.<format>
   --overrides <file> Hand-written replacements for weak @doc comments.
                      Default: verse_api_overrides.md, used when it exists.
@@ -76,6 +78,7 @@ function parseArgs(argv) {
     intrinsics: true,
     natives: true,
     format: 'md',
+    book: '../',
     out: null,
     overrides: null,
     useOverrides: true,
@@ -105,6 +108,7 @@ function parseArgs(argv) {
       case '--no-intrinsics':      opts.intrinsics = false; break;
       case '--no-natives':         opts.natives = false; break;
       case '--format':             opts.format = value(); break;
+      case '--book':               opts.book = value(); break;
       case '-o': case '--out':     opts.out = value(); break;
       case '--overrides':          opts.overrides = value(); break;
       case '--no-overrides':       opts.useOverrides = false; break;
@@ -2242,6 +2246,7 @@ function screenCss() {
 :root {
   color-scheme: light dark;
   --sidebar: 20rem;
+  --header-h: 2.7rem;
 ${tokens('light')}
   --bg: #ffffff;
   --bg-soft: #f7f7fa;
@@ -2251,23 +2256,29 @@ ${tokens('light')}
   --fg-dim: #61616c;
   --border: #e4e4ea;
   --border-strong: #cfcfd8;
-  --accent: #d2601a;
-  --accent-soft: #fdf1e8;
-  --link: #0b5fbe;
+  --accent: #ff6e42;
+  --accent-soft: #fff3ef;
+  --link: #1b4fa8;
+  --header-bg: #14161c;
+  --header-fg: #ffffff;
 }
+/* Backgrounds and foregrounds are Material's "slate" scheme, so switching
+   between the book and this page does not feel like changing sites. */
 html[data-theme="dark"] {
 ${tokens('dark')}
-  --bg: #17171b;
-  --bg-soft: #1e1e24;
-  --bg-code: #21212a;
-  --bg-sidebar: #131317;
-  --fg: #dcdce2;
-  --fg-dim: #9a9aa6;
-  --border: #2d2d36;
-  --border-strong: #3d3d49;
-  --accent: #f0873f;
-  --accent-soft: #2a1f17;
-  --link: #6fb3ff;
+  --bg: hsl(225, 15%, 14%);
+  --bg-soft: hsl(225, 15%, 18%);
+  --bg-code: hsl(225, 15%, 18%);
+  --bg-sidebar: hsl(225, 15%, 11%);
+  --fg: hsla(225, 15%, 90%, 0.9);
+  --fg-dim: hsla(225, 15%, 90%, 0.56);
+  --border: hsl(225, 15%, 24%);
+  --border-strong: hsl(225, 15%, 32%);
+  --accent: #ff6e42;
+  --accent-soft: hsl(225, 15%, 20%);
+  --link: #5e8bde;
+  --header-bg: hsl(225, 15%, 9%);
+  --header-fg: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -2276,28 +2287,71 @@ ${tokens('dark')}
 /* Not scroll-behavior: smooth — the browser scales its duration with the
    distance travelled, which crawls on a document this long. Navigation is
    animated in script instead, at a fixed short duration. */
+/* Roboto and Roboto Mono are what Material for MkDocs uses, so the reference
+   reads in the same voice as the chapters. The stylesheet is fetched from the
+   same place the book fetches it; offline, the fallbacks take over. */
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 15px/1.6 "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font: 15px/1.65 Roboto, "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
 }
 code, .sig, kbd {
-  font-family: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  font-family: "Roboto Mono", "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
 }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* Header ---------------------------------------------------------------- */
+/* Deliberately the same shape as the book's own header: black bar, logo on the
+   left, wordmark beside it. Both are the way back. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.55rem 1.2rem;
+  background: var(--header-bg);
+  color: var(--header-fg);
+  box-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.1), 0 0.2rem 0.4rem rgba(0, 0, 0, 0.2);
+}
+.topbar .home {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: inherit;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+.topbar .home:hover { text-decoration: none; opacity: 0.75; }
+.topbar .home img { width: 1.5rem; height: 1.5rem; }
+.topbar .crumb {
+  padding-left: 0.9rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.86rem;
+}
+.topbar .spacer { flex: 1; }
+.topbar .back {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.topbar .back:hover { color: #fff; text-decoration: none; }
+
 .layout { display: flex; align-items: flex-start; }
 
 /* Sidebar ------------------------------------------------------------- */
+/* Sits below the header rather than under it. */
 .sidebar {
   position: sticky;
-  top: 0;
+  top: var(--header-h);
   flex: 0 0 var(--sidebar);
-  height: 100vh;
+  height: calc(100vh - var(--header-h));
   overflow-y: auto;
-  padding: 1.4rem 1rem 3rem 1.4rem;
+  padding: 1.2rem 1rem 3rem 1.4rem;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
 }
@@ -2664,7 +2718,7 @@ function badgesHtml(decl, parent) {
 // A long parameter list is unreadable as one run-on line, especially when the
 // types are fully qualified. Past a threshold it is broken one parameter per
 // line, which is how the same declaration would be written in Verse.
-const SIGNATURE_WRAP_WIDTH = 88;
+const SIGNATURE_WRAP_WIDTH = 120;
 
 function wrapSignature(signature) {
   if (signature.length <= SIGNATURE_WRAP_WIDTH) return signature;
@@ -2759,6 +2813,9 @@ function slugger() {
 }
 
 function renderHtml(model, opts) {
+  // Where the book lives relative to this page. On the site the reference is
+  // served from /book/api/, so the default of `../` reaches the book's home.
+  const book = opts.book.endsWith('/') ? opts.book : `${opts.book}/`;
   const slug = slugger();
   const toc = [];
   const body = [];
@@ -2850,12 +2907,23 @@ function renderHtml(model, opts) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
 <title>${escapeHtml(DOC_TITLE)}</title>
 <style>
 ${screenCss()}
 </style>
 </head>
 <body>
+<header class="topbar">
+  <a class="home" href="${escapeHtml(book)}">
+    <img src="${escapeHtml(book)}images/verse.svg" alt=""
+         onerror="this.style.display='none'">
+    <span>Book of Verse</span>
+  </a>
+  <span class="crumb">Runtime API Reference</span>
+  <span class="spacer"></span>
+  <a class="back" href="${escapeHtml(book)}">&larr; Back to the book</a>
+</header>
 <div class="layout">
 <aside class="sidebar">
   <h1>${escapeHtml(DOC_TITLE)}</h1>
